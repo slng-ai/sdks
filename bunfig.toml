@@ -1,0 +1,4 @@
+# Scope `bun test` to our own tests; ignore the Stainless SDK working copies
+# (they run their own jest-based test suites in their own repos).
+[test]
+root = "."

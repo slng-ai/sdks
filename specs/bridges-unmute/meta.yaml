@@ -1,0 +1,5 @@
+slug: bridges-unmute
+label: Unmute (SLNG official) Bridges
+serviceType: bridges
+providerId: unmute
+providerName: Unmute (SLNG official)

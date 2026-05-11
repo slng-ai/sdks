@@ -1,0 +1,16 @@
+{
+  "project": "slng",
+  "openapi_spec": "openapi.json",
+  "stainless_config": "stainless.yml",
+  "targets": {
+    "openapi": {
+      "output_path": "../sdks/slng-openapi"
+    },
+    "python": {
+      "output_path": "../sdks/slng-python"
+    },
+    "typescript": {
+      "output_path": "../sdks/slng-typescript"
+    }
+  }
+}

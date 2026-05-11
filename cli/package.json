@@ -1,0 +1,18 @@
+{
+  "name": "@slng/cli",
+  "version": "0.0.0",
+  "description": "Slng unified-API CLI",
+  "type": "module",
+  "bin": {
+    "slng": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --compile --outfile bin/slng",
+    "test": "bun test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
