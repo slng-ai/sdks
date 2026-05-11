@@ -22,6 +22,12 @@ cli/bin/
 streaming/ts/messages.ts
 streaming/python/messages.py
 
+# Vendored voice manifests (re-synced by scripts/sync-voice-tools.sh)
+voice-manifests/
+
+# Generated voice catalog (re-emitted by scripts/gen-voice-catalog.ts)
+cli/src/lib/voice-catalog.generated.ts
+
 # Stainless SDK working copies — each is its own git repo (own remote at
 # stainless-sdks/slng-{typescript,python}). Stainless's `stl preview` clones
 # / updates them. Track them here only if you `rm -rf sdks/slng-*/.git` first

@@ -1,0 +1,59 @@
+// Persistent config at ~/.config/slng/config.json. Env vars win over file.
+// Don't write secrets through the SDK; the CLI is the user's local agent.
+
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+export type Region = "us-east-1" | "eu-north-1" | "ap-southeast-2";
+export type WorldPart = "na" | "eu" | "ap";
+
+export interface Config {
+  apiKey?: string;
+  baseUrl?: string;
+  region?: Region;
+  worldPart?: WorldPart;
+  defaultTtsModel?: string;
+  defaultTtsVoice?: string;
+  defaultSttModel?: string;
+}
+
+const CONFIG_DIR = join(homedir(), ".config", "slng");
+const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+
+export function load(): Config {
+  let file: Config = {};
+  if (existsSync(CONFIG_PATH)) {
+    try {
+      file = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Config;
+    } catch {
+      // ignore — corrupt config, treat as empty
+    }
+  }
+  // Env vars override file.
+  return {
+    ...file,
+    apiKey: process.env.SLNG_API_KEY ?? file.apiKey,
+    baseUrl: process.env.SLNG_BASE_URL ?? file.baseUrl,
+  };
+}
+
+export function save(updates: Partial<Config>): Config {
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  const current: Config = existsSync(CONFIG_PATH)
+    ? (JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Config)
+    : {};
+  const merged: Config = { ...current, ...updates };
+  writeFileSync(CONFIG_PATH, JSON.stringify(merged, null, 2));
+  return merged;
+}
+
+export function requireApiKey(): string {
+  const { apiKey } = load();
+  if (!apiKey) {
+    throw new Error(
+      "no SLNG_API_KEY set. Run `slng config set api-key <token>` or set SLNG_API_KEY in your env.",
+    );
+  }
+  return apiKey;
+}
