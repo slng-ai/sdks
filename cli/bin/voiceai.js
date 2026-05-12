@@ -13,7 +13,7 @@ const bin = path.join(__dirname, `voiceai${ext}`);
 if (!fs.existsSync(bin)) {
   console.error(
     `voiceai: binary missing at ${bin}.\n` +
-      `Reinstall with \`npm install -g voiceai\`, or, if you used --ignore-scripts, ` +
+      `Reinstall with \`npm install -g voiceai-cli\`, or, if you used --ignore-scripts, ` +
       `run \`node ${path.join(__dirname, "..", "scripts", "download.js")}\` to fetch it.`,
   );
   process.exit(1);

@@ -16,7 +16,7 @@
       },
     },
     "cli": {
-      "name": "voiceai",
+      "name": "voiceai-cli",
       "version": "0.1.0",
       "bin": {
         "voiceai": "./bin/voiceai.js",
@@ -377,7 +377,7 @@
 
     "v8-compile-cache-lib": ["v8-compile-cache-lib@3.0.1", "", {}, "sha512-wa7YjyUGfNZngI/vtK0UHAN+lgDCxBPCylVXGp0zu59Fz5aiGtNXaq3DhIov063MorB+VfufLh3JlF2KdTK3xg=="],
 
-    "voiceai": ["voiceai@workspace:cli"],
+    "voiceai-cli": ["voiceai-cli@workspace:cli"],
 
     "webidl-conversions": ["webidl-conversions@3.0.1", "", {}, "sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ=="],
 

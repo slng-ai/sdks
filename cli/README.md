@@ -28,11 +28,13 @@ Installs to `/usr/local/bin/voiceai`. Override with `PREFIX=$HOME/.local/bin`.
 ### npm
 
 ```sh
-npm i -g voiceai
+npm i -g voiceai-cli
 ```
 
-The npm package downloads the matching pre-built binary on install. Use the
-Homebrew or curl path if you'd rather skip the postinstall network call.
+The npm package is named `voiceai-cli` (the unscoped `voiceai` name was
+already taken on the registry). The binary it installs is still `voiceai`.
+On install it downloads the matching pre-built binary for your platform.
+Use the Homebrew or curl path if you'd rather skip the postinstall network call.
 
 ### macOS Gatekeeper note
 

@@ -1,5 +1,5 @@
 {
-  "name": "voiceai",
+  "name": "voiceai-cli",
   "version": "0.1.0",
   "description": "Voiceai CLI — text-to-speech, speech-to-text, streaming",
   "type": "commonjs",

@@ -97,7 +97,7 @@ jobs:
             Install:
               brew install slng-ai/tap/voiceai
               curl -fsSL https://slng.ai/install.sh | sh
-              npm i -g voiceai@${{ steps.ver.outputs.semver }}
+              npm i -g voiceai-cli@${{ steps.ver.outputs.semver }}
 
   publish-npm:
     name: npm publish
