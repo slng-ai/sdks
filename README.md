@@ -50,7 +50,11 @@ The workflow then:
 3. Publishes `voiceai` to npm with provenance (uses `NPM_TOKEN`).
 4. Updates `Formula/voiceai.rb` in `slng-ai/homebrew-tap` with the new version + SHAs (uses `HOMEBREW_TAP_GITHUB_TOKEN`).
 
-Required repo secrets:
+Required, one-time, before the first tag:
+- Create `slng-ai/homebrew-tap` on GitHub. **Must be a public repo** — Homebrew clones the tap over HTTPS without auth on every `brew install`. The repo can start empty; the workflow's tap step writes `Formula/voiceai.rb` on first release.
+- Reserve `voiceai` on npmjs.com.
+
+Required repo secrets on `slng-ai/sdks`:
 - `NPM_TOKEN` — automation token from the `voiceai` npm account.
 - `HOMEBREW_TAP_GITHUB_TOKEN` — fine-grained PAT with `Contents: write` on `slng-ai/homebrew-tap`.
 
