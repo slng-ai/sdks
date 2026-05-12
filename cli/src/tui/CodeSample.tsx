@@ -1,7 +1,15 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
+import SyntaxHighlight from "ink-syntax-highlight";
 
 export type Lang = "typescript" | "python" | "curl";
+
+// cli-highlight uses highlight.js language names; "bash" works well for curl.
+const HL_LANGUAGE: Record<Lang, string> = {
+  typescript: "typescript",
+  python: "python",
+  curl: "bash",
+};
 
 interface Props {
   modelVariant: string;
@@ -36,7 +44,7 @@ export function CodeSample({ modelVariant, voice, text, region, worldPart }: Pro
         <Text dimColor>  (tab to cycle)</Text>
       </Box>
       <Box marginTop={1}>
-        <Text>{sample}</Text>
+        <SyntaxHighlight code={sample} language={HL_LANGUAGE[lang]} />
       </Box>
     </Box>
   );

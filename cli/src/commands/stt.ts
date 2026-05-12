@@ -2,15 +2,30 @@ import { Command } from "commander";
 import { readFileSync, createReadStream } from "node:fs";
 import { makeClients } from "../lib/sdk";
 import { recordPcm } from "../lib/audio";
+import { load } from "../lib/config";
+
+const STT_EPILOGUE = `
+EXAMPLES
+  $ slng stt audio.wav -m slng/deepgram/nova:3-en     transcribe a WAV file
+  $ slng stt --stream                                 live mic → transcripts
+  $ arecord -f S16_LE -r 16000 -c 1 | slng stt --stream --source stdin
+                                                      pipe raw PCM
+`;
 
 export function sttCommand(): Command {
+  const cfg = load();
   const cmd = new Command("stt");
   cmd
-    .description("Transcribe audio")
+    .description("Transcribe audio (file or live streaming)")
     .argument("[file]", "Audio file to transcribe (omit + use --stream to read mic / stdin)")
-    .option("-m, --model <id>", "STT model variant (e.g. deepgram/nova:3)", "deepgram/nova:3")
+    .option(
+      "-m, --model <id>",
+      "STT model variant (e.g. slng/deepgram/nova:3-en)",
+      cfg.defaultSttModel ?? "deepgram/nova:3",
+    )
     .option("--stream", "Open a WebSocket and stream audio chunks")
     .option("--source <kind>", "When streaming, where to get audio from: mic | stdin", "mic")
+    .addHelpText("afterAll", STT_EPILOGUE)
     .action(async (file: string | undefined, opts) => {
       if (opts.stream) {
         await streamTranscribe(opts);

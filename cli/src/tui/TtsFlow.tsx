@@ -12,12 +12,18 @@ import {
   ttsModelsForLanguage,
   languageLabel,
   regionsFor,
+  isSlngHosted,
   type TtsModel,
 } from "../lib/models";
+import { SlngFirstItem } from "./SlngFirstItem";
 import { makeClients } from "../lib/sdk";
-import { playBytes } from "../lib/audio";
+import { playBytes, sniffExt } from "../lib/audio";
 import { previewVoice } from "../lib/preview";
 import { CodeSample } from "./CodeSample";
+import { load } from "../lib/config";
+import { writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 
 type Step =
   | "pick-language"
@@ -34,14 +40,25 @@ interface Props {
 }
 
 export function TtsFlow({ onExit }: Props): React.ReactElement {
-  const [step, setStep] = useState<Step>("pick-language");
-  const [language, setLanguage] = useState<string>("");
-  const [model, setModel] = useState<string>("");
-  const [voice, setVoice] = useState<string>("");
+  // If the user has configured a default model (and optionally voice), skip
+  // ahead so the common case = launch → type text → enter.
+  const initial = (() => {
+    const cfg = load();
+    const m = cfg.defaultTtsModel;
+    const v = cfg.defaultTtsVoice;
+    if (m && v) return { step: "enter-text" as Step, language: "", model: m, voice: v };
+    if (m) return { step: "pick-voice" as Step, language: "", model: m, voice: "" };
+    return { step: "pick-language" as Step, language: "", model: "", voice: "" };
+  })();
+  const [step, setStep] = useState<Step>(initial.step);
+  const [language, setLanguage] = useState<string>(initial.language);
+  const [model, setModel] = useState<string>(initial.model);
+  const [voice, setVoice] = useState<string>(initial.voice);
   const [region, setRegion] = useState<string>("");
   const [text, setText] = useState<string>("");
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string>("");
+  const [usingDefaults] = useState<boolean>(initial.step !== "pick-language");
 
   useInput((_input, key) => {
     if (key.escape) {
@@ -88,7 +105,12 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
   return (
     <Box flexDirection="column" marginTop={1} paddingX={1}>
       <Text bold>Text → Speech</Text>
-      <Text dimColor>esc to go back</Text>
+      {usingDefaults && (
+        <Text dimColor>
+          using defaults: {model}{voice ? ` · ${voice}` : ""} · esc to change
+        </Text>
+      )}
+      {!usingDefaults && <Text dimColor>esc to go back</Text>}
 
       {step === "pick-language" && (
         <Box flexDirection="column" marginTop={1}>
@@ -113,8 +135,15 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
             Model {language && <Text dimColor>({languageLabel(language)})</Text>}:
           </Text>
           <SelectInput
-            items={ttsModelsForLanguage(language).map((m: TtsModel) => ({ label: m.id, value: m.id }))}
+            items={ttsModelsForLanguage(language).map((m: TtsModel) => {
+              const display = m.name ? `${m.name} (${m.id})` : m.id;
+              return {
+                label: isSlngHosted(m.id) ? `★ ${display}` : `  ${display}`,
+                value: m.id,
+              };
+            })}
             limit={8}
+            itemComponent={SlngFirstItem}
             onSelect={(item) => {
               setModel(item.value);
               const v = voicesFor(item.value);
@@ -162,9 +191,16 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
 
       {step === "enter-text" && (
         <Box flexDirection="column" marginTop={1}>
-          <Text>
-            <Text dimColor>{model} · {voice}</Text>
-          </Text>
+          {/* Context (model · voice · region) is already shown in the header
+              when usingDefaults; when the user walked the flow manually it
+              still helps to surface it here. Avoid duplicating in the default
+              path. */}
+          {!usingDefaults && (
+            <Text dimColor>
+              {model} · {voice}
+              {region ? ` · ${region}` : ""}
+            </Text>
+          )}
           <Text>Text (enter to synthesize):</Text>
           <TextInput value={text} onChange={setText} onSubmit={(t) => synth(t)} />
         </Box>
@@ -217,26 +253,86 @@ interface DonePaneProps {
   onRestart: () => void;
 }
 
-/** Synthesis-success pane with a [c] toggle to show the equivalent code sample. */
+/** Synthesis-success pane. Keys: enter = redo · c = code sample · s = save to file · esc = back. */
 function DonePane({ bytes, modelVariant, voice, text, onRestart }: DonePaneProps): React.ReactElement {
   const [showCode, setShowCode] = useState(false);
+  const [savingPath, setSavingPath] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const ext = sniffExt(bytes);
+  const defaultPath = defaultSavePath(modelVariant, voice, ext);
 
   useInput((input, key) => {
+    if (savingPath !== null) return; // text input takes over
     if (key.return) onRestart();
     if (input === "c" || input === "C") setShowCode((s) => !s);
+    if (input === "s" || input === "S") {
+      setSavingPath(defaultPath);
+      setSaveError(null);
+      setSaved(null);
+    }
   });
+
+  const commitSave = (raw: string) => {
+    const path = expandTilde(raw.trim() || defaultPath);
+    try {
+      writeFileSync(path, bytes);
+      setSaved(path);
+      setSavingPath(null);
+    } catch (e) {
+      setSaveError((e as Error).message);
+    }
+  };
 
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text color="green">✓ Played {bytes.length} bytes.</Text>
       <Text dimColor>
-        enter to synthesize again · {showCode ? "c to hide code" : "c to show code"} · esc to go back
+        enter redo · s save to file · {showCode ? "c hide code" : "c show code"} · esc back
       </Text>
+
+      {savingPath !== null && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text>Save to: </Text>
+          <TextInput value={savingPath} onChange={setSavingPath} onSubmit={commitSave} />
+          {saveError && <Text color="red">✗ {saveError}</Text>}
+          <Text dimColor>enter to save · esc to cancel</Text>
+          <CancelSaveListener onCancel={() => setSavingPath(null)} />
+        </Box>
+      )}
+
+      {saved && (
+        <Box marginTop={1}>
+          <Text color="green">✓ Saved to {saved}</Text>
+        </Box>
+      )}
+
       {showCode && (
         <CodeSample modelVariant={modelVariant} voice={voice} text={text} />
       )}
     </Box>
   );
+}
+
+function CancelSaveListener({ onCancel }: { onCancel: () => void }): null {
+  useInput((_input, key) => {
+    if (key.escape) onCancel();
+  });
+  return null;
+}
+
+function defaultSavePath(modelVariant: string, voice: string, ext: string): string {
+  const safeModel = modelVariant.replace(/[^A-Za-z0-9._-]+/g, "_");
+  const safeVoice = voice.replace(/[^A-Za-z0-9._-]+/g, "_");
+  const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+  return join(homedir(), "Downloads", `slng-${safeModel}-${safeVoice}-${ts}.${ext}`);
+}
+
+function expandTilde(p: string): string {
+  if (p.startsWith("~/")) return join(homedir(), p.slice(2));
+  if (p === "~") return homedir();
+  return resolve(p);
 }
 
 interface VoicePickerProps {

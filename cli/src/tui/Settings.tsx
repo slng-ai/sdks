@@ -2,16 +2,31 @@ import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
-import { load, save, type Region, type WorldPart } from "../lib/config";
+import { load, save } from "../lib/config";
+import {
+  allRegions,
+  allWorldParts,
+  isSlngHosted,
+  TTS_MODELS,
+  STT_MODELS,
+  voicesFor,
+  voiceLabel,
+  type TtsModel,
+  type SttModel,
+} from "../lib/models";
+import { SlngFirstItem } from "./SlngFirstItem";
 
-type Field = "apiKey" | "region" | "worldPart" | "defaultTtsModel" | "defaultSttModel";
+type Field =
+  | "apiKey"
+  | "region"
+  | "worldPart"
+  | "defaultTtsModel"
+  | "defaultTtsVoice"
+  | "defaultSttModel";
 
 interface Props {
   onExit: () => void;
 }
-
-const REGIONS: Region[] = ["us-east-1", "eu-north-1", "ap-southeast-2"];
-const WORLD_PARTS: WorldPart[] = ["na", "eu", "ap"];
 
 export function Settings({ onExit }: Props): React.ReactElement {
   const [cfg, setCfg] = useState(load());
@@ -43,11 +58,13 @@ export function Settings({ onExit }: Props): React.ReactElement {
   }
 
   if (editing === "region") {
+    const regions = allRegions();
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>Region</Text>
+        <Text dimColor>{regions.length} region{regions.length === 1 ? "" : "s"} live across deployments</Text>
         <SelectInput
-          items={[{ label: "(unset)", value: "" }, ...REGIONS.map((r) => ({ label: r, value: r }))]}
+          items={[{ label: "(auto)", value: "" }, ...regions.map((r) => ({ label: r, value: r }))]}
           onSelect={(item) => commit("region", item.value)}
         />
       </Box>
@@ -55,11 +72,12 @@ export function Settings({ onExit }: Props): React.ReactElement {
   }
 
   if (editing === "worldPart") {
+    const worldParts = allWorldParts();
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>World part</Text>
         <SelectInput
-          items={[{ label: "(unset)", value: "" }, ...WORLD_PARTS.map((w) => ({ label: w, value: w }))]}
+          items={[{ label: "(auto)", value: "" }, ...worldParts.map((w) => ({ label: w, value: w }))]}
           onSelect={(item) => commit("worldPart", item.value)}
         />
       </Box>
@@ -67,10 +85,69 @@ export function Settings({ onExit }: Props): React.ReactElement {
   }
 
   if (editing === "defaultTtsModel" || editing === "defaultSttModel") {
+    const models: ReadonlyArray<TtsModel | SttModel> =
+      editing === "defaultTtsModel" ? TTS_MODELS : STT_MODELS;
+    const items = [
+      { label: "  (none)", value: "" },
+      ...models.map((m) => {
+        const display = m.name ? `${m.name} (${m.id})` : m.id;
+        return {
+          label: isSlngHosted(m.id) ? `★ ${display}` : `  ${display}`,
+          value: m.id,
+        };
+      }),
+    ];
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>Default {editing === "defaultTtsModel" ? "TTS" : "STT"} model</Text>
-        <TextInput value={draft} onChange={setDraft} onSubmit={(v) => commit(editing, v)} />
+        <SelectInput
+          items={items}
+          limit={10}
+          itemComponent={SlngFirstItem}
+          onSelect={(item) => {
+            // If the model changes, clear the cached voice (it likely no longer applies).
+            if (editing === "defaultTtsModel" && item.value !== cfg.defaultTtsModel) {
+              save({ defaultTtsVoice: undefined });
+            }
+            commit(editing, item.value);
+          }}
+        />
+        <Text dimColor>enter to save · esc to cancel</Text>
+      </Box>
+    );
+  }
+
+  if (editing === "defaultTtsVoice") {
+    if (!cfg.defaultTtsModel) {
+      return (
+        <Box flexDirection="column" marginTop={1} paddingX={1}>
+          <Text color="yellow">Set a default TTS model first.</Text>
+          <Text dimColor>esc to go back</Text>
+        </Box>
+      );
+    }
+    const voices = voicesFor(cfg.defaultTtsModel);
+    if (voices.length === 0) {
+      return (
+        <Box flexDirection="column" marginTop={1} paddingX={1}>
+          <Text color="yellow">
+            No catalogued voices for <Text bold>{cfg.defaultTtsModel}</Text>.
+          </Text>
+          <Text dimColor>esc to go back</Text>
+        </Box>
+      );
+    }
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Default voice for {cfg.defaultTtsModel}</Text>
+        <SelectInput
+          items={[
+            { label: "(none)", value: "" },
+            ...voices.map((v) => ({ label: voiceLabel(v), value: v.voiceId })),
+          ]}
+          limit={10}
+          onSelect={(item) => commit("defaultTtsVoice", item.value)}
+        />
         <Text dimColor>enter to save · esc to cancel</Text>
       </Box>
     );
@@ -87,6 +164,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
             { label: `Region:            ${cfg.region ?? "(auto)"}`, value: "region" as Field },
             { label: `World part:        ${cfg.worldPart ?? "(auto)"}`, value: "worldPart" as Field },
             { label: `Default TTS model: ${cfg.defaultTtsModel ?? "(none)"}`, value: "defaultTtsModel" as Field },
+            { label: `Default TTS voice: ${cfg.defaultTtsVoice ?? "(none)"}`, value: "defaultTtsVoice" as Field },
             { label: `Default STT model: ${cfg.defaultSttModel ?? "(none)"}`, value: "defaultSttModel" as Field },
           ]}
           onSelect={(item) => {

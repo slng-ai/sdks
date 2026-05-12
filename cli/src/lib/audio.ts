@@ -12,6 +12,9 @@
 //   - arecord (linux ALSA)
 
 import { spawn, type Subprocess } from "bun";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 type PlayerName = "afplay" | "ffplay" | "paplay";
 type RecorderName = "sox" | "rec" | "arecord";
@@ -48,7 +51,11 @@ export async function detectRecorder(): Promise<RecorderName | null> {
   return null;
 }
 
-/** Play raw bytes (any format ffmpeg/afplay can sniff: WAV, MP3, OGG, etc.). */
+/** Play raw bytes (any format the player can sniff: WAV, MP3, OGG, etc.).
+ *
+ * afplay does NOT read from stdin; it requires a file path. So for the
+ * macOS path we write to a temp file, play it, then unlink. ffplay reads
+ * pipe:0 fine. paplay supports stdin for the formats it knows about. */
 export async function playBytes(bytes: Uint8Array): Promise<void> {
   const player = await detectPlayer();
   if (!player) {
@@ -56,16 +63,52 @@ export async function playBytes(bytes: Uint8Array): Promise<void> {
       "no audio player found. install one of: afplay (macOS, built-in), ffplay (brew install ffmpeg), paplay (linux).",
     );
   }
+
+  if (player === "afplay") {
+    // Sniff the format from magic bytes for the extension. afplay relies on
+    // the extension to dispatch the right CoreAudio decoder.
+    const ext = sniffExt(bytes);
+    const path = join(tmpdir(), `slng-play-${process.pid}-${Date.now()}.${ext}`);
+    writeFileSync(path, bytes);
+    try {
+      const proc = spawn(["afplay", path], { stdout: "ignore", stderr: "pipe" });
+      const code = await proc.exited;
+      if (code !== 0) {
+        const err = await new Response(proc.stderr).text();
+        throw new Error(`afplay exited ${code}: ${err.trim()}`);
+      }
+    } finally {
+      unlinkSync(path);
+    }
+    return;
+  }
+
   const args: string[] =
-    player === "afplay"
-      ? ["-"]
-      : player === "ffplay"
-        ? ["-autoexit", "-nodisp", "-loglevel", "error", "-i", "pipe:0"]
-        : ["--raw", "--rate=24000", "--format=s16le", "--channels=1"];
-  const proc = spawn([player, ...args], { stdin: "pipe", stdout: "ignore", stderr: "ignore" });
+    player === "ffplay"
+      ? ["-autoexit", "-nodisp", "-loglevel", "error", "-i", "pipe:0"]
+      : // paplay reads any libsndfile-supported format from stdin; passing
+        // --raw forces interpretation as raw PCM, which is wrong for MP3/WAV
+        // coming from the TTS API. Let paplay sniff instead.
+        [];
+
+  const proc = spawn([player, ...args], { stdin: "pipe", stdout: "ignore", stderr: "pipe" });
   proc.stdin.write(bytes);
   await proc.stdin.end();
-  await proc.exited;
+  const code = await proc.exited;
+  if (code !== 0) {
+    const err = await new Response(proc.stderr).text();
+    throw new Error(`${player} exited ${code}: ${err.trim()}`);
+  }
+}
+
+/** Quick magic-byte sniff to choose a file extension afplay will recognize. */
+export function sniffExt(b: Uint8Array): string {
+  if (b.length >= 4 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46) return "wav"; // RIFF
+  if (b.length >= 3 && b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) return "mp3"; // ID3
+  if (b.length >= 2 && b[0] === 0xff && (b[1]! & 0xe0) === 0xe0) return "mp3"; // MPEG sync
+  if (b.length >= 4 && b[0] === 0x4f && b[1] === 0x67 && b[2] === 0x67 && b[3] === 0x53) return "ogg";
+  if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return "m4a"; // ftyp box
+  return "mp3"; // safest default for our TTS outputs
 }
 
 /**

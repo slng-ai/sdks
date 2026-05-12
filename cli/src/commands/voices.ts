@@ -3,10 +3,21 @@ import { voicesFor, languageLabel } from "../lib/models";
 
 export function voicesCommand(): Command {
   return new Command("voices")
-    .description("List known voices for a TTS model")
+    .description("List catalogued voices for a TTS model")
     .requiredOption("-m, --model <id>", "TTS model variant id")
     .option("--json", "Output JSON with full metadata")
-    .option("--language <code>", "Filter by language code (e.g. en, es)")
+    .option("--language <code>", "Filter by language code (e.g. en, es, fr)")
+    .addHelpText("afterAll", `
+EXAMPLES
+  $ slng voices --model slng/deepgram/aura:2-en
+  $ slng voices --model cartesia/sonic:3 --language fr
+  $ slng voices --model slng/deepgram/aura:2-en --json | jq '.[] | .name'
+
+NOTES
+  When calling \`slng tts\`, --voice accepts either a voiceId or the friendly
+  Name from this list (case-insensitive). Cartesia voices in particular are
+  UUIDs — type the readable name instead.
+`)
     .action((opts: { model: string; json?: boolean; language?: string }) => {
       let voices = voicesFor(opts.model);
       if (opts.language) voices = voices.filter((v) => v.language === opts.language);

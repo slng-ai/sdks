@@ -80,6 +80,31 @@ export function worldPartsFor(modelId: string): string[] {
   return m?.deployments?.worldParts ?? [];
 }
 
+/** Static fallbacks (from the OAS spec) used only when the live snapshot is empty. */
+const FALLBACK_REGIONS = ["us-east-1", "eu-north-1", "ap-southeast-2"];
+const FALLBACK_WORLD_PARTS = ["na", "eu", "ap"];
+
+/** Union of all regions any deployed model is reachable in.
+ *  Derived from the live admin-API snapshot; refreshes on `bun run sync-live-models`. */
+export function allRegions(): string[] {
+  const set = new Set<string>();
+  for (const m of [...TTS_MODELS, ...STT_MODELS]) {
+    for (const r of m.deployments?.regions ?? []) set.add(r);
+  }
+  if (set.size === 0) FALLBACK_REGIONS.forEach((r) => set.add(r));
+  return [...set].sort();
+}
+
+/** Union of all world-parts across live deployments. */
+export function allWorldParts(): string[] {
+  const set = new Set<string>();
+  for (const m of [...TTS_MODELS, ...STT_MODELS]) {
+    for (const w of m.deployments?.worldParts ?? []) set.add(w);
+  }
+  if (set.size === 0) FALLBACK_WORLD_PARTS.forEach((w) => set.add(w));
+  return [...set].sort();
+}
+
 /** Fallback when LIVE_MODELS is empty: derive from voice catalog keys. */
 function fromVoiceCatalog(): { tts: TtsModel[] } {
   const tts: TtsModel[] = Object.keys(VOICE_CATALOG).map((id) => {
@@ -94,15 +119,28 @@ function fromVoiceCatalog(): { tts: TtsModel[] } {
   return { tts };
 }
 
-export const TTS_MODELS: TtsModel[] =
-  LIVE_MODELS.length > 0
-    ? LIVE_MODELS.filter((m) => m.service_type === "tts").map(fromLive)
-    : fromVoiceCatalog().tts;
+/** Sort comparator: Slng-hosted variants (`slng/*`) first, alphabetical within. */
+function slngFirstCompare(a: { id: string }, b: { id: string }): number {
+  const aSlng = a.id.startsWith("slng/");
+  const bSlng = b.id.startsWith("slng/");
+  if (aSlng !== bSlng) return aSlng ? -1 : 1;
+  return a.id.localeCompare(b.id);
+}
 
-export const STT_MODELS: SttModel[] =
-  LIVE_MODELS.length > 0
-    ? LIVE_MODELS.filter((m) => m.service_type === "stt").map(fromLive)
-    : [];
+/** True when the model is routed through Slng's own infra. */
+export function isSlngHosted(id: string): boolean {
+  return id.startsWith("slng/");
+}
+
+export const TTS_MODELS: TtsModel[] = (LIVE_MODELS.length > 0
+  ? LIVE_MODELS.filter((m) => m.service_type === "tts").map(fromLive)
+  : fromVoiceCatalog().tts
+).sort(slngFirstCompare);
+
+export const STT_MODELS: SttModel[] = (LIVE_MODELS.length > 0
+  ? LIVE_MODELS.filter((m) => m.service_type === "stt").map(fromLive)
+  : []
+).sort(slngFirstCompare);
 
 /** Return rich Voice records for a model_variant, in catalog order. */
 export function voicesFor(modelId: string): Voice[] {
