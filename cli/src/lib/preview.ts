@@ -1,6 +1,6 @@
 // Voice preview with a fallback chain so we re-use existing samples when we can:
 //
-//   1. CLI cache: ~/.cache/slng/preview-<model>-<voice>.{mp3,wav}
+//   1. CLI cache: ~/.cache/voiceai/preview-<model>-<voice>.{mp3,wav}
 //   2. voice-tools local sample: $VOICE_TOOLS_DIR/<sampleDir>/<voiceId>.wav
 //   3. sampleUrl from the manifest (HTTP fetch; e.g. KugelAudio)
 //   4. Synthesize via the SDK as a last resort, then cache to (1)
@@ -15,7 +15,7 @@ import type { Voice } from "./models";
 import { makeClients } from "./sdk";
 import { playBytes } from "./audio";
 
-const CACHE_DIR = join(homedir(), ".cache", "slng");
+const CACHE_DIR = join(homedir(), ".cache", "voiceai");
 const VOICE_TOOLS_DIR = process.env.VOICE_TOOLS_DIR ?? join(homedir(), "Dev", "SLNG", "voice-tools");
 
 function cachePath(model: string, voice: string, ext = "mp3"): string {

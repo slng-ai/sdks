@@ -1,14 +1,14 @@
 {
-  "name": "@slng/cli",
+  "name": "voiceai",
   "version": "0.1.0",
-  "description": "Slng unified-API CLI",
+  "description": "Voiceai CLI — text-to-speech, speech-to-text, streaming",
   "type": "module",
   "bin": {
-    "slng": "./src/index.ts"
+    "voiceai": "./src/index.ts"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "bun build src/index.ts --compile --outfile bin/slng",
+    "build": "bun build src/index.ts --compile --outfile bin/voiceai",
     "test": "bun test"
   },
   "dependencies": {

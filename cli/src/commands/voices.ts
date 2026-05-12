@@ -9,12 +9,12 @@ export function voicesCommand(): Command {
     .option("--language <code>", "Filter by language code (e.g. en, es, fr)")
     .addHelpText("afterAll", `
 EXAMPLES
-  $ slng voices --model slng/deepgram/aura:2-en
-  $ slng voices --model cartesia/sonic:3 --language fr
-  $ slng voices --model slng/deepgram/aura:2-en --json | jq '.[] | .name'
+  $ voiceai voices --model slng/deepgram/aura:2-en
+  $ voiceai voices --model cartesia/sonic:3 --language fr
+  $ voiceai voices --model slng/deepgram/aura:2-en --json | jq '.[] | .name'
 
 NOTES
-  When calling \`slng tts\`, --voice accepts either a voiceId or the friendly
+  When calling \`voiceai tts\`, --voice accepts either a voiceId or the friendly
   Name from this list (case-insensitive). Cartesia voices in particular are
   UUIDs — type the readable name instead.
 `)

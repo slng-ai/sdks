@@ -63,7 +63,7 @@ function render(lang: Lang, p: Props): string {
   if (lang === "typescript") {
     return `import Slng from "voiceai-sdk";
 
-const client = new Slng({ apiKey: process.env.SLNG_API_KEY! });
+const client = new Slng({ apiKey: process.env.VOICEAI_API_KEY! });
 const response = await client.textToSpeech.create(
   "${modelVariant}",
   {
@@ -80,7 +80,7 @@ const audio = new Uint8Array(await (await response.blob()).arrayBuffer());`;
     return `import os
 from voiceai_sdk import Slng
 
-client = Slng(api_key=os.environ["SLNG_API_KEY"])
+client = Slng(api_key=os.environ["VOICEAI_API_KEY"])
 response = client.text_to_speech.create(
     model_variant="${modelVariant}",
     ${pyBody.join(",\n    ")},
@@ -90,7 +90,7 @@ response.write_to_file("out.mp3")`;
 
   // curl
   const headers = [
-    `-H "Authorization: Bearer $SLNG_API_KEY"`,
+    `-H "Authorization: Bearer $VOICEAI_API_KEY"`,
     `-H "Content-Type: application/json"`,
   ].join(" \\\n  ");
   const query: string[] = [];

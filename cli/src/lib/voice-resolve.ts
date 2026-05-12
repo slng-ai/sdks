@@ -73,7 +73,7 @@ export function resolveVoice(model: string, query: string): ResolveResult {
 
   return {
     ok: false,
-    message: `no voice matching "${query}" for ${model}. Try \`slng voices --model ${model}\` to list options.`,
+    message: `no voice matching "${query}" for ${model}. Try \`voiceai voices --model ${model}\` to list options.`,
   };
 }
 

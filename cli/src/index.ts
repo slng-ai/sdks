@@ -3,8 +3,8 @@
 //   - flag mode (args present, or stdin/stdout not a TTY) -> commander handles it
 //   - TUI mode (no args, interactive terminal) -> Ink renders App
 //
-// Rationale: same binary works for `slng tts "hi" | ffplay -` (scriptable)
-// and for `slng` alone (humans).
+// Rationale: same binary works for `voiceai tts "hi" | ffplay -` (scriptable)
+// and for `voiceai` alone (humans).
 
 import { runFlagMode } from "./flags";
 

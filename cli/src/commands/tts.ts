@@ -11,16 +11,16 @@ import { load } from "../lib/config";
 
 const TTS_EPILOGUE = `
 EXAMPLES
-  $ slng tts "hello"                                  play + auto-save to a temp file
-  $ slng tts "hi" -m slng/deepgram/aura:2-en -v amalthea
-                                                      voice resolved by name → voiceId
-  $ slng tts "save me" --out ~/voice.mp3              save to a specific file (also plays)
-  $ slng tts "binary" > out.mp3                       pipe raw audio when stdout isn't a TTY
-  $ slng tts "stream" --stream | ffplay -             stream chunks via WebSocket
-  $ slng tts "regional" --region eu-north-1           pin a region
+  $ voiceai tts "hello"                                  play + auto-save to a temp file
+  $ voiceai tts "hi" -m slng/deepgram/aura:2-en -v amalthea
+                                                         voice resolved by name → voiceId
+  $ voiceai tts "save me" --out ~/voice.mp3              save to a specific file (also plays)
+  $ voiceai tts "binary" > out.mp3                       pipe raw audio when stdout isn't a TTY
+  $ voiceai tts "stream" --stream | ffplay -             stream chunks via WebSocket
+  $ voiceai tts "regional" --region eu-north-1           pin a region
 
 NOTES
-  By default the audio is played AND saved to $TMPDIR/slng-tts/. Use --out to
+  By default the audio is played AND saved to $TMPDIR/voiceai-tts/. Use --out to
   pick a path. --voice accepts a friendly name (e.g. "brooke") or a voiceId;
   we look it up in the catalog and substitute the upstream-native id.
 `;
@@ -107,9 +107,9 @@ export function ttsCommand(): Command {
       const outPath = opts.out
         ? String(opts.out)
         : (() => {
-            const tmp = join(tmpdir(), "slng-tts");
+            const tmp = join(tmpdir(), "voiceai-tts");
             mkdirSync(tmp, { recursive: true });
-            return join(tmp, `slng-tts-${Date.now()}.${ext}`);
+            return join(tmp, `voiceai-tts-${Date.now()}.${ext}`);
           })();
       writeFileSync(outPath, bytes);
       process.stderr.write(`saved → ${outPath}\n`);

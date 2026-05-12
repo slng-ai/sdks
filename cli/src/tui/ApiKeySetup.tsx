@@ -59,7 +59,7 @@ export function ApiKeySetup({ onDone }: Props): React.ReactElement {
       )}
 
       <Box marginTop={1} flexDirection="column">
-        <Text dimColor>Saved to ~/.config/slng/config.json. You can also set SLNG_API_KEY in your env.</Text>
+        <Text dimColor>Saved to ~/.config/voiceai/config.json. You can also set VOICEAI_API_KEY in your env.</Text>
         <Text dimColor>enter to save · esc to quit</Text>
       </Box>
     </Box>

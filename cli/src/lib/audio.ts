@@ -68,7 +68,7 @@ export async function playBytes(bytes: Uint8Array): Promise<void> {
     // Sniff the format from magic bytes for the extension. afplay relies on
     // the extension to dispatch the right CoreAudio decoder.
     const ext = sniffExt(bytes);
-    const path = join(tmpdir(), `slng-play-${process.pid}-${Date.now()}.${ext}`);
+    const path = join(tmpdir(), `voiceai-play-${process.pid}-${Date.now()}.${ext}`);
     writeFileSync(path, bytes);
     try {
       const proc = spawn(["afplay", path], { stdout: "ignore", stderr: "pipe" });

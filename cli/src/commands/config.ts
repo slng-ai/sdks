@@ -4,9 +4,9 @@ import { load, save } from "../lib/config";
 const CONFIG_EPILOGUE = `
 KEYS
   apiKey              Bearer token (zpka_…). Get one at https://app.slng.ai/api-keys.
-                      Overridden by SLNG_API_KEY env.
+                      Overridden by VOICEAI_API_KEY env.
   baseUrl             Override the API base URL. Default: https://api.slng.ai.
-                      Overridden by SLNG_BASE_URL env.
+                      Overridden by VOICEAI_BASE_URL env.
   region              Force a region for every request (auto if unset).
   worldPart           Force a world-part for every request (auto if unset).
   defaultTtsModel     Skip the TTS model picker in the TUI.
@@ -14,16 +14,16 @@ KEYS
   defaultSttModel     Skip the STT model picker in the TUI.
 
 EXAMPLES
-  $ slng config set api-key zpka_…
-  $ slng config set defaultTtsModel slng/deepgram/aura:2-en
-  $ slng config get                                   show everything (apiKey masked)
+  $ voiceai config set apiKey zpka_…
+  $ voiceai config set defaultTtsModel slng/deepgram/aura:2-en
+  $ voiceai config get                                show everything (apiKey masked)
 
-  Or open the interactive Settings screen by running \`slng\` with no args.
+  Or open the interactive Settings screen by running \`voiceai\` with no args.
 `;
 
 export function configCommand(): Command {
   const cmd = new Command("config")
-    .description("Read and write CLI configuration (~/.config/slng/config.json)")
+    .description("Read and write CLI configuration (~/.config/voiceai/config.json)")
     .addHelpText("afterAll", CONFIG_EPILOGUE);
 
   cmd
@@ -42,7 +42,7 @@ export function configCommand(): Command {
 
   cmd
     .command("set <key> <value>")
-    .description("Persist a config value to ~/.config/slng/config.json")
+    .description("Persist a config value to ~/.config/voiceai/config.json")
     .action((key: string, value: string) => {
       const merged = save({ [key]: value });
       console.log(`${key} = ${key === "apiKey" ? maskKey(merged.apiKey) : merged[key as keyof typeof merged]}`);

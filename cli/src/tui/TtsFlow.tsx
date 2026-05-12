@@ -326,7 +326,7 @@ function defaultSavePath(modelVariant: string, voice: string, ext: string): stri
   const safeModel = modelVariant.replace(/[^A-Za-z0-9._-]+/g, "_");
   const safeVoice = voice.replace(/[^A-Za-z0-9._-]+/g, "_");
   const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
-  return join(homedir(), "Downloads", `slng-${safeModel}-${safeVoice}-${ts}.${ext}`);
+  return join(homedir(), "Downloads", `voiceai-${safeModel}-${safeVoice}-${ts}.${ext}`);
 }
 
 function expandTilde(p: string): string {

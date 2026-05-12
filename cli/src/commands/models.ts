@@ -20,9 +20,9 @@ export function modelsCommand(): Command {
     .option("--json", "Output JSON with full metadata")
     .addHelpText("afterAll", `
 EXAMPLES
-  $ slng models                                       both TTS and STT
-  $ slng models --tts                                 just TTS
-  $ slng models --json | jq '.tts[] | .id'            scriptable
+  $ voiceai models                                       both TTS and STT
+  $ voiceai models --tts                                 just TTS
+  $ voiceai models --json | jq '.tts[] | .id'            scriptable
 
   Models are sourced from Slng's deployed-model registry; running with no
   deployments hides ghost variants that return 503.

@@ -6,9 +6,9 @@ import { load } from "../lib/config";
 
 const STT_EPILOGUE = `
 EXAMPLES
-  $ slng stt audio.wav -m slng/deepgram/nova:3-en     transcribe a WAV file
-  $ slng stt --stream                                 live mic → transcripts
-  $ arecord -f S16_LE -r 16000 -c 1 | slng stt --stream --source stdin
+  $ voiceai stt audio.wav -m slng/deepgram/nova:3-en     transcribe a WAV file
+  $ voiceai stt --stream                                 live mic → transcripts
+  $ arecord -f S16_LE -r 16000 -c 1 | voiceai stt --stream --source stdin
                                                       pipe raw PCM
 `;
 

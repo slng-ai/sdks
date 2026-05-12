@@ -1,7 +1,7 @@
-// Persistent config at ~/.config/slng/config.json. Env vars win over file.
+// Persistent config at ~/.config/voiceai/config.json. Env vars win over file.
 // Don't write secrets through the SDK; the CLI is the user's local agent.
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -22,10 +22,26 @@ export interface Config {
   defaultSttInput?: string;
 }
 
-const CONFIG_DIR = join(homedir(), ".config", "slng");
+const CONFIG_DIR = join(homedir(), ".config", "voiceai");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+const LEGACY_CONFIG_DIR = join(homedir(), ".config", "slng");
+const LEGACY_CONFIG_PATH = join(LEGACY_CONFIG_DIR, "config.json");
+
+let migrationChecked = false;
+function migrateLegacy(): void {
+  if (migrationChecked) return;
+  migrationChecked = true;
+  if (existsSync(CONFIG_PATH)) return;
+  if (!existsSync(LEGACY_CONFIG_PATH)) return;
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  copyFileSync(LEGACY_CONFIG_PATH, CONFIG_PATH);
+  process.stderr.write(
+    `migrated config from ${LEGACY_CONFIG_PATH} → ${CONFIG_PATH}\n`,
+  );
+}
 
 export function load(): Config {
+  migrateLegacy();
   let file: Config = {};
   if (existsSync(CONFIG_PATH)) {
     try {
@@ -37,12 +53,13 @@ export function load(): Config {
   // Env vars override file.
   return {
     ...file,
-    apiKey: process.env.SLNG_API_KEY ?? file.apiKey,
-    baseUrl: process.env.SLNG_BASE_URL ?? file.baseUrl,
+    apiKey: process.env.VOICEAI_API_KEY ?? file.apiKey,
+    baseUrl: process.env.VOICEAI_BASE_URL ?? file.baseUrl,
   };
 }
 
 export function save(updates: Partial<Config>): Config {
+  migrateLegacy();
   mkdirSync(CONFIG_DIR, { recursive: true });
   const current: Config = existsSync(CONFIG_PATH)
     ? (JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Config)
@@ -56,7 +73,7 @@ export function requireApiKey(): string {
   const { apiKey } = load();
   if (!apiKey) {
     throw new Error(
-      "no SLNG_API_KEY set. Run `slng config set api-key <token>` or set SLNG_API_KEY in your env.",
+      "no VOICEAI_API_KEY set. Run `voiceai config set api-key <token>` or set VOICEAI_API_KEY in your env.",
     );
   }
   return apiKey;
