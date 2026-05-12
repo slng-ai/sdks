@@ -4,7 +4,7 @@
   "description": "Voiceai CLI — text-to-speech, speech-to-text, streaming",
   "type": "commonjs",
   "bin": {
-    "voiceai": "./bin/voiceai.js"
+    "voiceai": "bin/voiceai.js"
   },
   "files": [
     "bin/voiceai.js",
