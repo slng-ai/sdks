@@ -112,10 +112,73 @@ export function sniffExt(b: Uint8Array): string {
 }
 
 /**
- * Record 16kHz mono S16LE PCM from the default input device until the
- * returned `stop` function is called. Yields raw PCM buffers as they arrive.
+ * Enumerate available audio input devices. macOS uses CoreAudio device
+ * names (parsed from `system_profiler SPAudioDataType`); linux uses ALSA
+ * card/device pairs from `arecord -l`. Returns an empty list on platforms
+ * where we can't introspect — callers should fall back to the system default.
  */
-export async function recordPcm(opts: { sampleRate?: number; channels?: number } = {}): Promise<{
+export async function listInputs(): Promise<string[]> {
+  if (process.platform === "darwin") {
+    const proc = spawn(["system_profiler", "SPAudioDataType"], { stdout: "pipe", stderr: "pipe" });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    // system_profiler indents device headings 8 spaces under "Devices:":
+    //         MacBook Pro Microphone:
+    //
+    //           Default Input Device: Yes
+    //           Input Channels: 1
+    // We walk lines, track the current heading, and emit every device that
+    // has a positive "Input Channels". Dedupe by name (some bluetooth devs
+    // appear twice — once as input, once as output).
+    const lines = out.split("\n");
+    const inputs: string[] = [];
+    let current = "";
+    let isInput = false;
+    const flush = () => {
+      if (current && isInput && !inputs.includes(current)) inputs.push(current);
+    };
+    for (const line of lines) {
+      const heading = line.match(/^ {8}(\S[^:]*):\s*$/);
+      if (heading) {
+        flush();
+        current = heading[1]!.trim();
+        isInput = false;
+        continue;
+      }
+      if (current && /^\s+Input Channels:\s*[1-9]/.test(line)) {
+        isInput = true;
+      }
+    }
+    flush();
+    return inputs;
+  }
+  if (process.platform === "linux") {
+    const proc = spawn(["arecord", "-l"], { stdout: "pipe", stderr: "pipe" });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    // Lines look like: `card 0: PCH [HDA Intel PCH], device 0: ALC295 Analog [ALC295 Analog]`
+    const inputs: string[] = [];
+    for (const m of out.matchAll(/card\s+(\d+):\s+\S+\s+\[([^\]]+)\].*?device\s+(\d+):/g)) {
+      inputs.push(`hw:${m[1]},${m[3]} (${m[2]})`);
+    }
+    return inputs;
+  }
+  return [];
+}
+
+/**
+ * Record 16kHz mono S16LE PCM from the chosen (or default) input device
+ * until the returned `stop` function is called. Yields raw PCM buffers as
+ * they arrive.
+ *
+ * `device` is the device name from `listInputs()` (or omit/empty for the
+ * system default).
+ */
+export async function recordPcm(opts: {
+  sampleRate?: number;
+  channels?: number;
+  device?: string;
+} = {}): Promise<{
   frames: AsyncIterable<Uint8Array>;
   stop: () => void;
   proc: Subprocess;
@@ -128,14 +191,20 @@ export async function recordPcm(opts: { sampleRate?: number; channels?: number }
   }
   const rate = opts.sampleRate ?? 16000;
   const channels = opts.channels ?? 1;
+  const device = opts.device?.trim() || "";
 
+  // For sox on macOS, `-t coreaudio "<name>"` selects an input. Without a
+  // name, sox falls back to "default" (system default). On linux, sox uses
+  // alsa/pulseaudio; arecord uses -D for the hw: identifier.
   const args: string[] =
     recorder === "sox" || recorder === "rec"
       ? [
           "-q",
-          "-t",
-          "coreaudio",
-          "default",
+          ...(process.platform === "darwin"
+            ? ["-t", "coreaudio", device || "default"]
+            : device
+              ? ["-t", "alsa", device]
+              : []),
           "-t",
           "raw",
           "-b",
@@ -152,6 +221,7 @@ export async function recordPcm(opts: { sampleRate?: number; channels?: number }
         ]
       : [
           "-q",
+          ...(device ? ["-D", device.split(" ")[0]!] : []),
           "-f",
           "S16_LE",
           "-c",
@@ -163,13 +233,7 @@ export async function recordPcm(opts: { sampleRate?: number; channels?: number }
           "-",
         ];
 
-  // sox's `-t coreaudio default` only works on macOS; on Linux drop it.
-  const platformArgs =
-    (recorder === "sox" || recorder === "rec") && process.platform !== "darwin"
-      ? args.filter((a, i, arr) => !(a === "coreaudio" || a === "default" || (a === "-t" && arr[i + 1] === "coreaudio")))
-      : args;
-
-  const proc = spawn([recorder, ...platformArgs], { stdout: "pipe", stderr: "pipe" });
+  const proc = spawn([recorder, ...args], { stdout: "pipe", stderr: "pipe" });
 
   async function* frames(): AsyncIterable<Uint8Array> {
     const reader = proc.stdout.getReader();

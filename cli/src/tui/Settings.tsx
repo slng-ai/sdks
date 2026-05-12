@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import { load, save } from "../lib/config";
+import { listInputs } from "../lib/audio";
 import {
   allRegions,
   allWorldParts,
@@ -22,7 +23,9 @@ type Field =
   | "worldPart"
   | "defaultTtsModel"
   | "defaultTtsVoice"
-  | "defaultSttModel";
+  | "defaultSttModel"
+  | "defaultSttMode"
+  | "defaultSttInput";
 
 interface Props {
   onExit: () => void;
@@ -32,6 +35,21 @@ export function Settings({ onExit }: Props): React.ReactElement {
   const [cfg, setCfg] = useState(load());
   const [editing, setEditing] = useState<Field | null>(null);
   const [draft, setDraft] = useState("");
+  const [inputs, setInputs] = useState<string[]>([]);
+
+  // Probe audio inputs once on mount. The list is cheap on macOS but we
+  // don't need it unless the user opens the input picker.
+  useEffect(() => {
+    let cancelled = false;
+    if (editing === "defaultSttInput") {
+      void listInputs().then((list) => {
+        if (!cancelled) setInputs(list);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [editing]);
 
   useInput((_input, key) => {
     if (key.escape) {
@@ -117,6 +135,41 @@ export function Settings({ onExit }: Props): React.ReactElement {
     );
   }
 
+  if (editing === "defaultSttMode") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Default STT mode</Text>
+        <SelectInput
+          items={[
+            { label: "(none)", value: "" },
+            { label: "🎙  Microphone (realtime)", value: "mic" },
+            { label: "📂 Audio file (one-shot)", value: "file" },
+          ]}
+          onSelect={(item) => commit("defaultSttMode", item.value)}
+        />
+        <Text dimColor>enter to save · esc to cancel</Text>
+      </Box>
+    );
+  }
+
+  if (editing === "defaultSttInput") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Default STT input device</Text>
+        <SelectInput
+          items={[
+            { label: "(system default)", value: "" },
+            ...inputs.map((name) => ({ label: name, value: name })),
+          ]}
+          onSelect={(item) => commit("defaultSttInput", item.value)}
+        />
+        <Text dimColor>
+          {inputs.length === 0 ? "probing inputs… " : ""}enter to save · esc to cancel
+        </Text>
+      </Box>
+    );
+  }
+
   if (editing === "defaultTtsVoice") {
     if (!cfg.defaultTtsModel) {
       return (
@@ -166,6 +219,8 @@ export function Settings({ onExit }: Props): React.ReactElement {
             { label: `Default TTS model: ${cfg.defaultTtsModel ?? "(none)"}`, value: "defaultTtsModel" as Field },
             { label: `Default TTS voice: ${cfg.defaultTtsVoice ?? "(none)"}`, value: "defaultTtsVoice" as Field },
             { label: `Default STT model: ${cfg.defaultSttModel ?? "(none)"}`, value: "defaultSttModel" as Field },
+            { label: `Default STT mode:  ${cfg.defaultSttMode ?? "(ask)"}`, value: "defaultSttMode" as Field },
+            { label: `Default STT input: ${cfg.defaultSttInput ?? "(system default)"}`, value: "defaultSttInput" as Field },
           ]}
           onSelect={(item) => {
             setEditing(item.value);

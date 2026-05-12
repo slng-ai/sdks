@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Literal, Optional, Union
@@ -63,13 +62,11 @@ class StreamingSession:
     async def send(self, message: dict[str, Any]) -> None:
         await self._ws.send(json.dumps(message))
 
-    async def send_audio(
-        self,
-        audio: Union[bytes, bytearray, memoryview],
-        kind: Literal["audio", "audio_chunk"] = "audio",
-    ) -> None:
-        encoded = base64.b64encode(bytes(audio)).decode("ascii")
-        await self.send({"type": kind, "data": encoded})
+    async def send_audio(self, audio: Union[bytes, bytearray, memoryview]) -> None:
+        """Send raw PCM audio as a binary WebSocket frame. The live unmute
+        bridge currently expects binary audio; JSON is reserved for control
+        messages (init / finalize / close)."""
+        await self._ws.send(bytes(audio))
 
     async def close(self, code: int = 1000, reason: str = "") -> None:
         await self._ws.close(code=code, reason=reason)

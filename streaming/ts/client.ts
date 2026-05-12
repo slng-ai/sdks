@@ -1,6 +1,13 @@
 import WebSocket from "ws";
 import type { UnmuteWsMessage } from "./messages";
 
+function formatQuery(q?: Record<string, string>): string {
+  if (!q) return "";
+  const usp = new URLSearchParams(q);
+  const s = usp.toString();
+  return s ? `?${s}` : "";
+}
+
 export type Server = "production" | "staging";
 
 const SERVERS: Record<Server, string> = {
@@ -23,14 +30,20 @@ export class StreamingClient {
     this.baseUrl = opts.baseUrl ?? SERVERS[opts.server ?? "production"];
   }
 
-  connectStt(modelVariant: string, signal?: AbortSignal): Promise<StreamingSession> {
-    const path = `/v1/bridges/unmute/stt/${modelVariant}`;
-    return this.connect(path, signal);
+  connectStt(
+    modelVariant: string,
+    opts: { query?: Record<string, string>; signal?: AbortSignal } = {},
+  ): Promise<StreamingSession> {
+    const path = `/v1/bridges/unmute/stt/${modelVariant}${formatQuery(opts.query)}`;
+    return this.connect(path, opts.signal);
   }
 
-  connectTts(modelVariant: string, signal?: AbortSignal): Promise<StreamingSession> {
-    const path = `/v1/bridges/unmute/tts/${modelVariant}`;
-    return this.connect(path, signal);
+  connectTts(
+    modelVariant: string,
+    opts: { query?: Record<string, string>; signal?: AbortSignal } = {},
+  ): Promise<StreamingSession> {
+    const path = `/v1/bridges/unmute/tts/${modelVariant}${formatQuery(opts.query)}`;
+    return this.connect(path, opts.signal);
   }
 
   private connect(path: string, signal?: AbortSignal): Promise<StreamingSession> {
@@ -91,15 +104,19 @@ export class StreamingSession implements AsyncIterable<UnmuteWsMessage> {
     ws.on("error", (err) => this.fail(err));
   }
 
-  send(message: UnmuteWsMessage): void {
+  send(message: UnmuteWsMessage | Record<string, unknown>): void {
     if (this.closed) throw new Error("session is closed");
     this.ws.send(JSON.stringify(message));
   }
 
-  /** Convenience: base64-encode raw audio bytes and send as an audio message. */
-  sendAudio(bytes: Uint8Array | Buffer, kind: "audio" | "audio_chunk" = "audio"): void {
-    const b64 = Buffer.from(bytes).toString("base64");
-    this.send({ type: kind, data: b64 } as UnmuteWsMessage);
+  /** Send raw PCM audio as a binary WebSocket frame. The docs at docs.slng.ai
+   *  describe a `{type:"audio", data:<base64>}` JSON envelope, but the live
+   *  unmute bridge currently rejects that variant — audio goes on the wire
+   *  as binary frames, JSON is reserved for control messages (init / finalize
+   *  / close). Matches the slng-stt-next reference implementation. */
+  sendAudio(bytes: Uint8Array | Buffer): void {
+    if (this.closed) throw new Error("session is closed");
+    this.ws.send(bytes);
   }
 
   close(code = 1000, reason?: string): void {

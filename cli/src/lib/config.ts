@@ -8,6 +8,8 @@ import { join } from "node:path";
 export type Region = "us-east-1" | "eu-north-1" | "ap-southeast-2";
 export type WorldPart = "na" | "eu" | "ap";
 
+export type SttMode = "mic" | "file";
+
 export interface Config {
   apiKey?: string;
   baseUrl?: string;
@@ -16,6 +18,8 @@ export interface Config {
   defaultTtsModel?: string;
   defaultTtsVoice?: string;
   defaultSttModel?: string;
+  defaultSttMode?: SttMode;
+  defaultSttInput?: string;
 }
 
 const CONFIG_DIR = join(homedir(), ".config", "slng");

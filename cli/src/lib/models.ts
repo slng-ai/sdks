@@ -132,6 +132,13 @@ export function isSlngHosted(id: string): boolean {
   return id.startsWith("slng/");
 }
 
+/** Provider code for a model id (`deepgram`, `cartesia`, `sarvam`, …).
+ *  Strips the optional `slng/` prefix and returns the next segment. */
+export function providerFor(id: string): string {
+  const trimmed = id.startsWith("slng/") ? id.slice("slng/".length) : id;
+  return trimmed.split("/")[0] ?? "";
+}
+
 export const TTS_MODELS: TtsModel[] = (LIVE_MODELS.length > 0
   ? LIVE_MODELS.filter((m) => m.service_type === "tts").map(fromLive)
   : fromVoiceCatalog().tts

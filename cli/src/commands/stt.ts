@@ -67,8 +67,15 @@ async function streamTranscribe(opts: { model: string; source: string }): Promis
     }
   })();
 
-  // Init session.
-  session.send({ type: "init" });
+  session.send({
+    type: "init",
+    config: {
+      language: "en",
+      sample_rate: 16000,
+      encoding: "linear16",
+      enable_partial_transcripts: true,
+    },
+  });
 
   if (opts.source === "mic") {
     const rec = await recordPcm({ sampleRate: 16000, channels: 1 });
@@ -76,7 +83,7 @@ async function streamTranscribe(opts: { model: string; source: string }): Promis
     process.on("SIGINT", () => {
       rec.stop();
       session.send({ type: "finalize" });
-      session.close();
+      session.send({ type: "close" });
       process.exit(0);
     });
     for await (const frame of rec.frames) {
@@ -88,7 +95,7 @@ async function streamTranscribe(opts: { model: string; source: string }): Promis
     reader.on("data", (chunk: Buffer) => session.sendAudio(chunk));
     reader.on("end", () => {
       session.send({ type: "finalize" });
-      session.close();
+      session.send({ type: "close" });
     });
   }
 }
