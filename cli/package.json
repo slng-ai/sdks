@@ -2,13 +2,29 @@
   "name": "voiceai",
   "version": "0.1.0",
   "description": "Voiceai CLI — text-to-speech, speech-to-text, streaming",
-  "type": "module",
+  "type": "commonjs",
   "bin": {
-    "voiceai": "./src/index.ts"
+    "voiceai": "./bin/voiceai.js"
+  },
+  "files": [
+    "bin/voiceai.js",
+    "scripts/download.js",
+    "README.md"
+  ],
+  "homepage": "https://github.com/slng-ai/sdks",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slng-ai/sdks.git",
+    "directory": "cli"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --compile --outfile bin/voiceai",
+    "postinstall": "node scripts/download.js",
     "test": "bun test"
   },
   "dependencies": {
@@ -21,7 +37,8 @@
     "ink-syntax-highlight": "^2.0.2",
     "ink-text-input": "^6.0.0",
     "ora": "^9.4.0",
-    "react": "^19.2.6"
+    "react": "^19.2.6",
+    "react-devtools-core": "^7.0.1"
   },
   "devDependencies": {
     "@types/bun": "latest",

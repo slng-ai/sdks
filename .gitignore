@@ -15,8 +15,10 @@ __pycache__/
 *.log
 .DS_Store
 
-# Bun compiled binaries
-cli/bin/
+# Bun-compiled native binary (produced by `bun run build` in cli/).
+# The bin/voiceai.js npm shim IS tracked.
+cli/bin/voiceai
+cli/bin/voiceai.exe
 
 # Generated artifacts (re-emitted by scripts/gen-ws-types.sh)
 streaming/ts/messages.ts

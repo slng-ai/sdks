@@ -1,0 +1,205 @@
+name: release-cli
+
+on:
+  push:
+    tags:
+      - "cli-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to release (e.g. cli-v0.1.0). Must already exist."
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  # Bun's --compile produces a self-contained binary per target. We run the
+  # build on each native OS so the underlying glibc/libc is the one the
+  # runtime expects. Cross-compilation works in Bun but native is simpler.
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: bun-darwin-arm64
+            asset: voiceai-darwin-arm64
+          - os: macos-13
+            target: bun-darwin-x64
+            asset: voiceai-darwin-x64
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            asset: voiceai-linux-x64
+          - os: ubuntu-24.04-arm
+            target: bun-linux-arm64
+            asset: voiceai-linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: install
+        run: bun install --frozen-lockfile
+
+      - name: compile
+        run: |
+          bun build cli/src/index.ts \
+            --compile \
+            --target=${{ matrix.target }} \
+            --outfile ${{ matrix.asset }}
+
+      - name: smoke
+        # Skip cross-arch runs we can't execute on the build host.
+        if: matrix.target != 'bun-linux-arm64' || runner.arch == 'ARM64'
+        run: ./${{ matrix.asset }} --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    name: github release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: compute version
+        id: ver
+        run: |
+          tag="${GITHUB_REF_NAME:-${{ inputs.version }}}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "semver=${tag#cli-v}" >> "$GITHUB_OUTPUT"
+
+      - name: create release + upload binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: voiceai ${{ steps.ver.outputs.semver }}
+          fail_on_unmatched_files: true
+          files: dist/voiceai-*
+          generate_release_notes: true
+          body: |
+            CLI release v${{ steps.ver.outputs.semver }}.
+
+            Install:
+              brew install slng-ai/tap/voiceai
+              curl -fsSL https://slng.ai/install.sh | sh
+              npm i -g voiceai@${{ steps.ver.outputs.semver }}
+
+  publish-npm:
+    name: npm publish
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: publish
+        working-directory: cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance --ignore-scripts
+
+  bump-homebrew:
+    name: bump homebrew formula
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: compute SHAs + clone tap
+        id: shas
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#cli-v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          for asset in voiceai-darwin-arm64 voiceai-darwin-x64 voiceai-linux-arm64 voiceai-linux-x64; do
+            sha="$(sha256sum "dist/$asset" | cut -d' ' -f1)"
+            echo "sha_${asset//-/_}=$sha" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: update formula in tap repo
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.shas.outputs.version }}"
+          sha_darwin_arm64="${{ steps.shas.outputs.sha_voiceai_darwin_arm64 }}"
+          sha_darwin_x64="${{ steps.shas.outputs.sha_voiceai_darwin_x64 }}"
+          sha_linux_arm64="${{ steps.shas.outputs.sha_voiceai_linux_arm64 }}"
+          sha_linux_x64="${{ steps.shas.outputs.sha_voiceai_linux_x64 }}"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/slng-ai/homebrew-tap.git" tap
+          cd tap
+
+          mkdir -p Formula
+          cat > Formula/voiceai.rb <<RUBY
+          class Voiceai < Formula
+            desc "Voiceai CLI — text-to-speech, speech-to-text, streaming"
+            homepage "https://slng.ai"
+            version "${version}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/slng-ai/sdks/releases/download/cli-v${version}/voiceai-darwin-arm64"
+                sha256 "${sha_darwin_arm64}"
+              else
+                url "https://github.com/slng-ai/sdks/releases/download/cli-v${version}/voiceai-darwin-x64"
+                sha256 "${sha_darwin_x64}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/slng-ai/sdks/releases/download/cli-v${version}/voiceai-linux-arm64"
+                sha256 "${sha_linux_arm64}"
+              else
+                url "https://github.com/slng-ai/sdks/releases/download/cli-v${version}/voiceai-linux-x64"
+                sha256 "${sha_linux_x64}"
+              end
+            end
+
+            depends_on "sox" => :recommended  # required for STT mic recording
+
+            def install
+              bin.install Dir["voiceai-*"].first => "voiceai"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/voiceai --version")
+            end
+          end
+          RUBY
+
+          git config user.name  "voiceai-release-bot"
+          git config user.email "noreply@slng.ai"
+          git add Formula/voiceai.rb
+          if git diff --cached --quiet; then
+            echo "Formula unchanged, nothing to commit"
+            exit 0
+          fi
+          git commit -m "voiceai ${version}"
+          git push origin HEAD
