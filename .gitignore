@@ -1,0 +1,38 @@
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+.env
+.env.local
+*.log
+.DS_Store
+
+# Bun compiled binaries
+cli/bin/
+
+# Generated artifacts (re-emitted by scripts/gen-ws-types.sh)
+streaming/ts/messages.ts
+streaming/python/messages.py
+
+# Vendored voice manifests (re-synced by scripts/sync-voice-tools.sh)
+voice-manifests/
+
+# Generated voice catalog (re-emitted by scripts/gen-voice-catalog.ts)
+cli/src/lib/voice-catalog.generated.ts
+
+# Stainless SDK working copies — each is its own git repo (own remote at
+# stainless-sdks/slng-{typescript,python}). Stainless's `stl preview` clones
+# / updates them. Track them here only if you `rm -rf sdks/slng-*/.git` first
+# (and remove these gitignore entries).
+sdks/slng-typescript/
+sdks/slng-python/
+sdks/slng-openapi/
+

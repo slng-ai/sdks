@@ -1,0 +1,30 @@
+{
+  "name": "voiceai",
+  "version": "0.1.0",
+  "description": "Voiceai CLI — text-to-speech, speech-to-text, streaming",
+  "type": "module",
+  "bin": {
+    "voiceai": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --compile --outfile bin/voiceai",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "ink": "^7.0.2",
+    "ink-big-text": "^2.0.0",
+    "ink-link": "^5.0.0",
+    "ink-select-input": "^6.2.0",
+    "ink-spinner": "^5.0.0",
+    "ink-syntax-highlight": "^2.0.2",
+    "ink-text-input": "^6.0.0",
+    "ora": "^9.4.0",
+    "react": "^19.2.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14"
+  }
+}

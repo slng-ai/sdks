@@ -1,0 +1,411 @@
+openapi: 3.0.3
+info:
+  title: SLNG Gateway API - Unmute (SLNG official) Bridges
+  version: 0.1.0
+  description: Unified API for speech-to-text and text-to-speech services.
+  contact:
+    name: SLNG Support
+    email: support@slng.ai
+servers:
+  - url: https://api.slng.ai
+    description: Production
+    x-api-token: zpka_your_api_key_here
+  - url: https://stageapi.slng.ai
+    description: Staging
+    x-api-token: zpka_your_api_key_here
+security:
+  - BearerAuth: []
+paths:
+  /v1/bridges/unmute/stt/{model_variant}:
+    x-zuplo-path:
+      pathMode: url-pattern
+    parameters:
+      - $ref: "#/components/parameters/SttModelVariantPath"
+      - $ref: "#/components/parameters/RegionQuery"
+      - $ref: "#/components/parameters/WorldPartQuery"
+    post:
+      operationId: unmute-stt-http
+      summary: Unmute STT Bridge
+      description: Transcribe audio via SLNG's native WebSocket protocol bridge. The model_variant path parameter specifies the target STT model (e.g., deepgram/nova:3, slng/openai/whisper:large-v3).
+      tags:
+        - "Type: Bridges"
+        - "Provider: Unmute (SLNG official)"
+        - Unmute STT Bridge
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/UnmuteSttRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/CognigyTranscriptionSuccess"
+        "400":
+          $ref: "#/components/responses/ProviderBadRequest"
+        "401":
+          $ref: "#/components/responses/ProviderUnauthorized"
+        "403":
+          $ref: "#/components/responses/ForbiddenBearerToken"
+        "500":
+          $ref: "#/components/responses/ProviderInternalServerError"
+        "503":
+          $ref: "#/components/responses/ProviderServiceUnavailable"
+      x-zuplo-route:
+        corsPolicy: anything-goes
+        handler:
+          export: default
+          module: $import(./routes/public/bridges/unmute/stt/{model_variant}/index)
+          options: {}
+        policies:
+          inbound:
+            - api-key-inbound
+            - credit-precheck-inbound
+      x-slng-service-type: bridges
+      x-slng-provider-id: unmute
+      x-slng-provider-name: Unmute (SLNG official)
+  /v1/bridges/unmute/tts/{model_variant}:
+    x-zuplo-path:
+      pathMode: url-pattern
+    parameters:
+      - $ref: "#/components/parameters/TtsModelVariantPath"
+      - $ref: "#/components/parameters/RegionQuery"
+      - $ref: "#/components/parameters/WorldPartQuery"
+    post:
+      operationId: unmute-tts-http
+      summary: Unmute TTS Bridge
+      description: Synthesize speech via SLNG's native WebSocket protocol bridge. The model_variant path parameter specifies the target TTS model (e.g., deepgram/aura:2).
+      tags:
+        - "Type: Bridges"
+        - "Provider: Unmute (SLNG official)"
+        - Unmute TTS Bridge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UnmuteTtsRequest"
+            examples:
+              deepgram:
+                summary: Deepgram Aura
+                value:
+                  voice: aura-2-thalia-en
+                  text: Hello, this is a test of text to speech synthesis.
+              orpheus:
+                summary: Orpheus
+                value:
+                  voice: tara
+                  text: Hello, this is a test of text to speech synthesis.
+      responses:
+        "200":
+          $ref: "#/components/responses/TtsSynthesisSuccess"
+        "400":
+          $ref: "#/components/responses/ProviderBadRequest"
+        "401":
+          $ref: "#/components/responses/ProviderUnauthorized"
+        "403":
+          $ref: "#/components/responses/ForbiddenBearerToken"
+        "500":
+          $ref: "#/components/responses/ProviderInternalServerError"
+        "503":
+          $ref: "#/components/responses/ProviderServiceUnavailable"
+      x-zuplo-route:
+        corsPolicy: anything-goes
+        handler:
+          export: default
+          module: $import(./routes/public/bridges/unmute/tts/{model_variant}/index)
+          options: {}
+        policies:
+          inbound:
+            - api-key-inbound
+            - credit-precheck-inbound
+      x-slng-service-type: bridges
+      x-slng-provider-id: unmute
+      x-slng-provider-name: Unmute (SLNG official)
+tags:
+  - name: Unmute STT Bridge
+    description: SLNG native WebSocket STT protocol bridge.
+  - name: Unmute TTS Bridge
+    description: SLNG native WebSocket TTS protocol bridge.
+  - name: "Type: Bridges"
+    description: Grouping by service type (Bridges).
+  - name: "Provider: Unmute (SLNG official)"
+    description: Grouping by provider (Unmute (SLNG official)).
+components:
+  responses:
+    TtsSynthesisSuccess:
+      description: Synthesis successful.
+      content:
+        audio/*:
+          schema:
+            $ref: "#/components/schemas/AudioBinary"
+    ProviderServiceUnavailable:
+      description: Service unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProviderErrorResponse"
+    ProviderInternalServerError:
+      description: Internal server error from the provider.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProviderErrorResponse"
+          examples:
+            processing-error:
+              summary: Processing error
+              value:
+                error: Service error
+                details: Internal processing error
+    ForbiddenBearerToken:
+      description: Missing or invalid Bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ProviderUnauthorized:
+      description: Invalid or missing API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProviderErrorResponse"
+    ProviderBadRequest:
+      description: Bad request - invalid parameters provided.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProviderErrorResponse"
+          examples:
+            validation-error:
+              summary: Validation error
+              value:
+                error: Validation error
+                details: "Missing required field: text"
+    CognigyTranscriptionSuccess:
+      description: Transcription successful.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CognigySTTTranscriptionResponse"
+  schemas:
+    AudioBinary:
+      type: string
+      format: binary
+      description: Binary audio data.
+    UnmuteTtsRequest:
+      type: object
+      description: Unmute TTS request.
+      properties:
+        voice:
+          type: string
+          description: Voice identifier.
+        text:
+          type: string
+          description: Text to synthesize.
+      required:
+        - text
+    ProviderErrorResponse:
+      type: object
+      description: |
+        Provider error response. Contains error information from the upstream provider.
+        Common errors include invalid speakers, unsupported languages, or malformed requests.
+      properties:
+        error:
+          type: string
+          description: Error type or category (e.g., "TTS service error", "Validation error").
+          example: TTS service error
+        status:
+          type: number
+          description: Original HTTP status code from the provider (may differ from gateway response code).
+          example: 400
+        details:
+          type: string
+          description: |
+            Detailed error message from the provider. For TTS errors, this typically includes
+            the specific validation failure (e.g., invalid speaker ID for the selected model/language).
+          example: "Rime TTS API error: 400 Bad Request - Invalid argument: Invalid speaker: aurelie"
+      required:
+        - error
+    ErrorResponse:
+      type: object
+      description: Standard error response.
+      properties:
+        error:
+          type: string
+          description: Error type or code.
+        message:
+          type: string
+          description: Human-readable error message.
+        statusCode:
+          type: integer
+          description: HTTP status code.
+      required:
+        - error
+    CognigySTTTranscriptionResponse:
+      type: object
+      description: Cognigy STT transcription response.
+      properties:
+        type:
+          type: string
+          description: Response type.
+          enum:
+            - transcription
+        is_final:
+          type: boolean
+          description: Whether this is a final transcription.
+        alternatives:
+          type: array
+          description: Transcription alternatives.
+          items:
+            $ref: "#/components/schemas/CognigyTranscriptionAlternative"
+        channel:
+          type: integer
+          description: Audio channel number.
+        language:
+          type: string
+          description: Detected language code.
+      required:
+        - type
+        - is_final
+        - alternatives
+    CognigyTranscriptionAlternative:
+      type: object
+      description: Transcription alternative.
+      properties:
+        confidence:
+          type: number
+          description: Confidence score.
+        transcript:
+          type: string
+          description: Transcribed text.
+    UnmuteSttRequest:
+      type: object
+      description: Unmute STT request.
+      properties:
+        audio:
+          type: string
+          format: binary
+          description: Audio file to transcribe.
+        language:
+          type: string
+          description: Language code for recognition.
+        sample_rate:
+          type: integer
+          description: Audio sample rate in Hz.
+          enum:
+            - 8000
+            - 16000
+            - 22050
+            - 24000
+            - 32000
+            - 48000
+        encoding:
+          type: string
+          description: Audio encoding format.
+          enum:
+            - linear16
+            - mp3
+            - opus
+        enable_vad:
+          type: boolean
+          description: Enable voice activity detection.
+        enable_partials:
+          type: boolean
+          description: Enable partial transcription results.
+      required:
+        - audio
+  parameters:
+    RegionQuery:
+      name: region
+      in: query
+      required: false
+      description: Target region override. Auto-selected if not provided. Equivalent to the `X-Region-Override` header; the header takes precedence when both are set.
+      schema:
+        type: string
+        enum:
+          - ap-southeast-2
+          - eu-north-1
+          - us-east-1
+    WorldPartQuery:
+      name: world-part
+      in: query
+      required: false
+      description: Target world part override. Auto-selected if not provided. Equivalent to the `X-World-Part-Override` header; the header takes precedence when both are set.
+      schema:
+        type: string
+        enum:
+          - ap
+          - eu
+          - na
+    TtsModelVariantPath:
+      name: model_variant
+      in: path
+      required: true
+      description: Target TTS model. Any WebSocket-capable TTS model is supported.
+      schema:
+        type: string
+        enum:
+          - cartesia/sonic:3
+          - deepgram/aura:2
+          - elevenlabs/eleven-flash:2
+          - elevenlabs/eleven-flash:2.5
+          - elevenlabs/eleven-multilingual:2
+          - elevenlabs/eleven:3
+          - kugelaudio/kugel:1
+          - kugelaudio/kugel:1-turbo
+          - kugelaudio/kugel:2
+          - murf/murftts:falcon
+          - sarvam/bulbul:v3
+          - slng/canopylabs/orpheus:en
+          - slng/deepgram/aura:2-en
+          - slng/deepgram/aura:2-es
+          - slng/rime/arcana:3-en
+          - slng/rime/arcana:3-hi
+          - slng/rime/arcana:ar
+          - slng/rime/arcana:de
+          - slng/rime/arcana:en
+          - slng/rime/arcana:es
+          - slng/rime/arcana:fr
+          - slng/rime/coda:0-id
+          - soniox/tts-rt:v1
+      examples:
+        deepgramAura:
+          summary: Deepgram Aura 2
+          value: deepgram/aura:2
+        orpheus:
+          summary: SLNG-hosted Orpheus English
+          value: slng/canopylabs/orpheus:en
+    SttModelVariantPath:
+      name: model_variant
+      in: path
+      required: true
+      description: Target STT model. Must support WebSocket streaming with final_transcript.
+      schema:
+        type: string
+        enum:
+          - deepgram/nova:2
+          - deepgram/nova:3
+          - deepgram/nova:3-medical
+          - reson8/reson8stt:v1
+          - slng/deepgram/nova:3-en
+          - slng/deepgram/nova:3-es
+          - slng/deepgram/nova:3-hi
+          - slng/deepgram/nova:3-kn
+          - slng/deepgram/nova:3-mr
+          - slng/deepgram/nova:3-multi
+          - slng/deepgram/nova:3-ta
+          - slng/deepgram/nova:3-te
+          - slng/openai/whisper:large-v3
+          - soniox/speech-ai:rt-v4
+      examples:
+        deepgramNova3:
+          summary: Deepgram Nova 3
+          value: deepgram/nova:3
+        slngWhisper:
+          summary: SLNG-hosted Whisper Large v3
+          value: slng/openai/whisper:large-v3
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        API key issued by SLNG. Pass as `Authorization: Bearer <token>`.

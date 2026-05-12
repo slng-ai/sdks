@@ -1,0 +1,1151 @@
+asyncapi: 3.0.0
+info:
+  title: SLNG Gateway API - Unmute (SLNG official) Bridges
+  version: 0.1.0
+  description: SLNG Gateway API
+  contact:
+    name: SLNG Support
+    url: https://slng.ai
+    email: support@slng.ai
+  license:
+    name: Proprietary
+  tags:
+    - name: STT
+      description: Speech-to-Text services
+    - name: "Type: STT"
+      description: Speech-to-Text endpoints/channels.
+    - name: "Type: TTS"
+      description: Text-to-Speech endpoints/channels.
+    - name: "Type: Bridges"
+      description: Bridge endpoints/channels.
+    - name: "Provider: SLNG"
+      description: SLNG-hosted routes/channels.
+    - name: "Provider: Deepgram"
+      description: Deepgram routes/channels.
+    - name: "Provider: ElevenLabs"
+      description: ElevenLabs routes/channels.
+    - name: "Provider: Sarvam AI"
+      description: Sarvam AI routes/channels.
+    - name: "Provider: KugelAudio"
+      description: KugelAudio routes/channels.
+    - name: "Provider: Murf"
+      description: Murf routes/channels.
+    - name: "Provider: Cognigy"
+      description: Cognigy bridge routes/channels.
+    - name: "Provider: Unmute (SLNG official)"
+      description: Unmute (SLNG native) bridge routes/channels.
+    - name: Unmute STT Bridge
+      description: SLNG native WebSocket STT protocol bridge.
+    - name: Unmute TTS Bridge
+      description: SLNG native WebSocket TTS protocol bridge.
+servers:
+  production:
+    host: api.slng.ai
+    protocol: wss
+    description: Production
+    x-api-token: zpka_your_api_key_here
+    security:
+      - $ref: "#/components/securitySchemes/bearer"
+  staging:
+    host: stageapi.slng.ai
+    protocol: wss
+    description: Staging
+    x-api-token: zpka_your_api_key_here
+    security:
+      - $ref: "#/components/securitySchemes/bearer"
+channels:
+  /v1/bridges/unmute/stt/{model_variant}:
+    address: /v1/bridges/unmute/stt/{model_variant}
+    title: Unmute STT Bridge
+    summary: Unmute STT Bridge
+    description: Stream audio to any SLNG-supported STT model over the unified WebSocket protocol with init, audio, finalize, partial, and final transcript messages.
+    tags:
+      - name: Unmute STT Bridge
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+    servers:
+      - $ref: "#/servers/production"
+      - $ref: "#/servers/staging"
+    messages:
+      UnmuteSttInitMessage:
+        $ref: "#/components/messages/UnmuteSttInitMessage"
+      UnmuteSttAudioMessage:
+        $ref: "#/components/messages/UnmuteSttAudioMessage"
+      UnmuteSttFinalizeMessage:
+        $ref: "#/components/messages/UnmuteSttFinalizeMessage"
+      UnmuteSttCloseMessage:
+        $ref: "#/components/messages/UnmuteSttCloseMessage"
+      KeepaliveMessage:
+        $ref: "#/components/messages/KeepaliveMessage"
+      UnmuteSttReadyMessage:
+        $ref: "#/components/messages/UnmuteSttReadyMessage"
+      UnmuteSttPartialTranscript:
+        $ref: "#/components/messages/UnmuteSttPartialTranscript"
+      UnmuteSttFinalTranscript:
+        $ref: "#/components/messages/UnmuteSttFinalTranscript"
+      UnmuteSttUtteranceEnd:
+        $ref: "#/components/messages/UnmuteSttUtteranceEnd"
+      UnmuteSttErrorMessage:
+        $ref: "#/components/messages/UnmuteSttErrorMessage"
+    bindings:
+      ws:
+        method: GET
+        headers:
+          $ref: "#/components/schemas/WebsocketHeaders"
+        query:
+          $ref: "#/components/schemas/WebsocketQueryParams"
+    x-slng-service-type: bridges
+    x-slng-provider-id: unmute
+    x-slng-provider-name: Unmute (SLNG official)
+  /v1/bridges/unmute/tts/{model_variant}:
+    address: /v1/bridges/unmute/tts/{model_variant}
+    title: Unmute TTS Bridge
+    summary: Unmute TTS Bridge
+    description: Stream synthesized audio from any SLNG-supported TTS model over the unified WebSocket protocol with init, text, flush, clear, and audio chunk messages.
+    tags:
+      - name: Unmute TTS Bridge
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+    servers:
+      - $ref: "#/servers/production"
+      - $ref: "#/servers/staging"
+    messages:
+      UnmuteTtsInitMessage:
+        $ref: "#/components/messages/UnmuteTtsInitMessage"
+      UnmuteTtsTextMessage:
+        $ref: "#/components/messages/UnmuteTtsTextMessage"
+      UnmuteTtsFlushMessage:
+        $ref: "#/components/messages/UnmuteTtsFlushMessage"
+      UnmuteTtsClearMessage:
+        $ref: "#/components/messages/UnmuteTtsClearMessage"
+      UnmuteTtsCloseMessage:
+        $ref: "#/components/messages/UnmuteTtsCloseMessage"
+      KeepaliveMessage:
+        $ref: "#/components/messages/KeepaliveMessage"
+      UnmuteTtsReadyMessage:
+        $ref: "#/components/messages/UnmuteTtsReadyMessage"
+      UnmuteTtsAudioChunkMessage:
+        $ref: "#/components/messages/UnmuteTtsAudioChunkMessage"
+      UnmuteTtsSegmentStartMessage:
+        $ref: "#/components/messages/UnmuteTtsSegmentStartMessage"
+      UnmuteTtsSegmentEndMessage:
+        $ref: "#/components/messages/UnmuteTtsSegmentEndMessage"
+      UnmuteTtsFlushedMessage:
+        $ref: "#/components/messages/UnmuteTtsFlushedMessage"
+      UnmuteTtsClearedMessage:
+        $ref: "#/components/messages/UnmuteTtsClearedMessage"
+      UnmuteTtsAudioEndMessage:
+        $ref: "#/components/messages/UnmuteTtsAudioEndMessage"
+      UnmuteTtsErrorMessage:
+        $ref: "#/components/messages/UnmuteTtsErrorMessage"
+    bindings:
+      ws:
+        method: GET
+        headers:
+          $ref: "#/components/schemas/WebsocketHeaders"
+        query:
+          $ref: "#/components/schemas/WebsocketQueryParams"
+    x-slng-service-type: bridges
+    x-slng-provider-id: unmute
+    x-slng-provider-name: Unmute (SLNG official)
+operations:
+  unmuteSttBridgeReceiveInit:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Initialize session on Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/UnmuteSttInitMessage"
+    description: Initialize session on Unmute STT Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteSttBridgeReceiveAudio:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Send audio to Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/UnmuteSttAudioMessage"
+    description: Send audio to Unmute STT Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteSttBridgeReceiveFinalize:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Force-finalize buffered audio on Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/UnmuteSttFinalizeMessage"
+    description: Force-finalize buffered audio on Unmute STT Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteSttBridgeReceiveClose:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Close audio stream on Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/UnmuteSttCloseMessage"
+    description: Close audio stream on Unmute STT Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteSttBridgeReceiveKeepalive:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Send keepalive on Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/KeepaliveMessage"
+    description: Send keepalive on Unmute STT Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteSttBridgeSendReady:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Receive ready signal from Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/UnmuteSttReadyMessage"
+    description: Receive ready signal from Unmute STT Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteSttBridgeSendPartialTranscript:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Receive partial transcript from Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/UnmuteSttPartialTranscript"
+    description: Receive partial transcript from Unmute STT Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteSttBridgeSendFinalTranscript:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Receive final transcript from Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/UnmuteSttFinalTranscript"
+    description: Receive final transcript from Unmute STT Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteSttBridgeSendUtteranceEnd:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Receive utterance end marker from Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/UnmuteSttUtteranceEnd"
+    description: Receive utterance end marker from Unmute STT Bridge. Emitted by models whose catalog declares a `tokenStream` with `finalMarkers` and whose config enables endpoint detection.
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteSttBridgeSendError:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D"
+    summary: Receive error from Unmute STT Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1stt~1%7Bmodel_variant%7D/messages/UnmuteSttErrorMessage"
+    description: Receive error from Unmute STT Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeReceiveInit:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Initialize session on Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsInitMessage"
+    description: Initialize session on Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeReceiveText:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Send text to Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsTextMessage"
+    description: Send text to Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeReceiveFlush:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Flush buffered output on Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsFlushMessage"
+    description: Flush buffered output on Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeReceiveClear:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Clear buffered output on Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsClearMessage"
+    description: Clear buffered output on Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeReceiveClose:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Close session on Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsCloseMessage"
+    description: Close session on Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeReceiveKeepalive:
+    action: receive
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Send keepalive on Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/KeepaliveMessage"
+    description: Send keepalive on Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeSendReady:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Receive ready signal from Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsReadyMessage"
+    description: Receive ready signal from Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeSendAudioChunk:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Receive audio chunk from Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsAudioChunkMessage"
+    description: Receive audio chunk from Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeSendSegmentStart:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Receive segment start from Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsSegmentStartMessage"
+    description: Receive segment start from Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeSendSegmentEnd:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Receive segment end from Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsSegmentEndMessage"
+    description: Receive segment end from Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeSendFlushed:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Receive flushed signal from Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsFlushedMessage"
+    description: Receive flushed signal from Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeSendCleared:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Receive cleared signal from Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsClearedMessage"
+    description: Receive cleared signal from Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeSendAudioEnd:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Receive audio end from Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsAudioEndMessage"
+    description: Receive audio end from Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+  unmuteTtsBridgeSendError:
+    action: send
+    channel:
+      $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D"
+    summary: Receive error from Unmute TTS Bridge
+    messages:
+      - $ref: "#/channels/~1v1~1bridges~1unmute~1tts~1%7Bmodel_variant%7D/messages/UnmuteTtsErrorMessage"
+    description: Receive error from Unmute TTS Bridge
+    tags:
+      - name: "Type: Bridges"
+        description: Grouping by service type (Bridges).
+      - name: "Provider: Unmute (SLNG official)"
+        description: Grouping by provider (Unmute (SLNG official)).
+components:
+  messages:
+    UnmuteTtsErrorMessage:
+      name: UnmuteTtsErrorMessage
+      title: Error (Unmute TTS)
+      summary: Error occurred during Unmute TTS session.
+      contentType: application/json
+      payload:
+        type: object
+        description: Error occurred during synthesis.
+        required:
+          - type
+          - code
+          - message
+        properties:
+          type:
+            type: string
+            const: error
+          code:
+            type: string
+            description: Error code.
+            enum:
+              - auth_error
+              - config_error
+              - rate_limit
+              - provider_error
+          message:
+            type: string
+            description: Human-readable error description.
+      examples:
+        - name: unmuteTtsError
+          summary: TTS error
+          payload:
+            type: error
+            code: provider_error
+            message: Upstream service unavailable
+    UnmuteTtsAudioEndMessage:
+      name: UnmuteTtsAudioEndMessage
+      title: Audio End (Unmute TTS)
+      summary: All audio for the current synthesis has been sent.
+      contentType: application/json
+      payload:
+        type: object
+        description: Indicates all audio has been sent for the current synthesis.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: audio_end
+          duration:
+            type: number
+            description: Total audio duration in seconds.
+      examples:
+        - name: unmuteTtsAudioEnd
+          summary: Audio end
+          payload:
+            type: audio_end
+            duration: 3.5
+    UnmuteTtsClearedMessage:
+      name: UnmuteTtsClearedMessage
+      title: Cleared (Unmute TTS)
+      summary: Buffered audio has been cleared.
+      contentType: application/json
+      payload:
+        type: object
+        description: Confirms that buffered audio has been cleared.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: cleared
+      examples:
+        - name: unmuteTtsCleared
+          summary: Audio cleared
+          payload:
+            type: cleared
+    UnmuteTtsFlushedMessage:
+      name: UnmuteTtsFlushedMessage
+      title: Flushed (Unmute TTS)
+      summary: All buffered audio has been flushed.
+      contentType: application/json
+      payload:
+        type: object
+        description: Confirms that all buffered audio has been sent.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: flushed
+      examples:
+        - name: unmuteTtsFlushed
+          summary: Audio flushed
+          payload:
+            type: flushed
+    UnmuteTtsSegmentEndMessage:
+      name: UnmuteTtsSegmentEndMessage
+      title: Segment End (Unmute TTS)
+      summary: End of a synthesis segment.
+      contentType: application/json
+      payload:
+        type: object
+        description: Indicates the end of a synthesis segment.
+        required:
+          - type
+          - segment_id
+        properties:
+          type:
+            type: string
+            const: segment_end
+          segment_id:
+            type: string
+            description: Unique segment identifier.
+      examples:
+        - name: unmuteTtsSegmentEnd
+          summary: Segment end
+          payload:
+            type: segment_end
+            segment_id: seg_001
+    UnmuteTtsSegmentStartMessage:
+      name: UnmuteTtsSegmentStartMessage
+      title: Segment Start (Unmute TTS)
+      summary: Start of a new synthesis segment.
+      contentType: application/json
+      payload:
+        type: object
+        description: Indicates the start of a new synthesis segment.
+        required:
+          - type
+          - segment_id
+        properties:
+          type:
+            type: string
+            const: segment_start
+          segment_id:
+            type: string
+            description: Unique segment identifier.
+      examples:
+        - name: unmuteTtsSegmentStart
+          summary: Segment start
+          payload:
+            type: segment_start
+            segment_id: seg_001
+    UnmuteTtsAudioChunkMessage:
+      name: UnmuteTtsAudioChunkMessage
+      title: Audio Chunk (Unmute TTS)
+      summary: Audio chunk from Unmute TTS synthesis.
+      contentType: application/json
+      payload:
+        type: object
+        description: Synthesized audio chunk.
+        required:
+          - type
+          - data
+        properties:
+          type:
+            type: string
+            const: audio_chunk
+          data:
+            type: string
+            format: byte
+            description: Base64-encoded audio data.
+          sequence:
+            type: integer
+            description: Sequence number of the audio chunk.
+      examples:
+        - name: unmuteTtsAudioChunk
+          summary: Audio chunk
+          payload:
+            type: audio_chunk
+            data: UklGRiQAAABXQVZFZm10IBAAAAABAAEA...
+            sequence: 1
+    UnmuteTtsReadyMessage:
+      name: UnmuteTtsReadyMessage
+      title: Ready (Unmute TTS)
+      summary: Unmute TTS session is ready.
+      contentType: application/json
+      payload:
+        type: object
+        description: Session is ready for text input.
+        required:
+          - type
+          - session_id
+        properties:
+          type:
+            type: string
+            const: ready
+          session_id:
+            type: string
+            description: Unique session identifier.
+      examples:
+        - name: unmuteTtsReady
+          summary: Session ready
+          payload:
+            type: ready
+            session_id: sess_tts_abc123
+    UnmuteTtsCloseMessage:
+      name: UnmuteTtsCloseMessage
+      title: Close (Unmute TTS)
+      summary: Close TTS session.
+      contentType: application/json
+      payload:
+        type: object
+        description: Close the current synthesis session and stop any further audio.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: close
+      examples:
+        - name: unmuteTtsClose
+          summary: Close session
+          payload:
+            type: close
+    UnmuteTtsClearMessage:
+      name: UnmuteTtsClearMessage
+      title: Clear (Unmute TTS)
+      summary: Clear buffered audio.
+      contentType: application/json
+      payload:
+        type: object
+        description: Clear any buffered audio without sending.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: clear
+      examples:
+        - name: unmuteTtsClear
+          summary: Clear buffered audio
+          payload:
+            type: clear
+    UnmuteTtsFlushMessage:
+      name: UnmuteTtsFlushMessage
+      title: Flush (Unmute TTS)
+      summary: Flush buffered audio.
+      contentType: application/json
+      payload:
+        type: object
+        description: Flush any buffered audio to the client.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: flush
+      examples:
+        - name: unmuteTtsFlush
+          summary: Flush buffered audio
+          payload:
+            type: flush
+    UnmuteTtsTextMessage:
+      name: UnmuteTtsTextMessage
+      title: Text (Unmute TTS)
+      summary: Send text to synthesize.
+      contentType: application/json
+      payload:
+        type: object
+        description: Text to synthesize into audio.
+        required:
+          - type
+          - text
+        properties:
+          type:
+            type: string
+            const: text
+          text:
+            type: string
+            description: Text to synthesize.
+          flush:
+            type: boolean
+            description: Whether to flush immediately after this text.
+      examples:
+        - name: unmuteTtsText
+          summary: Send text
+          payload:
+            type: text
+            text: Hello, how can I help you?
+    UnmuteTtsInitMessage:
+      name: UnmuteTtsInitMessage
+      title: Init (Unmute TTS)
+      summary: Initialize Unmute TTS session with voice and configuration.
+      contentType: application/json
+      payload:
+        type: object
+        description: Initialize TTS session with voice and configuration.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: init
+          voice:
+            type: string
+            description: Voice identifier.
+          config:
+            type: object
+            description: Synthesis configuration.
+            properties:
+              sample_rate:
+                $ref: "#/components/schemas/SampleRate"
+              encoding:
+                type: string
+                description: Output audio encoding format.
+                enum:
+                  - linear16
+                  - mp3
+                  - opus
+                  - mulaw
+                  - alaw
+              language:
+                $ref: "#/components/schemas/LanguageCode"
+              speed:
+                type: number
+                description: Speech speed multiplier.
+      examples:
+        - name: unmuteTtsInit
+          summary: Initialize Unmute TTS session
+          payload:
+            type: init
+            voice: aura-2-thalia-en
+            config:
+              sample_rate: 24000
+              encoding: linear16
+    UnmuteSttErrorMessage:
+      name: UnmuteSttErrorMessage
+      title: Error (Unmute STT)
+      summary: Error occurred during Unmute STT session.
+      contentType: application/json
+      payload:
+        type: object
+        description: Error occurred during transcription.
+        required:
+          - type
+          - code
+          - message
+        properties:
+          type:
+            type: string
+            const: error
+          code:
+            type: string
+            description: Error code.
+            enum:
+              - auth_error
+              - config_error
+              - rate_limit
+              - provider_error
+          message:
+            type: string
+            description: Human-readable error description.
+      examples:
+        - name: unmuteSttError
+          summary: STT error
+          payload:
+            type: error
+            code: provider_error
+            message: Upstream service unavailable
+    UnmuteSttFinalTranscript:
+      name: UnmuteSttFinalTranscript
+      title: Final Transcript (Unmute STT)
+      summary: Final transcription result.
+      contentType: application/json
+      payload:
+        type: object
+        description: Final transcription result for an utterance.
+        required:
+          - type
+          - transcript
+        properties:
+          type:
+            type: string
+            const: final_transcript
+          transcript:
+            type: string
+            description: Final transcribed text.
+          confidence:
+            type: number
+            description: Confidence score (0-1).
+          language:
+            $ref: "#/components/schemas/LanguageCode"
+          duration:
+            type: number
+            description: Audio duration in seconds.
+      examples:
+        - name: unmuteSttFinal
+          summary: Final transcript
+          payload:
+            type: final_transcript
+            transcript: Hello world
+            confidence: 0.95
+            language: en
+            duration: 2.5
+    UnmuteSttUtteranceEnd:
+      name: UnmuteSttUtteranceEnd
+      title: Utterance End (Unmute STT)
+      summary: Endpoint marker indicating the end of a spoken utterance.
+      contentType: application/json
+      payload:
+        type: object
+        description: |
+          Signals the end of an utterance. Emitted by the bridge when the
+          upstream provider returns a final endpoint marker (e.g., Soniox
+          `<end>` / `<fin>` tokens). Requires the model's catalog to declare
+          a `tokenStream` with `finalMarkers`, and endpoint detection to be
+          enabled in the session config.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: utterance_end
+          last_word_end:
+            type: number
+            description: End time of the last finalized word in seconds, when available.
+      examples:
+        - name: unmuteSttUtteranceEnd
+          summary: Utterance end with last word timing
+          payload:
+            type: utterance_end
+            last_word_end: 2.48
+    UnmuteSttPartialTranscript:
+      name: UnmuteSttPartialTranscript
+      title: Partial Transcript (Unmute STT)
+      summary: Partial (interim) transcription result.
+      contentType: application/json
+      payload:
+        type: object
+        description: Interim transcription result.
+        required:
+          - type
+          - transcript
+        properties:
+          type:
+            type: string
+            const: partial_transcript
+          transcript:
+            type: string
+            description: Transcribed text so far.
+          confidence:
+            type: number
+            description: Confidence score (0-1).
+      examples:
+        - name: unmuteSttPartial
+          summary: Partial transcript
+          payload:
+            type: partial_transcript
+            transcript: Hello wor
+            confidence: 0.85
+    UnmuteSttReadyMessage:
+      name: UnmuteSttReadyMessage
+      title: Ready (Unmute STT)
+      summary: Unmute STT session is ready.
+      contentType: application/json
+      payload:
+        type: object
+        description: Session is ready for audio input.
+        required:
+          - type
+          - session_id
+        properties:
+          type:
+            type: string
+            const: ready
+          session_id:
+            type: string
+            description: Unique session identifier.
+      examples:
+        - name: unmuteSttReady
+          summary: Session ready
+          payload:
+            type: ready
+            session_id: sess_abc123
+    KeepaliveMessage:
+      name: KeepaliveMessage
+      title: Keepalive Message
+      summary: Keep the WebSocket connection alive during silence.
+      contentType: application/json
+      payload:
+        type: object
+        description: Prevents the connection from being closed due to inactivity. Send periodically during silence to maintain the session.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: keepalive
+      examples:
+        - name: keepalive
+          summary: Send keepalive
+          payload:
+            type: keepalive
+    UnmuteSttCloseMessage:
+      name: UnmuteSttCloseMessage
+      title: Close (Unmute STT)
+      summary: Signal end of audio stream and close the connection.
+      contentType: application/json
+      payload:
+        type: object
+        description: Signal that no more audio will be sent. The server processes remaining audio, sends final results, then closes the connection.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: close
+      examples:
+        - name: unmuteSttClose
+          summary: Close the audio stream
+          payload:
+            type: close
+    UnmuteSttFinalizeMessage:
+      name: UnmuteSttFinalizeMessage
+      title: Finalize (Unmute STT)
+      summary: Force-finalize buffered audio without closing the connection.
+      contentType: application/json
+      payload:
+        type: object
+        description: Mid-stream flush — forces the server to finalize any buffered audio and return results. The connection remains open for further audio.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: finalize
+      examples:
+        - name: unmuteSttFinalize
+          summary: Force-finalize buffered audio
+          payload:
+            type: finalize
+    UnmuteSttAudioMessage:
+      name: UnmuteSttAudioMessage
+      title: Audio (Unmute STT)
+      summary: Send audio data to Unmute STT Bridge.
+      contentType: application/json
+      payload:
+        type: object
+        description: Audio data for transcription.
+        required:
+          - type
+          - data
+        properties:
+          type:
+            type: string
+            const: audio
+          data:
+            type: string
+            format: byte
+            description: Base64-encoded audio data.
+      examples:
+        - name: unmuteSttAudio
+          summary: Send audio data
+          payload:
+            type: audio
+            data: UklGRiQAAABXQVZFZm10IBAAAAABAAEA...
+    UnmuteSttInitMessage:
+      name: UnmuteSttInitMessage
+      title: Init (Unmute STT)
+      summary: Initialize Unmute STT session with configuration.
+      contentType: application/json
+      payload:
+        type: object
+        description: Initialize STT session with optional configuration.
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            const: init
+          config:
+            type: object
+            description: Session configuration.
+            properties:
+              language:
+                $ref: "#/components/schemas/LanguageCode"
+              sample_rate:
+                $ref: "#/components/schemas/SampleRate"
+              encoding:
+                type: string
+                description: Audio encoding format.
+                enum:
+                  - linear16
+                  - mp3
+                  - opus
+              enable_vad:
+                type: boolean
+                description: Enable voice activity detection.
+              enable_partials:
+                type: boolean
+                description: Enable partial transcription results.
+      examples:
+        - name: unmuteSttInit
+          summary: Initialize Unmute STT session
+          payload:
+            type: init
+            config:
+              language: en
+              sample_rate: 16000
+              encoding: linear16
+              enable_partials: true
+  schemas:
+    LanguageCode:
+      type: string
+      description: ISO-639-1 language code.
+      enum:
+        - en
+        - ja
+        - zh
+        - de
+        - hi
+        - fr
+        - ko
+        - pt
+        - it
+        - es
+        - id
+        - nl
+        - tr
+        - fil
+        - pl
+        - sv
+        - bg
+        - ro
+        - ar
+        - cs
+        - el
+        - fi
+        - hr
+        - ms
+        - sk
+        - da
+        - ta
+        - uk
+        - ru
+        - hu
+        - no
+        - vi
+    SampleRate:
+      type: integer
+      description: Audio sample rate in Hz.
+      enum:
+        - 8000
+        - 16000
+        - 22050
+        - 24000
+        - 32000
+        - 44100
+        - 48000
+    WebsocketHeaders:
+      type: object
+      properties:
+        X-Region-Override:
+          type: string
+          description: Target region override. Auto-selected if not provided.
+        X-World-Part-Override:
+          type: string
+          description: Target world part override. Auto-selected if not provided.
+    WebsocketQueryParams:
+      type: object
+      properties:
+        region:
+          type: string
+          description: Target region override as a query parameter. Auto-selected if not provided. Equivalent to the `X-Region-Override` header; the header takes precedence when both are set.
+          enum:
+            - ap-southeast-2
+            - eu-north-1
+            - us-east-1
+        world-part:
+          type: string
+          description: Target world part override as a query parameter. Auto-selected if not provided. Equivalent to the `X-World-Part-Override` header; the header takes precedence when both are set.
+          enum:
+            - ap
+            - eu
+            - na
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        API key issued by SLNG. Pass as `Authorization: Bearer <token>` in the WebSocket upgrade request headers.
