@@ -1,6 +1,6 @@
 {
   "name": "voiceai-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Voiceai CLI — text-to-speech, speech-to-text, streaming",
   "type": "commonjs",
   "bin": {
@@ -42,6 +42,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/react": "^19.2.14"
+    "@types/react": "^19.2.14",
+    "voiceai-sdk": "^0.2.0"
   }
 }

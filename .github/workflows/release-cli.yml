@@ -39,6 +39,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: assert version matches tag
+        run: |
+          pkg_version=$(node -p "require('./cli/package.json').version")
+          tag_version="${GITHUB_REF_NAME#cli-v}"
+          if [ "$pkg_version" != "$tag_version" ]; then
+            echo "Version mismatch: cli/package.json=$pkg_version tag=$tag_version" >&2
+            exit 1
+          fi
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

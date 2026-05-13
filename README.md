@@ -38,11 +38,18 @@ arecord -f S16_LE -r 16000 | voiceai stt --stream --model deepgram/nova:3
 Tag-driven, runs the `release-cli.yml` workflow:
 
 ```bash
-# 1. bump cli/package.json version
-# 2. commit + push to main
+# 1. bump cli/package.json version (workflow asserts version matches tag suffix)
+# 2. if voice manifests or AsyncAPI specs changed: bun run regen, commit the diff
+# 3. commit + push to main
 git tag cli-v0.1.0
 git push origin cli-v0.1.0
 ```
+
+The compile depends on three committed generated files —
+`cli/src/lib/live-models.generated.ts`, `cli/src/lib/voice-catalog.generated.ts`,
+and `streaming/ts/messages.ts` — refreshed by `bun run regen`. The CLI imports
+the HTTP SDK as `voiceai-sdk` from npm (published from this repo via Stainless),
+so the Stainless working copies in `sdks/` aren't needed at release time.
 
 The workflow then:
 1. Builds `voiceai-{darwin-arm64,darwin-x64,linux-arm64,linux-x64}` via `bun build --compile`.

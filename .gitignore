@@ -20,15 +20,15 @@ __pycache__/
 cli/bin/voiceai
 cli/bin/voiceai.exe
 
-# Generated artifacts (re-emitted by scripts/gen-ws-types.sh)
-streaming/ts/messages.ts
+# Generated artifacts (re-emitted by scripts/gen-ws-types.sh).
+# streaming/ts/messages.ts IS tracked — needed for CLI compile in CI.
 streaming/python/messages.py
 
 # Vendored voice manifests (re-synced by scripts/sync-voice-tools.sh)
 voice-manifests/
 
-# Generated voice catalog (re-emitted by scripts/gen-voice-catalog.ts)
-cli/src/lib/voice-catalog.generated.ts
+# Generated voice catalog (re-emitted by scripts/gen-voice-catalog.ts).
+# voice-catalog.generated.ts IS tracked — needed for CLI compile in CI.
 
 # Stainless SDK working copies — each is its own git repo (own remote at
 # stainless-sdks/slng-{typescript,python}). Stainless's `stl preview` clones
