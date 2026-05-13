@@ -17,9 +17,9 @@
     },
     "cli": {
       "name": "voiceai-cli",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
-        "voiceai": "./bin/voiceai.js",
+        "voiceai": "bin/voiceai.js",
       },
       "dependencies": {
         "commander": "^14.0.3",
