@@ -10,9 +10,10 @@
     "sync-specs": "bash scripts/sync-specs.sh",
     "sync-voice-tools": "bash scripts/sync-voice-tools.sh",
     "sync-live-models": "bun scripts/sync-live-models.ts",
+    "gen-sdk-catalogs": "bun scripts/gen-sdk-catalogs.ts",
     "gen-ws-types": "bash scripts/gen-ws-types.sh",
     "gen-voices": "bun scripts/gen-voice-catalog.ts",
-    "regen": "bun run sync-specs && bun run sync-voice-tools && bun run gen-ws-types && bun run gen-voices && bun run sync-live-models",
+    "regen": "bun run sync-specs && bun run sync-voice-tools && bun run gen-ws-types && bun run gen-voices && bun run sync-live-models && bun run gen-sdk-catalogs",
     "test": "bun test streaming/ cli/"
   },
   "devDependencies": {
