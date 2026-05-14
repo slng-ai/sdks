@@ -115,6 +115,11 @@ jobs:
     name: npm publish
     needs: release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # required by `npm publish --provenance` to mint a signed attestation
+      # via Sigstore using GitHub's OIDC token.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
