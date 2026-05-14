@@ -171,6 +171,14 @@ voiceai voices --model cartesia/sonic:3 --language fr
 voiceai voices --model slng/deepgram/aura:2-en --json | jq '.[] | .name'
 ```
 
+### Auth check
+
+```sh
+# Verify VOICEAI_API_KEY against the agents API (no TTS/STT credits used).
+voiceai whoami
+voiceai whoami --json | jq .ok
+```
+
 ### Configuration
 
 ```sh
