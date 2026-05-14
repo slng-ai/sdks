@@ -33,7 +33,7 @@ brew install slng-ai/tap/voiceai
 ### curl one-liner
 
 ```sh
-curl -fsSL https://slng.ai/install.sh | sh
+curl -fsSL https://docs.slng.ai/install.sh | sh
 ```
 
 Installs to `/usr/local/bin/voiceai`. Override with `PREFIX=$HOME/.local/bin sh`.

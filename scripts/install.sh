@@ -4,8 +4,8 @@
 # the GitHub API so users don't have to know the version.
 #
 # Usage:
-#   curl -fsSL https://slng.ai/install.sh | sh
-#   curl -fsSL https://slng.ai/install.sh | PREFIX=$HOME/.local/bin sh
+#   curl -fsSL https://docs.slng.ai/install.sh | sh
+#   curl -fsSL https://docs.slng.ai/install.sh | PREFIX=$HOME/.local/bin sh
 #
 # Requires: curl, install (BSD or GNU). No bash-isms — runs under POSIX sh.
 
