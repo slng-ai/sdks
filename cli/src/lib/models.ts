@@ -139,13 +139,18 @@ export function providerFor(id: string): string {
   return trimmed.split("/")[0] ?? "";
 }
 
+// `catalog_visible: false` upstream means "deployed but hidden from pickers"
+// (e.g. previews, in-flight launches). `!== false` keeps older snapshots that
+// don't carry the field at all.
+const isCatalogVisible = (m: LiveModel): boolean => m.catalog_visible !== false;
+
 export const TTS_MODELS: TtsModel[] = (LIVE_MODELS.length > 0
-  ? LIVE_MODELS.filter((m) => m.service_type === "tts").map(fromLive)
+  ? LIVE_MODELS.filter((m) => m.service_type === "tts" && isCatalogVisible(m)).map(fromLive)
   : fromVoiceCatalog().tts
 ).sort(slngFirstCompare);
 
 export const STT_MODELS: SttModel[] = (LIVE_MODELS.length > 0
-  ? LIVE_MODELS.filter((m) => m.service_type === "stt").map(fromLive)
+  ? LIVE_MODELS.filter((m) => m.service_type === "stt" && isCatalogVisible(m)).map(fromLive)
   : []
 ).sort(slngFirstCompare);
 
