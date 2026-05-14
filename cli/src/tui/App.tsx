@@ -21,7 +21,7 @@ export function App(): React.ReactElement {
   return (
     <Box flexDirection="column">
       <Box flexDirection="column" paddingX={1} paddingY={0}>
-        <Banner text="//SLNG" font="block" colors={["yellow"]} />
+        <Banner />
         <Text dimColor>  Voice AI for builders — text-to-speech, speech-to-text, real-time.</Text>
       </Box>
 
