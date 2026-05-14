@@ -14,9 +14,10 @@ permissions:
   contents: write
 
 jobs:
-  # Bun's --compile produces a self-contained binary per target. We run the
-  # build on each native OS so the underlying glibc/libc is the one the
-  # runtime expects. Cross-compilation works in Bun but native is simpler.
+  # Bun's --compile produces a self-contained binary per target. Most matrix
+  # entries run on a native host; darwin-x64 cross-compiles from macos-latest
+  # (arm64) because GitHub's macos-13 (Intel) runner pool has unbounded queue
+  # times — the v0.1.1 run sat 24h before timing out.
   build:
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
@@ -27,7 +28,7 @@ jobs:
           - os: macos-latest
             target: bun-darwin-arm64
             asset: voiceai-darwin-arm64
-          - os: macos-13
+          - os: macos-latest
             target: bun-darwin-x64
             asset: voiceai-darwin-x64
           - os: ubuntu-latest
@@ -64,7 +65,9 @@ jobs:
 
       - name: smoke
         # Skip cross-arch runs we can't execute on the build host.
-        if: matrix.target != 'bun-linux-arm64' || runner.arch == 'ARM64'
+        # bun-darwin-x64 is cross-compiled from macos-latest (arm64), so its
+        # binary can't run here either.
+        if: matrix.target != 'bun-linux-arm64' && matrix.target != 'bun-darwin-x64'
         run: ./${{ matrix.asset }} --version
 
       - uses: actions/upload-artifact@v4
