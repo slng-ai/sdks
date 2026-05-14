@@ -1736,15 +1736,24 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "Fast inference"
     ],
     "languages": [
+      "de",
+      "el",
       "en",
       "es",
       "fr",
       "hi",
+      "hr",
       "it",
+      "ja",
+      "ko",
       "lt",
       "ml",
       "mr",
+      "nl",
+      "pt",
       "sv",
+      "ta",
+      "te",
       "zh"
     ],
     "streaming": true,
@@ -1757,9 +1766,8 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "code_example": "wscat -c \"wss://api.slng.ai/v1/tts/murf/murftts:falcon\" \\\n  -H \"Authorization: Bearer <token>\"\n\n> {\"type\":\"init\",\"model\":\"murftts:falcon\",\"voice\":\"en-US-natalie\",\"config\":{\"sample_rate\":24000,\"encoding\":\"mp3\",\"channel_type\":\"MONO\"}}",
     "code_examples": {
       "curl": "wscat -c \"wss://api.slng.ai/v1/tts/murf/murftts:falcon\" \\\n  -H \"Authorization: Bearer <token>\"\n\n> {\"type\":\"init\",\"model\":\"murftts:falcon\",\"voice\":\"en-US-natalie\",\"config\":{\"sample_rate\":24000,\"encoding\":\"mp3\",\"channel_type\":\"MONO\"}}",
-      "python": "import asyncio\nimport websockets\nimport json\n\n\nasync def main():\n    headers = {\"Authorization\": \"Bearer <token>\"}\n    async with websockets.connect(\n        \"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", additional_headers=headers\n    ) as ws:\n        await ws.send(\n            json.dumps(\n                {\n                    \"type\": \"init\",\n                    \"model\": \"murftts:falcon\",\n                    \"voice\": \"en-US-natalie\",\n                    \"config\": {\"sample_rate\": 24000, \"encoding\": \"mp3\", \"channel_type\": \"MONO\"},\n                }\n            )\n        )\n        async for message in ws:\n            data = json.loads(message)\n            print(data)\n\n\nasyncio.run(main())\n",
-      "javascript": "const ws = new WebSocket(\"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", {\n  headers: { \"Authorization\": \"Bearer <token>\" }\n});\n\nws.on(\"open\", () => {\n  ws.send(JSON.stringify({\n      \"type\": \"init\",\n      \"model\": \"murftts:falcon\",\n      \"voice\": \"en-US-natalie\",\n      \"config\": {\n          \"sample_rate\": 24000,\n          \"encoding\": \"mp3\",\n          \"channel_type\": \"MONO\"\n      }\n  }));\n});\n\nws.on(\"message\", (data) => {\n  console.log(JSON.parse(data));\n});\n",
-      "typescript": "const ws = new WebSocket(\"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", {\n  headers: { \"Authorization\": \"Bearer <token>\" }\n});\n\nws.on(\"open\", () => {\n  ws.send(JSON.stringify({\n      \"type\": \"init\",\n      \"model\": \"murftts:falcon\",\n      \"voice\": \"en-US-natalie\",\n      \"config\": {\n          \"sample_rate\": 24000,\n          \"encoding\": \"mp3\",\n          \"channel_type\": \"MONO\"\n      }\n  }));\n});\n\nws.on(\"message\", (data: string) => {\n  const parsed = JSON.parse(data);\n  console.log(parsed);\n});\n"
+      "python": "import asyncio\nimport websockets\nimport json\n\n\nasync def main():\n    headers = {\"Authorization\": \"Bearer <token>\"}\n    async with websockets.connect(\n        \"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", additional_headers=headers\n    ) as ws:\n        await ws.send(\n            json.dumps(\n                {\n                    \"type\": \"init\",\n                    \"model\": \"murftts:falcon\",\n                    \"voice\": \"en-US-natalie\",\n                    \"config\": {\"sample_rate\": 24000, \"encoding\": \"mp3\", \"channel_type\": \"MONO\"},\n                }\n            )\n        )\n        async for message in ws:\n            data = json.loads(message)\n            print(data)\n\n\nasyncio.run(main())",
+      "typescript": "const ws = new WebSocket(\"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", {\n  headers: { \"Authorization\": \"Bearer <token>\" }\n});\n\nws.on(\"open\", () => {\n  ws.send(JSON.stringify({\n      \"type\": \"init\",\n      \"model\": \"murftts:falcon\",\n      \"voice\": \"en-US-natalie\",\n      \"config\": {\n          \"sample_rate\": 24000,\n          \"encoding\": \"mp3\",\n          \"channel_type\": \"MONO\"\n      }\n  }));\n});\n\nws.on(\"message\", (data: string) => {\n  const parsed = JSON.parse(data);\n  console.log(parsed);\n});"
     },
     "docs_url": "https://docs.slng.ai/api-reference/tts/murf-falcon/murf-falcon-ws",
     "request_schema": null,
@@ -1768,7 +1776,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "spec_config": {},
     "code": "murf/murftts:falcon",
     "created_at": "2026-04-09T15:30:08.041122Z",
-    "updated_at": "2026-04-30T14:25:27.619681Z",
+    "updated_at": "2026-05-14T16:55:43.750320Z",
     "deployments": {
       "regions": [],
       "worldParts": [
@@ -1918,6 +1926,67 @@ export const LIVE_MODELS: readonly LiveModel[] = [
   {
     "enabled": true,
     "internal": false,
+    "auth_secret_key": null,
+    "name": "Aura 2 Spanish",
+    "service_type": "tts",
+    "provider_code": "deepgram",
+    "short_description": "Deepgram's TTS model designed to generate realistic, human-like speech in real time, especially for AI voice agents and applications.",
+    "long_description": "Deepgram Aura 2 is a real-time text-to-speech model built for conversational AI. It generates natural, human-like speech with low latency, making it ideal for voice assistants, chatbots, and call centers.\n\nAura stands out for its ability to adapt tone and pacing, handle structured data like numbers or dates clearly, and scale to large deployments. Aura also offers multiple voices and languages and integrates with Deepgram’s broader voice AI stack for full speech-to-speech systems.",
+    "best_for": "- Conversational AI & Assistants\n- Customer Support & Call Centers\n- Healthcare & Patient Communication\n- Media, Accessibility & Devices",
+    "use_cases": [
+      "Call centers",
+      "Voice agents",
+      "Customer support",
+      "Healthcare",
+      "Media"
+    ],
+    "capabilities": [
+      "Streaming",
+      "Multiple voices",
+      "Production ready"
+    ],
+    "languages": [
+      "es"
+    ],
+    "streaming": true,
+    "batch": false,
+    "accuracy": null,
+    "voice_count": null,
+    "sort_order": 0,
+    "catalog_visible": true,
+    "api_path": "/v1/tts/slng/deepgram/aura:2-es",
+    "code_example": "curl --request POST \\\n  --url https://api.slng.ai/v1/tts/slng/deepgram/aura:2-es \\\n  --header 'Authorization: Bearer <token>' \\\n  --header 'Content-Type: application/json' \\\n  --data '\n{\n  \"model\": \"aura-2-celeste-es\",\n  \"text\": \"Hola, esto es una prueba de síntesis de texto a voz.\"\n}\n'",
+    "code_examples": {
+      "curl": "curl -X POST https://api.slng.ai/v1/tts/slng/deepgram/aura:2-es \\\n  -H \"Authorization: Bearer <token>\" \\\n  -H \"Content-Type: application/json\" \\\n  --output \"hello.wav\" \\\n  --data '{\n    \"model\": \"aura-2-celeste-es\",\n    \"text\": \"Hello, from sunny Barcelona\"\n  }'",
+      "python": "import requests\n\nresponse = requests.post(\n    \"https://api.slng.ai/v1/tts/slng/deepgram/aura:2-es\",\n    headers={\"Authorization\": \"Bearer <token>\", \"Content-Type\": \"application/json\"},\n    json={\n        \"model\": \"aura-2-celeste-es\",\n        \"text\": \"Hello, from sunny Barcelona\",\n    },\n)\nwith open(\"hello.wav\", \"wb\") as f:\n    f.write(response.content)\n",
+      "javascript": "import { writeFile } from \"node:fs/promises\";\n\nconst response = await fetch(\"https://api.slng.ai/v1/tts/slng/deepgram/aura:2-es\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": \"Bearer <token>\",\n    \"Content-Type\": \"application/json\"\n  },\n  body: JSON.stringify({\n      \"model\": \"aura-2-celeste-es\",\n      \"text\": \"Hello, from sunny Barcelona\"\n  })\n});\nawait writeFile(\"hello.wav\", Buffer.from(await response.arrayBuffer()));\n",
+      "typescript": "import { writeFile } from \"node:fs/promises\";\n\nconst response: Response = await fetch(\"https://api.slng.ai/v1/tts/slng/deepgram/aura:2-es\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": \"Bearer <token>\",\n    \"Content-Type\": \"application/json\"\n  },\n  body: JSON.stringify({\n      \"model\": \"aura-2-celeste-es\",\n      \"text\": \"Hello, from sunny Barcelona\"\n  })\n});\nawait writeFile(\"hello.wav\", Buffer.from(await response.arrayBuffer()));\n"
+    },
+    "docs_url": "https://docs.slng.ai/api-reference/tts/deepgram-aura-2/aura-2-spanish-http",
+    "request_schema": null,
+    "response_schema": null,
+    "message_schemas": null,
+    "spec_config": {},
+    "code": "slng/deepgram/aura:2-es",
+    "created_at": "2026-02-19T19:33:40.536182Z",
+    "updated_at": "2026-04-30T14:45:21.018910Z",
+    "deployments": {
+      "regions": [
+        "eu-north-1"
+      ],
+      "worldParts": [],
+      "platforms": [
+        "cluster-c-eu-platform"
+      ],
+      "protocols": [
+        "https",
+        "wss"
+      ]
+    }
+  },
+  {
+    "enabled": true,
+    "internal": false,
     "auth_secret_key": "RIME_API_KEY",
     "name": "Arcana V3 English",
     "service_type": "tts",
@@ -1963,11 +2032,73 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "updated_at": "2026-04-30T14:45:21.100779Z",
     "deployments": {
       "regions": [
-        "ap-southeast-2"
+        "ap-southeast-2",
+        "eu-north-1"
       ],
       "worldParts": [],
       "platforms": [
-        "cluster-b-ap-platform"
+        "cluster-b-ap-platform",
+        "cluster-c-eu-platform"
+      ],
+      "protocols": [
+        "https",
+        "wss"
+      ]
+    }
+  },
+  {
+    "enabled": true,
+    "internal": false,
+    "auth_secret_key": "RIME_API_KEY",
+    "name": "Arcana V3 Spanish",
+    "service_type": "tts",
+    "provider_code": "rime",
+    "short_description": "Rime's flagship TTS model that combines ultra-realistic, expressive voices with low latency (~120ms TTFB out of engine) and native multilingual code-switching across more than 10 languages.\nEnterprise-grade ergonomics for high-volume, real-time deployments at scale.\nSpeaker performance optimized for business telephony and IVR.",
+    "long_description": "Real-Time Conversational Performance: Arcana v3 delivers TTS with industry-leading latency (sub 120ms on-prem latency and 200ms via the cloud API), enabling natural back-and-forth interactions without awkward pauses. \n\nThis is fast enough for mid-utterance control and barge-in with no awkward silences.\n\nMultilingual & Code-Switching: A single model supports more than 10 languages (English, Spanish, Hindi, Arabic, French, Portuguese, German, Japanese, Hebrew, and Tamil) and can switch between them mid-utterance without losing prosody or voice identity.\n\nWord-Level Timestamps: Structural metadata enables text-audio alignment, real-time highlighting, better interruption handling, and smarter orchestration in voice applications.",
+    "best_for": "- Voice Assistants\n- Business Telephony\n- IVR\n- TTS",
+    "use_cases": [
+      "Call centers",
+      "voice assistant",
+      "IVR",
+      "Healthcare"
+    ],
+    "capabilities": [
+      "Streaming",
+      "Expressiveness",
+      "Latency",
+      "High throughput"
+    ],
+    "languages": [
+      "es"
+    ],
+    "streaming": true,
+    "batch": false,
+    "accuracy": null,
+    "voice_count": null,
+    "sort_order": 0,
+    "catalog_visible": true,
+    "api_path": "/v1/tts/slng/rime/arcana:3-es",
+    "code_example": "curl --request POST \\\n  --url https://api.slng.ai/v1/tts/slng/rime/arcana:3-es \\\n  --header 'Authorization: Bearer <token>' \\\n  --header 'Content-Type: application/json' \\\n  --data '\n{\n  \"text\": \"Hola desde Rime Arcana v3 Español. Probando la síntesis de texto a voz.\",\n  \"speaker\": \"seraphina\"\n}\n'",
+    "code_examples": {
+      "curl": "curl --request POST \\\n  --url https://api.slng.ai/v1/tts/slng/rime/arcana:3-es \\\n  --header 'Authorization: Bearer <token>' \\\n  --header 'Content-Type: application/json' \\\n  --data '\n{\n  \"text\": \"Hola desde Rime Arcana v3 Español. Probando la síntesis de texto a voz.\",\n  \"speaker\": \"seraphina\"\n}\n'",
+      "python": "import requests\n\nurl = \"https://api.slng.ai/v1/tts/slng/rime/arcana:3-es\"\n\npayload = {\n    \"text\": \"Hola desde Rime Arcana v3 Español. Probando la síntesis de texto a voz.\",\n    \"speaker\": \"seraphina\"\n}\nheaders = {\n    \"Authorization\": \"Bearer <token>\",\n    \"Content-Type\": \"application/json\"\n}\n\nresponse = requests.post(url, json=payload, headers=headers)\n\nprint(response.text)",
+      "typescript": "onst options = {\n  method: 'POST',\n  headers: {Authorization: 'Bearer <token>', 'Content-Type': 'application/json'},\n  body: JSON.stringify({\n    text: 'Hola desde Rime Arcana v3 Español. Probando la síntesis de texto a voz.',\n    speaker: 'seraphina'\n  })\n};\n\nfetch('https://api.slng.ai/v1/tts/slng/rime/arcana:3-es', options)\n  .then(res => res.json())\n  .then(res => console.log(res))\n  .catch(err => console.error(err));"
+    },
+    "docs_url": "https://docs.slng.ai/api-reference/tts/rime-arcana-v3/arcana-v3-spanish-http",
+    "request_schema": null,
+    "response_schema": null,
+    "message_schemas": null,
+    "spec_config": {},
+    "code": "slng/rime/arcana:3-es",
+    "created_at": "2026-03-17T10:04:48.662221Z",
+    "updated_at": "2026-05-14T08:46:33.878948Z",
+    "deployments": {
+      "regions": [
+        "eu-north-1"
+      ],
+      "worldParts": [],
+      "platforms": [
+        "cluster-c-eu-platform"
       ],
       "protocols": [
         "https",
@@ -1987,24 +2118,26 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "best_for": null,
     "use_cases": [],
     "capabilities": [],
-    "languages": [],
+    "languages": [
+      "id"
+    ],
     "streaming": true,
     "batch": false,
     "accuracy": null,
     "voice_count": null,
     "sort_order": 0,
     "catalog_visible": false,
-    "api_path": null,
+    "api_path": "/v1/tts/slng/rime/coda:0-id",
     "code_example": null,
     "code_examples": null,
-    "docs_url": null,
+    "docs_url": "https://docs.slng.ai/api-reference/tts/rime-coda/coda-indonesian-http",
     "request_schema": null,
     "response_schema": null,
     "message_schemas": null,
     "spec_config": {},
     "code": "slng/rime/coda:0-id",
     "created_at": "2026-05-05T15:30:18.915483Z",
-    "updated_at": "2026-05-07T11:36:59.677931Z",
+    "updated_at": "2026-05-14T16:42:55.988721Z",
     "deployments": {
       "regions": [
         "asia-southeast2"
