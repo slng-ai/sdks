@@ -117,21 +117,25 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # required by `npm publish --provenance` to mint a signed attestation
-      # via Sigstore using GitHub's OIDC token.
+      # required for both `npm publish --provenance` (Sigstore attestation)
+      # and Trusted Publisher auth (OIDC exchange with npmjs.com).
       id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
+
+      # Trusted Publishing landed in npm 11.5.1. Node 22 LTS ships npm 10.x,
+      # so upgrade explicitly. Also required to bypass 2FA-on-publish: OIDC
+      # is treated as a stronger second factor, so no OTP challenge.
+      - name: upgrade npm
+        run: npm install -g npm@latest
 
       - name: publish
         working-directory: cli
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance --ignore-scripts
 
   bump-homebrew:
