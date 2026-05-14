@@ -1736,15 +1736,24 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "Fast inference"
     ],
     "languages": [
+      "de",
+      "el",
       "en",
       "es",
       "fr",
       "hi",
+      "hr",
       "it",
+      "ja",
+      "ko",
       "lt",
       "ml",
       "mr",
+      "nl",
+      "pt",
       "sv",
+      "ta",
+      "te",
       "zh"
     ],
     "streaming": true,
@@ -1757,9 +1766,8 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "code_example": "wscat -c \"wss://api.slng.ai/v1/tts/murf/murftts:falcon\" \\\n  -H \"Authorization: Bearer <token>\"\n\n> {\"type\":\"init\",\"model\":\"murftts:falcon\",\"voice\":\"en-US-natalie\",\"config\":{\"sample_rate\":24000,\"encoding\":\"mp3\",\"channel_type\":\"MONO\"}}",
     "code_examples": {
       "curl": "wscat -c \"wss://api.slng.ai/v1/tts/murf/murftts:falcon\" \\\n  -H \"Authorization: Bearer <token>\"\n\n> {\"type\":\"init\",\"model\":\"murftts:falcon\",\"voice\":\"en-US-natalie\",\"config\":{\"sample_rate\":24000,\"encoding\":\"mp3\",\"channel_type\":\"MONO\"}}",
-      "python": "import asyncio\nimport websockets\nimport json\n\n\nasync def main():\n    headers = {\"Authorization\": \"Bearer <token>\"}\n    async with websockets.connect(\n        \"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", additional_headers=headers\n    ) as ws:\n        await ws.send(\n            json.dumps(\n                {\n                    \"type\": \"init\",\n                    \"model\": \"murftts:falcon\",\n                    \"voice\": \"en-US-natalie\",\n                    \"config\": {\"sample_rate\": 24000, \"encoding\": \"mp3\", \"channel_type\": \"MONO\"},\n                }\n            )\n        )\n        async for message in ws:\n            data = json.loads(message)\n            print(data)\n\n\nasyncio.run(main())\n",
-      "javascript": "const ws = new WebSocket(\"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", {\n  headers: { \"Authorization\": \"Bearer <token>\" }\n});\n\nws.on(\"open\", () => {\n  ws.send(JSON.stringify({\n      \"type\": \"init\",\n      \"model\": \"murftts:falcon\",\n      \"voice\": \"en-US-natalie\",\n      \"config\": {\n          \"sample_rate\": 24000,\n          \"encoding\": \"mp3\",\n          \"channel_type\": \"MONO\"\n      }\n  }));\n});\n\nws.on(\"message\", (data) => {\n  console.log(JSON.parse(data));\n});\n",
-      "typescript": "const ws = new WebSocket(\"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", {\n  headers: { \"Authorization\": \"Bearer <token>\" }\n});\n\nws.on(\"open\", () => {\n  ws.send(JSON.stringify({\n      \"type\": \"init\",\n      \"model\": \"murftts:falcon\",\n      \"voice\": \"en-US-natalie\",\n      \"config\": {\n          \"sample_rate\": 24000,\n          \"encoding\": \"mp3\",\n          \"channel_type\": \"MONO\"\n      }\n  }));\n});\n\nws.on(\"message\", (data: string) => {\n  const parsed = JSON.parse(data);\n  console.log(parsed);\n});\n"
+      "python": "import asyncio\nimport websockets\nimport json\n\n\nasync def main():\n    headers = {\"Authorization\": \"Bearer <token>\"}\n    async with websockets.connect(\n        \"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", additional_headers=headers\n    ) as ws:\n        await ws.send(\n            json.dumps(\n                {\n                    \"type\": \"init\",\n                    \"model\": \"murftts:falcon\",\n                    \"voice\": \"en-US-natalie\",\n                    \"config\": {\"sample_rate\": 24000, \"encoding\": \"mp3\", \"channel_type\": \"MONO\"},\n                }\n            )\n        )\n        async for message in ws:\n            data = json.loads(message)\n            print(data)\n\n\nasyncio.run(main())",
+      "typescript": "const ws = new WebSocket(\"wss://api.slng.ai/v1/tts/murf/murftts:falcon\", {\n  headers: { \"Authorization\": \"Bearer <token>\" }\n});\n\nws.on(\"open\", () => {\n  ws.send(JSON.stringify({\n      \"type\": \"init\",\n      \"model\": \"murftts:falcon\",\n      \"voice\": \"en-US-natalie\",\n      \"config\": {\n          \"sample_rate\": 24000,\n          \"encoding\": \"mp3\",\n          \"channel_type\": \"MONO\"\n      }\n  }));\n});\n\nws.on(\"message\", (data: string) => {\n  const parsed = JSON.parse(data);\n  console.log(parsed);\n});"
     },
     "docs_url": "https://docs.slng.ai/api-reference/tts/murf-falcon/murf-falcon-ws",
     "request_schema": null,
@@ -1768,7 +1776,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "spec_config": {},
     "code": "murf/murftts:falcon",
     "created_at": "2026-04-09T15:30:08.041122Z",
-    "updated_at": "2026-04-30T14:25:27.619681Z",
+    "updated_at": "2026-05-14T16:55:43.750320Z",
     "deployments": {
       "regions": [],
       "worldParts": [
