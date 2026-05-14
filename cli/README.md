@@ -36,7 +36,8 @@ brew install slng-ai/tap/voiceai
 curl -fsSL https://docs.slng.ai/install.sh | sh
 ```
 
-Installs to `/usr/local/bin/voiceai`. Override with `PREFIX=$HOME/.local/bin sh`.
+Installs to `/usr/local/bin/voiceai`. To install elsewhere:
+`curl -fsSL https://docs.slng.ai/install.sh | PREFIX=$HOME/.local/bin sh`.
 
 ### npm
 
@@ -44,10 +45,9 @@ Installs to `/usr/local/bin/voiceai`. Override with `PREFIX=$HOME/.local/bin sh`
 npm i -g voiceai-cli
 ```
 
-The npm package is named `voiceai-cli` (the unscoped `voiceai` was already
-taken). The binary it installs is `voiceai`. On install it downloads the
-pre-built binary for your platform. Use the Homebrew or curl path if you'd
-rather skip the postinstall network call.
+Package name is `voiceai-cli`; the installed binary is `voiceai`. The
+postinstall step downloads a pre-built binary for your platform. Use
+Homebrew or the curl one-liner if you want to skip that network call.
 
 ### macOS Gatekeeper note
 
@@ -68,8 +68,8 @@ Drop your API key into `~/.config/voiceai/config.json`:
 voiceai config set apiKey zpka_…
 ```
 
-Or set `VOICEAI_API_KEY` in your environment. The first time you launch the
-TUI without a key it'll prompt you for one and save it for you.
+Or set `VOICEAI_API_KEY` in your environment. The first time you launch
+the TUI without a key, it'll prompt for one and save it.
 
 Get a key at <https://app.slng.ai/api-keys>.
 
@@ -84,9 +84,9 @@ voiceai stt --stream                           # live mic → transcripts
 
 ## Interactive mode
 
-`voiceai` with no args opens the TUI. It remembers your last-used model and
-voice via `~/.config/voiceai/config.json`, so subsequent runs skip the picker
-steps and drop you straight into the action.
+`voiceai` with no args opens the TUI. It remembers your last-used model
+and voice in `~/.config/voiceai/config.json`, so subsequent runs skip the
+pickers.
 
 **TTS flow**
 
@@ -138,8 +138,8 @@ voiceai tts "stream me" --stream | ffplay -
 voiceai tts "regional" --region eu-north-1
 ```
 
-Without `--out`, audio is also auto-saved to `$TMPDIR/voiceai-tts/` so the
-bytes are always reachable.
+Without `--out`, audio is also written to `$TMPDIR/voiceai-tts/` so you
+can replay or re-export later.
 
 ### Speech → text
 
