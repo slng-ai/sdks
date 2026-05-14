@@ -125,14 +125,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Node 24 ships npm 11.x natively. Required for Trusted Publishing
+          # (npm ≥ 11.5.1). Don't downgrade to 22 LTS — its bundled npm 10.x
+          # can't self-upgrade in CI without hitting a promise-retry crash.
+          node-version: 24
           registry-url: https://registry.npmjs.org
-
-      # Trusted Publishing landed in npm 11.5.1. Node 22 LTS ships npm 10.x,
-      # so upgrade explicitly. Also required to bypass 2FA-on-publish: OIDC
-      # is treated as a stronger second factor, so no OTP challenge.
-      - name: upgrade npm
-        run: npm install -g npm@latest
 
       - name: publish
         working-directory: cli
