@@ -1,7 +1,7 @@
 name: sync install.sh to docs
 
 # Opens a PR on slng-ai/docs that copies scripts/install.sh to public/install.sh
-# so it can be served from https://slng.ai/install.sh. Runs only when the
+# so it can be served from https://docs.slng.ai/install.sh. Runs only when the
 # source file changes on main; the action is idempotent — if a PR for this
 # sync already exists, it updates that PR instead of opening a new one.
 
@@ -47,7 +47,7 @@ jobs:
           body: |
             Mirrors `scripts/install.sh` from `slng-ai/sdks` at commit
             ${{ github.sha }} to `public/install.sh` here so it can be served
-            from https://slng.ai/install.sh.
+            from https://docs.slng.ai/install.sh.
 
             This PR is opened automatically by `.github/workflows/sync-install-script.yml`
             in `slng-ai/sdks`. Subsequent edits to `scripts/install.sh` will
