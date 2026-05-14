@@ -1,0 +1,37 @@
+name: sync install.sh to docs
+
+# Mirrors scripts/install.sh to slng-ai/docs at public/install.sh so it can
+# be served from https://slng.ai/install.sh. Runs only when the source file
+# changes on main; pushes nothing if the destination already matches.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/install.sh
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: copy + push to docs repo
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_REPO_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/slng-ai/docs.git" docs
+          mkdir -p docs/public
+          cp scripts/install.sh docs/public/install.sh
+          cd docs
+          git config user.name  "voiceai-release-bot"
+          git config user.email "noreply@slng.ai"
+          git add public/install.sh
+          if git diff --cached --quiet; then
+            echo "public/install.sh already up to date"
+            exit 0
+          fi
+          git commit -m "sync install.sh from slng-ai/sdks@${GITHUB_SHA::7}"
+          git push origin HEAD
