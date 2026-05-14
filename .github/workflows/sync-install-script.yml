@@ -1,8 +1,9 @@
 name: sync install.sh to docs
 
-# Mirrors scripts/install.sh to slng-ai/docs at public/install.sh so it can
-# be served from https://slng.ai/install.sh. Runs only when the source file
-# changes on main; pushes nothing if the destination already matches.
+# Opens a PR on slng-ai/docs that copies scripts/install.sh to public/install.sh
+# so it can be served from https://slng.ai/install.sh. Runs only when the
+# source file changes on main; the action is idempotent — if a PR for this
+# sync already exists, it updates that PR instead of opening a new one.
 
 on:
   push:
@@ -15,23 +16,42 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout sdks (for the source file)
+        uses: actions/checkout@v4
+        with:
+          path: sdks
 
-      - name: copy + push to docs repo
-        env:
-          GH_TOKEN: ${{ secrets.DOCS_REPO_GITHUB_TOKEN }}
+      - name: checkout docs (target of the PR)
+        uses: actions/checkout@v4
+        with:
+          repository: slng-ai/docs
+          token: ${{ secrets.DOCS_REPO_GITHUB_TOKEN }}
+          path: docs
+
+      - name: copy file
         run: |
           set -euo pipefail
-          git clone --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/slng-ai/docs.git" docs
           mkdir -p docs/public
-          cp scripts/install.sh docs/public/install.sh
-          cd docs
-          git config user.name  "voiceai-release-bot"
-          git config user.email "noreply@slng.ai"
-          git add public/install.sh
-          if git diff --cached --quiet; then
-            echo "public/install.sh already up to date"
-            exit 0
-          fi
-          git commit -m "sync install.sh from slng-ai/sdks@${GITHUB_SHA::7}"
-          git push origin HEAD
+          cp sdks/scripts/install.sh docs/public/install.sh
+
+      - name: open / update PR on docs
+        uses: peter-evans/create-pull-request@v7
+        with:
+          path: docs
+          token: ${{ secrets.DOCS_REPO_GITHUB_TOKEN }}
+          branch: sync/install-script
+          base: main
+          commit-message: |
+            sync install.sh from slng-ai/sdks@${{ github.sha }}
+          title: Sync install.sh from slng-ai/sdks
+          body: |
+            Mirrors `scripts/install.sh` from `slng-ai/sdks` at commit
+            ${{ github.sha }} to `public/install.sh` here so it can be served
+            from https://slng.ai/install.sh.
+
+            This PR is opened automatically by `.github/workflows/sync-install-script.yml`
+            in `slng-ai/sdks`. Subsequent edits to `scripts/install.sh` will
+            update this same PR rather than open new ones.
+          author: voiceai-release-bot <noreply@slng.ai>
+          committer: voiceai-release-bot <noreply@slng.ai>
+          delete-branch: true
