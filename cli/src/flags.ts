@@ -5,6 +5,7 @@ import { sttCommand } from "./commands/stt";
 import { configCommand } from "./commands/config";
 import { modelsCommand } from "./commands/models";
 import { voicesCommand } from "./commands/voices";
+import { whoamiCommand } from "./commands/whoami";
 
 const ROOT_EPILOGUE = `
 EXAMPLES
@@ -16,10 +17,12 @@ EXAMPLES
   $ voiceai stt --stream                                 live mic transcription
   $ voiceai models --tts                                 list deployed TTS models
   $ voiceai voices --model slng/deepgram/aura:2-en       list catalogued voices
+  $ voiceai whoami                                       check that your API key is valid
 
 ENVIRONMENT
-  VOICEAI_API_KEY     Bearer token. Required for any API call.
-  VOICEAI_BASE_URL    Override the API base URL (e.g. staging).
+  VOICEAI_API_KEY            Bearer token. Required for any API call.
+  VOICEAI_BASE_URL           Override the API base URL (e.g. staging).
+  VOICEAI_AGENTS_BASE_URL    Override the agents API base URL (used by \`whoami\`).
 
   Env vars override anything in ~/.config/voiceai/config.json.
 `;
@@ -43,6 +46,7 @@ export async function runFlagMode(argv: string[]): Promise<void> {
   program.addCommand(configCommand());
   program.addCommand(modelsCommand());
   program.addCommand(voicesCommand());
+  program.addCommand(whoamiCommand());
 
   await program.parseAsync(argv, { from: "user" });
 }
