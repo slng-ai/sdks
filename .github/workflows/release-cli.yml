@@ -206,6 +206,14 @@ jobs:
               bin.install Dir["voiceai-*"].first => "voiceai"
             end
 
+            def caveats
+              <<~EOS
+                Config lives at ~/.config/voiceai/ and is NOT removed by \`brew uninstall\`.
+                To wipe it (and the legacy ~/.config/slng/) before uninstalling, run:
+                  voiceai config reset --force
+              EOS
+            end
+
             test do
               assert_match version.to_s, shell_output("#{bin}/voiceai --version")
             end

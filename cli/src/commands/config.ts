@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import { load, save } from "../lib/config";
+import { createInterface } from "node:readline/promises";
+import { load, reset, save } from "../lib/config";
 
 const CONFIG_EPILOGUE = `
 KEYS
@@ -17,6 +18,7 @@ EXAMPLES
   $ voiceai config set apiKey zpka_…
   $ voiceai config set defaultTtsModel slng/deepgram/aura:2-en
   $ voiceai config get                                show everything (apiKey masked)
+  $ voiceai config reset --force                      wipe ~/.config/voiceai (and legacy slng dir)
 
   Or open the interactive Settings screen by running \`voiceai\` with no args.
 `;
@@ -46,6 +48,34 @@ export function configCommand(): Command {
     .action((key: string, value: string) => {
       const merged = save({ [key]: value });
       console.log(`${key} = ${key === "apiKey" ? maskKey(merged.apiKey) : merged[key as keyof typeof merged]}`);
+    });
+
+  cmd
+    .command("reset")
+    .description("Remove persisted config (~/.config/voiceai and legacy ~/.config/slng)")
+    .option("-f, --force", "skip the confirmation prompt")
+    .option("--all", "also clear the $TMPDIR/voiceai-tts replay cache")
+    .action(async (opts: { force?: boolean; all?: boolean }) => {
+      if (!opts.force) {
+        if (!process.stdin.isTTY) {
+          console.error("voiceai config reset: refusing to run non-interactively. Pass --force to confirm.");
+          process.exit(1);
+        }
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        const answer = (await rl.question("Remove ~/.config/voiceai/ and ~/.config/slng/? [y/N] ")).trim().toLowerCase();
+        rl.close();
+        if (answer !== "y" && answer !== "yes") {
+          console.log("aborted.");
+          return;
+        }
+      }
+
+      const result = reset({ all: opts.all });
+      for (const p of result.removed) console.log(`removed: ${p}`);
+      for (const p of result.skipped) console.log(`skipped (not present): ${p}`);
+      if (process.env.VOICEAI_API_KEY) {
+        console.log("\nnote: VOICEAI_API_KEY is set in your env — `unset VOICEAI_API_KEY` to see the first-run prompt.");
+      }
     });
 
   return cmd;

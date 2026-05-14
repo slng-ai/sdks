@@ -1,8 +1,8 @@
 // Persistent config at ~/.config/voiceai/config.json. Env vars win over file.
 // Don't write secrets through the SDK; the CLI is the user's local agent.
 
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 export type Region = "us-east-1" | "eu-north-1" | "ap-southeast-2";
@@ -67,6 +67,33 @@ export function save(updates: Partial<Config>): Config {
   const merged: Config = { ...current, ...updates };
   writeFileSync(CONFIG_PATH, JSON.stringify(merged, null, 2));
   return merged;
+}
+
+export interface ResetResult {
+  removed: string[];
+  skipped: string[];
+}
+
+/**
+ * Remove persisted CLI state. By default clears both the active config dir
+ * and the legacy `~/.config/slng/` dir (which `load()` auto-migrates from).
+ * Pass `all: true` to also clear the `$TMPDIR/voiceai-tts/` replay cache.
+ */
+export function reset({ all = false }: { all?: boolean } = {}): ResetResult {
+  const targets = [CONFIG_DIR, LEGACY_CONFIG_DIR];
+  if (all) targets.push(join(tmpdir(), "voiceai-tts"));
+
+  const removed: string[] = [];
+  const skipped: string[] = [];
+  for (const path of targets) {
+    if (existsSync(path)) {
+      rmSync(path, { recursive: true, force: true });
+      removed.push(path);
+    } else {
+      skipped.push(path);
+    }
+  }
+  return { removed, skipped };
 }
 
 export function requireApiKey(): string {

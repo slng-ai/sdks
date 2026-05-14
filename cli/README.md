@@ -179,11 +179,17 @@ voiceai config get defaultTtsModel         # single value
 voiceai config set apiKey zpka_…
 voiceai config set defaultTtsModel slng/deepgram/aura:2-en
 voiceai config set defaultTtsVoice amalthea
+voiceai config reset --force               # wipe ~/.config/voiceai + legacy slng dir
 ```
 
 Setting `defaultTtsModel` (and optionally `defaultTtsVoice`) skips the
 picker steps in the TUI. Same for `defaultSttModel` / `defaultSttMode` /
 `defaultSttInput`.
+
+`config reset` is what `brew uninstall` won't do for you — Homebrew leaves
+files in `~/.config/` untouched. Run it before uninstalling, or any time
+you want the TUI to show the first-run API-key prompt again. Pass `--all`
+to also clear the `$TMPDIR/voiceai-tts/` replay cache.
 
 ## Configuration reference
 
