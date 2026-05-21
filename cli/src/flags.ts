@@ -6,10 +6,13 @@ import { configCommand } from "./commands/config";
 import { modelsCommand } from "./commands/models";
 import { voicesCommand } from "./commands/voices";
 import { whoamiCommand } from "./commands/whoami";
+import { loginCommand } from "./commands/login";
+import { setActiveProfile } from "./lib/config";
 
 const ROOT_EPILOGUE = `
 EXAMPLES
   $ voiceai                                              open the interactive TUI
+  $ voiceai login                                        interactively add or update a profile
   $ voiceai tts "hello world" -m slng/deepgram/aura:2-en -v aura-2-thalia-en
   $ voiceai tts "save me" --out ~/voice.mp3              save the audio to a file
   $ voiceai tts "stream me" --stream | ffplay -          stream TTS audio
@@ -18,11 +21,14 @@ EXAMPLES
   $ voiceai models --tts                                 list deployed TTS models
   $ voiceai voices --model slng/deepgram/aura:2-en       list catalogued voices
   $ voiceai whoami                                       check that your API key is valid
+  $ voiceai --profile work whoami                        run any command under a named profile
+  $ voiceai config profiles                              list configured profiles
 
 ENVIRONMENT
-  VOICEAI_API_KEY            Bearer token. Required for any API call.
+  VOICEAI_PROFILE            Select a named profile (overridden by --profile).
+  VOICEAI_API_KEY            Bearer token. Overrides the active profile's key.
   VOICEAI_BASE_URL           Override the API base URL (e.g. staging).
-  VOICEAI_AGENTS_BASE_URL    Override the agents API base URL (used by \`whoami\`).
+  VOICEAI_AGENTS_BASE_URL    Override the agents API base URL (used by \`whoami\` and \`login\`).
 
   Env vars override anything in ~/.config/voiceai/config.json.
 `;
@@ -36,8 +42,11 @@ export async function runFlagMode(argv: string[]): Promise<void> {
     )
     .version(pkg.version)
     .option("--debug", "Enable verbose SDK logging (equivalent to VOICEAI_LOG=debug)")
+    .option("--profile <name>", "Use a named credential profile (see `voiceai config profiles`)")
     .hook("preAction", (thisCmd) => {
-      if (thisCmd.opts().debug) process.env.VOICEAI_LOG = "debug";
+      const opts = thisCmd.opts() as { debug?: boolean; profile?: string };
+      if (opts.debug) process.env.VOICEAI_LOG = "debug";
+      if (opts.profile) setActiveProfile(opts.profile);
     })
     .addHelpText("afterAll", ROOT_EPILOGUE);
 
@@ -47,6 +56,7 @@ export async function runFlagMode(argv: string[]): Promise<void> {
   program.addCommand(modelsCommand());
   program.addCommand(voicesCommand());
   program.addCommand(whoamiCommand());
+  program.addCommand(loginCommand());
 
   await program.parseAsync(argv, { from: "user" });
 }

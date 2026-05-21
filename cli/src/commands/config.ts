@@ -1,6 +1,17 @@
 import { Command } from "commander";
 import { createInterface } from "node:readline/promises";
-import { load, reset, save } from "../lib/config";
+import {
+  addProfile,
+  currentProfile,
+  listProfiles,
+  load,
+  profileExists,
+  removeProfile,
+  reset,
+  save,
+  useProfile,
+  DEFAULT_PROFILE,
+} from "../lib/config";
 
 const CONFIG_EPILOGUE = `
 KEYS
@@ -14,14 +25,25 @@ KEYS
   defaultTtsVoice     Skip the TTS voice picker (requires defaultTtsModel).
   defaultSttModel     Skip the STT model picker in the TUI.
 
-EXAMPLES
-  $ voiceai config set apiKey zpka_…
-  $ voiceai config set defaultTtsModel slng/deepgram/aura:2-en
-  $ voiceai config get                                show everything (apiKey masked)
-  $ voiceai config reset --force                      wipe ~/.config/voiceai (and legacy slng dir)
+PROFILES
+  Each profile is a named set of credentials and settings, stored together in
+  ~/.config/voiceai/config.json. Switch the persistent default with
+  \`voiceai config use <name>\` or override per command with --profile.
 
-  Or open the interactive Settings screen by running \`voiceai\` with no args.
+EXAMPLES
+  $ voiceai config set apiKey zpka_…                  write to the current profile
+  $ voiceai config set --profile work apiKey zpka_…   write to a specific profile
+  $ voiceai config profiles                           list profiles, * marks the current one
+  $ voiceai config use work                           set persistent default to "work"
+  $ voiceai config add staging                        interactive add (use \`voiceai login\` instead)
+  $ voiceai config remove staging                     delete a profile
+  $ voiceai config get                                show the current profile (apiKey masked)
+  $ voiceai config reset --force                      wipe ~/.config/voiceai (and legacy slng dir)
 `;
+
+interface WithProfileOpts {
+  profile?: string;
+}
 
 export function configCommand(): Command {
   const cmd = new Command("config")
@@ -30,9 +52,10 @@ export function configCommand(): Command {
 
   cmd
     .command("get [key]")
-    .description("Print one or all config values (apiKey is masked)")
-    .action((key?: string) => {
-      const cfg = load();
+    .description("Print one or all config values for a profile (apiKey is masked)")
+    .option("--profile <name>", "Read from a specific profile (default: current)")
+    .action((key: string | undefined, opts: WithProfileOpts) => {
+      const cfg = load(opts.profile);
       if (!key) {
         console.log(JSON.stringify({ ...cfg, apiKey: maskKey(cfg.apiKey) }, null, 2));
         return;
@@ -44,10 +67,88 @@ export function configCommand(): Command {
 
   cmd
     .command("set <key> <value>")
-    .description("Persist a config value to ~/.config/voiceai/config.json")
-    .action((key: string, value: string) => {
-      const merged = save({ [key]: value });
-      console.log(`${key} = ${key === "apiKey" ? maskKey(merged.apiKey) : merged[key as keyof typeof merged]}`);
+    .description("Persist a config value (default: into the current profile)")
+    .option("--profile <name>", "Write to a specific profile (default: current)")
+    .action((key: string, value: string, opts: WithProfileOpts) => {
+      const merged = save({ [key]: value }, { profile: opts.profile });
+      const echoed = key === "apiKey" ? maskKey(merged.apiKey) : (merged as Record<string, unknown>)[key];
+      console.log(`${key} = ${echoed} (profile: ${opts.profile ?? currentProfile()})`);
+    });
+
+  cmd
+    .command("profiles")
+    .alias("list")
+    .description("List configured profiles (marks the current one with *)")
+    .action(() => {
+      const names = listProfiles();
+      const active = currentProfile();
+      if (names.length === 0) {
+        console.log("(no profiles yet — run `voiceai login` to create one)");
+        return;
+      }
+      for (const name of names) {
+        console.log(`${name === active ? "*" : " "} ${name}`);
+      }
+    });
+
+  cmd
+    .command("use <name>")
+    .description("Set the persistent default profile")
+    .action((name: string) => {
+      useProfile(name);
+      console.log(`current profile: ${name}`);
+    });
+
+  cmd
+    .command("add <name>")
+    .description("Create a new profile interactively (prompts for apiKey and optional baseUrl)")
+    .option("-f, --force", "overwrite if a profile with this name already exists")
+    .action(async (name: string, opts: { force?: boolean }) => {
+      if (profileExists(name) && !opts.force) {
+        console.error(`profile "${name}" already exists. Pass --force to overwrite, or \`config set --profile ${name}\` to update fields.`);
+        process.exit(1);
+      }
+      if (!process.stdin.isTTY) {
+        console.error("voiceai config add: refusing to prompt non-interactively. Use `config set --profile <name> apiKey <token>` instead.");
+        process.exit(1);
+      }
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      try {
+        const apiKey = (await rl.question("API key: ")).trim();
+        if (!apiKey) {
+          console.error("aborted: no API key provided.");
+          process.exit(1);
+        }
+        const baseUrl = (await rl.question("Base URL (optional, press enter to skip): ")).trim();
+        if (opts.force && profileExists(name)) removeProfile(name);
+        addProfile(name, { apiKey, ...(baseUrl ? { baseUrl } : {}) });
+        console.log(`added profile "${name}". Use \`voiceai config use ${name}\` to make it the default.`);
+      } finally {
+        rl.close();
+      }
+    });
+
+  cmd
+    .command("remove <name>")
+    .alias("rm")
+    .description("Delete a profile")
+    .option("-f, --force", "delete even if it's the current profile")
+    .action((name: string, opts: { force?: boolean }) => {
+      if (!profileExists(name)) {
+        console.error(`profile "${name}" not found.`);
+        process.exit(1);
+      }
+      const active = currentProfile();
+      if (name === active && !opts.force) {
+        console.error(`refusing to remove the current profile ("${name}"). Switch with \`voiceai config use <other>\` first, or pass --force.`);
+        process.exit(1);
+      }
+      removeProfile(name);
+      const newCurrent = currentProfile();
+      console.log(`removed profile "${name}".`);
+      if (name === active) {
+        console.log(`current profile is now: ${newCurrent}${profileExists(newCurrent) ? "" : " (no profiles remain)"}`);
+      }
     });
 
   cmd
@@ -86,3 +187,6 @@ function maskKey(k?: string): string {
   if (k.length < 12) return "********";
   return `${k.slice(0, 8)}...${k.slice(-4)}`;
 }
+
+// Re-export so other modules can keep the same import surface.
+export { DEFAULT_PROFILE };

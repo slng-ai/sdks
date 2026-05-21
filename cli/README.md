@@ -62,16 +62,40 @@ Or right-click `voiceai` in Finder and choose **Open** once.
 
 ## Configure
 
-Drop your API key into `~/.config/voiceai/config.json`:
+The fastest way:
+
+```sh
+voiceai login                          # interactive: prompts for profile name + key, verifies it
+```
+
+Or set values directly:
 
 ```sh
 voiceai config set apiKey zpka_…
 ```
 
-Or set `VOICEAI_API_KEY` in your environment. The first time you launch
-the TUI without a key, it'll prompt for one and save it.
+You can also set `VOICEAI_API_KEY` in your environment. The first time you
+launch the TUI without a key, it'll prompt for one and save it.
 
 Get a key at <https://app.slng.ai/api-keys>.
+
+### Profiles
+
+Credentials and settings live in named profiles, AWS-style. Run `voiceai
+login` (or `voiceai config add <name>`) to create one; switch with
+`voiceai config use <name>`; override per command with `--profile <name>`
+or `VOICEAI_PROFILE=<name>`.
+
+```sh
+voiceai login --profile work           # create / update the "work" profile
+voiceai config profiles                # list all profiles (★ marks the current)
+voiceai config use work                # persistent default
+voiceai --profile default whoami       # one-off override
+voiceai config remove staging          # delete a profile
+```
+
+The TUI's **Settings → Profile** menu does the same things interactively
+(add, switch, remove with confirmation).
 
 ## Quick start
 
@@ -86,7 +110,8 @@ voiceai stt --stream                           # live mic → transcripts
 
 `voiceai` with no args opens the TUI. It remembers your last-used model
 and voice in `~/.config/voiceai/config.json`, so subsequent runs skip the
-pickers.
+pickers. The **Settings → Profile** menu lets you switch, add, or remove
+profiles without leaving the TUI.
 
 **TTS flow**
 
@@ -182,11 +207,16 @@ voiceai whoami --json | jq .ok
 ### Configuration
 
 ```sh
-voiceai config get                         # print everything (apiKey masked)
+voiceai config get                         # print the current profile (apiKey masked)
 voiceai config get defaultTtsModel         # single value
-voiceai config set apiKey zpka_…
+voiceai config set apiKey zpka_…           # write to the current profile
+voiceai config set --profile work apiKey zpka_…   # write to a specific profile
 voiceai config set defaultTtsModel slng/deepgram/aura:2-en
 voiceai config set defaultTtsVoice amalthea
+voiceai config profiles                    # list profiles (★ marks the current)
+voiceai config use work                    # set persistent default
+voiceai config add staging                 # add a profile interactively
+voiceai config remove staging              # delete a profile
 voiceai config reset --force               # wipe ~/.config/voiceai + legacy slng dir
 ```
 
@@ -201,7 +231,25 @@ to also clear the `$TMPDIR/voiceai-tts/` replay cache.
 
 ## Configuration reference
 
-`~/.config/voiceai/config.json`. Env vars override the file.
+`~/.config/voiceai/config.json` stores one or more named profiles:
+
+```json
+{
+  "currentProfile": "default",
+  "profiles": {
+    "default": { "apiKey": "zpka_…", "defaultTtsModel": "slng/deepgram/aura:2-en" },
+    "work":    { "apiKey": "zpka_…", "baseUrl": "https://stageapi.slng.ai" }
+  }
+}
+```
+
+The file is written with mode `0600`. Older flat-shaped configs auto-migrate
+into a `default` profile on first run.
+
+Profile resolution precedence (highest wins): `--profile <name>` flag →
+`VOICEAI_PROFILE` env → `currentProfile` in the file → literal `"default"`.
+
+Per-profile keys (env overrides apply to the resolved profile):
 
 | Key | Env override | Description |
 |---|---|---|
@@ -215,10 +263,12 @@ to also clear the `$TMPDIR/voiceai-tts/` replay cache.
 | `defaultSttMode` | — | `mic` or `file` — skip the source picker. |
 | `defaultSttInput` | — | Audio input device for mic mode (skip device picker). |
 
-Additional environment variable:
+Additional environment variables:
 
 | Env var | Description |
 |---|---|
+| `VOICEAI_PROFILE` | Select a named profile (overridden by `--profile`). |
+| `VOICEAI_AGENTS_BASE_URL` | Override the agents API base URL (used by `whoami` and `login`). |
 | `VOICEAI_LOG` | `debug` for verbose SDK logging (also enabled by `--debug`). |
 
 ## External audio dependencies
