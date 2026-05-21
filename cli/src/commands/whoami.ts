@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { requireApiKey } from "../lib/config";
+import { currentProfile, requireApiKey } from "../lib/config";
 
 const DEFAULT_AGENTS_BASE_URL = "https://api.agents.slng.ai";
 
@@ -14,6 +14,7 @@ EXAMPLES
 `)
     .action(async (opts) => {
       const apiKey = requireApiKey();
+      const profile = currentProfile();
       const baseUrl = process.env.VOICEAI_AGENTS_BASE_URL ?? DEFAULT_AGENTS_BASE_URL;
       const url = `${baseUrl}/v1/agents`;
       const masked = maskKey(apiKey);
@@ -24,7 +25,7 @@ EXAMPLES
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (opts.json) {
-          console.log(JSON.stringify({ ok: false, error: message, masked_key: masked }));
+          console.log(JSON.stringify({ ok: false, error: message, masked_key: masked, profile }));
         } else {
           console.error(`Network error: ${message}`);
         }
@@ -43,19 +44,19 @@ EXAMPLES
           // body not JSON or unexpected shape — still a successful auth
         }
         if (opts.json) {
-          console.log(JSON.stringify({ ok: true, status: 200, masked_key: masked, agents_count: agentsCount }));
+          console.log(JSON.stringify({ ok: true, status: 200, masked_key: masked, profile, agents_count: agentsCount }));
         } else {
           const tail = agentsCount === undefined ? "" : ` · ${agentsCount} agent${agentsCount === 1 ? "" : "s"}`;
-          console.log(`Authenticated as ${masked}${tail}`);
+          console.log(`Authenticated as ${masked} (profile: ${profile})${tail}`);
         }
         return;
       }
 
       if (res.status === 401) {
         if (opts.json) {
-          console.log(JSON.stringify({ ok: false, status: 401, masked_key: masked }));
+          console.log(JSON.stringify({ ok: false, status: 401, masked_key: masked, profile }));
         } else {
-          console.error(`Authentication failed (401). The key may be invalid or revoked.`);
+          console.error(`Authentication failed (401) for profile "${profile}". The key may be invalid or revoked.`);
         }
         process.exit(1);
       }
@@ -67,7 +68,7 @@ EXAMPLES
         // ignore
       }
       if (opts.json) {
-        console.log(JSON.stringify({ ok: false, status: res.status, masked_key: masked, body: snippet }));
+        console.log(JSON.stringify({ ok: false, status: res.status, masked_key: masked, profile, body: snippet }));
       } else {
         console.error(`Unexpected response: ${res.status} ${res.statusText}${snippet ? ` — ${snippet}` : ""}`);
       }

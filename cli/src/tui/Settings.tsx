@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
-import { load, save } from "../lib/config";
+import { currentProfile, load, save } from "../lib/config";
+import { Profiles } from "./Profiles";
 import { listInputs } from "../lib/audio";
 import {
   allRegions,
@@ -18,6 +19,7 @@ import {
 import { SlngFirstItem } from "./SlngFirstItem";
 
 type Field =
+  | "profile"
   | "apiKey"
   | "region"
   | "worldPart"
@@ -64,6 +66,17 @@ export function Settings({ onExit }: Props): React.ReactElement {
     setEditing(null);
     setDraft("");
   };
+
+  if (editing === "profile") {
+    return (
+      <Profiles
+        onExit={() => {
+          setCfg(load());
+          setEditing(null);
+        }}
+      />
+    );
+  }
 
   if (editing === "apiKey") {
     return (
@@ -213,6 +226,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
       <Box flexDirection="column" marginTop={1}>
         <SelectInput
           items={[
+            { label: `Profile:           ${currentProfile()} ▾`, value: "profile" as Field },
             { label: `API key:           ${mask(cfg.apiKey)}`, value: "apiKey" as Field },
             { label: `Region:            ${cfg.region ?? "(auto)"}`, value: "region" as Field },
             { label: `World part:        ${cfg.worldPart ?? "(auto)"}`, value: "worldPart" as Field },
