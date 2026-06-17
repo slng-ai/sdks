@@ -71,7 +71,7 @@ voiceai login                          # interactive: prompts for profile name +
 Or set values directly:
 
 ```sh
-voiceai config set apiKey zpka_…
+voiceai config set apiKey slng_cu_…
 ```
 
 You can also set `VOICEAI_API_KEY` in your environment. The first time you
@@ -199,7 +199,7 @@ voiceai voices --model slng/deepgram/aura:2-en --json | jq '.[] | .name'
 ### Auth check
 
 ```sh
-# Verify VOICEAI_API_KEY against the agents API (no TTS/STT credits used).
+# Verify VOICEAI_API_KEY against GET /v1/me (no TTS/STT credits used).
 voiceai whoami
 voiceai whoami --json | jq .ok
 ```
@@ -209,8 +209,8 @@ voiceai whoami --json | jq .ok
 ```sh
 voiceai config get                         # print the current profile (apiKey masked)
 voiceai config get defaultTtsModel         # single value
-voiceai config set apiKey zpka_…           # write to the current profile
-voiceai config set --profile work apiKey zpka_…   # write to a specific profile
+voiceai config set apiKey slng_cu_…           # write to the current profile
+voiceai config set --profile work apiKey slng_cu_…   # write to a specific profile
 voiceai config set defaultTtsModel slng/deepgram/aura:2-en
 voiceai config set defaultTtsVoice amalthea
 voiceai config profiles                    # list profiles (★ marks the current)
@@ -237,8 +237,8 @@ to also clear the `$TMPDIR/voiceai-tts/` replay cache.
 {
   "currentProfile": "default",
   "profiles": {
-    "default": { "apiKey": "zpka_…", "defaultTtsModel": "slng/deepgram/aura:2-en" },
-    "work":    { "apiKey": "zpka_…", "baseUrl": "https://stageapi.slng.ai" }
+    "default": { "apiKey": "slng_cu_…", "defaultTtsModel": "slng/deepgram/aura:2-en" },
+    "work":    { "apiKey": "slng_cu_…", "baseUrl": "https://stageapi.slng.ai" }
   }
 }
 ```
@@ -253,7 +253,7 @@ Per-profile keys (env overrides apply to the resolved profile):
 
 | Key | Env override | Description |
 |---|---|---|
-| `apiKey` | `VOICEAI_API_KEY` | Bearer token (zpka_…). |
+| `apiKey` | `VOICEAI_API_KEY` | Bearer token (slng_cu_…). |
 | `baseUrl` | `VOICEAI_BASE_URL` | Override the API base URL (e.g. `https://stageapi.slng.ai`). |
 | `region` | — | Pin every request to a region (auto if unset). |
 | `worldPart` | — | Pin every request to a world-part (auto if unset). |
@@ -268,7 +268,6 @@ Additional environment variables:
 | Env var | Description |
 |---|---|
 | `VOICEAI_PROFILE` | Select a named profile (overridden by `--profile`). |
-| `VOICEAI_AGENTS_BASE_URL` | Override the agents API base URL (used by `whoami` and `login`). |
 | `VOICEAI_LOG` | `debug` for verbose SDK logging (also enabled by `--debug`). |
 
 ## External audio dependencies

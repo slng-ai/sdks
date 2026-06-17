@@ -55,6 +55,9 @@ resources:
   speech_to_text:
     methods:
       create: post /v1/bridges/unmute/stt/{model_variant}
+  me:
+    methods:
+      retrieve: get /v1/me
 
 settings:
   # All generated integration tests that hit the steady mock http server are marked

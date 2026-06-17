@@ -1,0 +1,138 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "version": "0.1.0",
+    "title": "SLNG Account API",
+    "description": "Retrieve information about the authenticated account, including the organization and the API key in use."
+  },
+  "servers": [
+    {
+      "url": "https://api.slng.ai",
+      "description": "Production"
+    },
+    {
+      "url": "https://stageapi.slng.ai",
+      "description": "Staging"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Account",
+      "description": "Inspect the authenticated account and organization."
+    }
+  ],
+  "paths": {
+    "/v1/me": {
+      "get": {
+        "summary": "Get current account",
+        "description": "Return the account, organization, and API key associated with the bearer token in the request. Use this to confirm which key is in use and which organization and plan tier it belongs to.",
+        "operationId": "meGet",
+        "tags": ["Account"],
+        "responses": {
+          "200": {
+            "description": "The authenticated account.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Account" },
+                "example": {
+                  "name": "Bruce Wayne",
+                  "email": "batman@wayne.com",
+                  "org_id": "7c3e9a14-2b6f-4d80-9e51-1a2b3c4d5e6f",
+                  "org_name": "Wayne Corp",
+                  "api_key_label": "batcave laptop",
+                  "tier": "hobby"
+                }
+              }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API key from the SLNG dashboard."
+      }
+    },
+    "responses": {
+      "Forbidden": {
+        "description": "Missing or invalid API key.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "API key id not found" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal server error.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "Internal server error" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "Error envelope. A short, user-presentable string only — no internal codes, stack traces, or upstream raw text.",
+        "required": ["error"],
+        "additionalProperties": false,
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "description": "The account associated with the authenticated API key.",
+        "required": ["name", "email", "org_id", "org_name", "api_key_label", "tier"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name of the account owner.",
+            "example": "Bruce Wayne"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Email address of the account owner.",
+            "example": "batman@wayne.com"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier of the organization the account belongs to.",
+            "example": "7c3e9a14-2b6f-4d80-9e51-1a2b3c4d5e6f"
+          },
+          "org_name": {
+            "type": "string",
+            "description": "Display name of the organization.",
+            "example": "Wayne Corp"
+          },
+          "api_key_label": {
+            "type": "string",
+            "description": "Label of the API key used to authenticate the request.",
+            "example": "batcave laptop"
+          },
+          "tier": {
+            "type": "string",
+            "description": "Plan tier of the organization.",
+            "example": "hobby"
+          }
+        }
+      }
+    }
+  }
+}

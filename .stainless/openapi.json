@@ -9,10 +9,10 @@ info:
 servers:
   - url: https://api.slng.ai
     description: Production
-    x-api-token: zpka_your_api_key_here
+    x-api-token: slng_cu_your_api_key_here
   - url: https://stageapi.slng.ai
     description: Staging
-    x-api-token: zpka_your_api_key_here
+    x-api-token: slng_cu_your_api_key_here
 security:
   - BearerAuth: []
 paths:
@@ -121,6 +121,31 @@ paths:
       x-slng-service-type: bridges
       x-slng-provider-id: unmute
       x-slng-provider-name: Unmute (SLNG official)
+  /v1/me:
+    get:
+      operationId: meGet
+      summary: Get current account
+      description: Return the account, organization, and API key associated with the bearer token in the request. Use this to confirm which key is in use and which organization and plan tier it belongs to.
+      tags:
+        - Account
+      responses:
+        "200":
+          description: The authenticated account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+              example:
+                name: Bruce Wayne
+                email: batman@wayne.com
+                org_id: 7c3e9a14-2b6f-4d80-9e51-1a2b3c4d5e6f
+                org_name: Wayne Corp
+                api_key_label: batcave laptop
+                tier: hobby
+        "403":
+          $ref: "#/components/responses/AccountForbidden"
+        "500":
+          $ref: "#/components/responses/AccountInternalError"
 tags:
   - name: Unmute STT Bridge
     description: SLNG native WebSocket STT protocol bridge.
@@ -130,6 +155,8 @@ tags:
     description: Grouping by service type (Bridges).
   - name: "Provider: Unmute (SLNG official)"
     description: Grouping by provider (Unmute (SLNG official)).
+  - name: Account
+    description: Inspect the authenticated account and organization.
 components:
   responses:
     TtsSynthesisSuccess:
@@ -186,7 +213,69 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/CognigySTTTranscriptionResponse"
+    AccountForbidden:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AccountError"
+          example:
+            error: API key id not found
+    AccountInternalError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AccountError"
+          example:
+            error: Internal server error
   schemas:
+    Account:
+      type: object
+      description: The account associated with the authenticated API key.
+      required:
+        - name
+        - email
+        - org_id
+        - org_name
+        - api_key_label
+        - tier
+      properties:
+        name:
+          type: string
+          description: Display name of the account owner.
+          example: Bruce Wayne
+        email:
+          type: string
+          format: email
+          description: Email address of the account owner.
+          example: batman@wayne.com
+        org_id:
+          type: string
+          format: uuid
+          description: Unique identifier of the organization the account belongs to.
+          example: 7c3e9a14-2b6f-4d80-9e51-1a2b3c4d5e6f
+        org_name:
+          type: string
+          description: Display name of the organization.
+          example: Wayne Corp
+        api_key_label:
+          type: string
+          description: Label of the API key used to authenticate the request.
+          example: batcave laptop
+        tier:
+          type: string
+          description: Plan tier of the organization.
+          example: hobby
+    AccountError:
+      type: object
+      description: Error envelope for the Account API. A short, user-presentable string only.
+      required:
+        - error
+      additionalProperties: false
+      properties:
+        error:
+          type: string
     AudioBinary:
       type: string
       format: binary
