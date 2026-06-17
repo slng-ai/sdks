@@ -159,7 +159,9 @@ jobs:
             echo "sha_${asset//-/_}=$sha" >> "$GITHUB_OUTPUT"
           done
 
-      - name: update formula in tap repo
+      # The tap's `main` is a protected branch, so we can't push to it directly.
+      # Open a PR instead and let it merge through the tap's normal review/checks.
+      - name: open formula bump PR in tap repo
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         run: |
@@ -222,10 +224,23 @@ jobs:
 
           git config user.name  "voiceai-release-bot"
           git config user.email "noreply@slng.ai"
+
           git add Formula/voiceai.rb
           if git diff --cached --quiet; then
             echo "Formula unchanged, nothing to commit"
             exit 0
           fi
+
+          branch="voiceai-${version}"
+          git checkout -b "$branch"
           git commit -m "voiceai ${version}"
-          git push origin HEAD
+          # Force in case a previous run left a stale branch for this version.
+          git push --force origin "$branch"
+
+          gh pr create \
+            --repo slng-ai/homebrew-tap \
+            --base main \
+            --head "$branch" \
+            --title "voiceai ${version}" \
+            --body "Automated formula bump for voiceai ${version}, released from slng-ai/sdks at \`cli-v${version}\`." \
+            || echo "PR already exists for ${branch}; updated the branch in place."
