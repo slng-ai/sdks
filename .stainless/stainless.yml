@@ -58,6 +58,28 @@ resources:
   me:
     methods:
       retrieve: get /v1/me
+  agents:
+    methods:
+      list: get /v1/agents
+      create: post /v1/agents
+      retrieve: get /v1/agents/{agent_id}
+      update: patch /v1/agents/{agent_id}
+      replace: put /v1/agents/{agent_id}
+      delete: delete /v1/agents/{agent_id}
+      duplicate: post /v1/agents/{agent_id}/duplicate
+    subresources:
+      calls:
+        methods:
+          create: post /v1/agents/{agent_id}/calls
+          list: get /v1/agents/{agent_id}/calls
+          retrieve: get /v1/agents/{agent_id}/calls/{call_id}
+        subresources:
+          tool_executions:
+            methods:
+              create: post /v1/agents/{agent_id}/calls/{call_id}/tool-executions
+      web_sessions:
+        methods:
+          create: post /v1/agents/{agent_id}/web-sessions
 
 settings:
   # All generated integration tests that hit the steady mock http server are marked

@@ -19,6 +19,8 @@ KEYS
                       Overridden by VOICEAI_API_KEY env.
   baseUrl             Override the API base URL. Default: https://api.slng.ai.
                       Overridden by VOICEAI_BASE_URL env.
+  agentsBaseUrl       Voice Agents API base URL (used by \`voiceai agents …\`).
+                      Default: https://api.agents.slng.ai. Overridden by VOICEAI_AGENTS_BASE_URL.
   region              Force a region for every request (auto if unset).
   worldPart           Force a world-part for every request (auto if unset).
   defaultTtsModel     Skip the TTS model picker in the TUI.
