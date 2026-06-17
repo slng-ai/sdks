@@ -2,7 +2,7 @@
 // Live smoke test against the real Slng API.
 //
 // Usage:
-//   SLNG_API_KEY=zpka_... bun scripts/smoke-test.ts
+//   SLNG_API_KEY=slng_cu_... bun scripts/smoke-test.ts
 //
 // Imports the Stainless-generated SDK directly from the working copy at
 // sdks/slng-typescript/src — skips the build step. If you want to exercise

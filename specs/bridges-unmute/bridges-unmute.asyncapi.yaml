@@ -43,14 +43,14 @@ servers:
     host: api.slng.ai
     protocol: wss
     description: Production
-    x-api-token: zpka_your_api_key_here
+    x-api-token: slng_cu_your_api_key_here
     security:
       - $ref: "#/components/securitySchemes/bearer"
   staging:
     host: stageapi.slng.ai
     protocol: wss
     description: Staging
-    x-api-token: zpka_your_api_key_here
+    x-api-token: slng_cu_your_api_key_here
     security:
       - $ref: "#/components/securitySchemes/bearer"
 channels:

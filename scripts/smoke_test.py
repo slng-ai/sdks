@@ -2,7 +2,7 @@
 """Live smoke test against the real Slng API.
 
 Usage:
-    SLNG_API_KEY=zpka_... uv run --with-editable sdks/slng-python python scripts/smoke_test.py
+    SLNG_API_KEY=slng_cu_... uv run --with-editable sdks/slng-python python scripts/smoke_test.py
 """
 
 import os

@@ -1,7 +1,7 @@
 import { Command } from "commander";
-import { currentProfile, requireApiKey } from "../lib/config";
-
-const DEFAULT_AGENTS_BASE_URL = "https://api.agents.slng.ai";
+import ora from "ora";
+import { currentProfile, load, requireApiKey } from "../lib/config";
+import { type Account, verifyApiKey } from "../lib/verify";
 
 export function whoamiCommand(): Command {
   return new Command("whoami")
@@ -14,66 +14,70 @@ EXAMPLES
 `)
     .action(async (opts) => {
       const apiKey = requireApiKey();
+      const { baseUrl } = load();
       const profile = currentProfile();
-      const baseUrl = process.env.VOICEAI_AGENTS_BASE_URL ?? DEFAULT_AGENTS_BASE_URL;
-      const url = `${baseUrl}/v1/agents`;
       const masked = maskKey(apiKey);
 
-      let res: Response;
-      try {
-        res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+      const spinner =
+        !opts.json && process.stdout.isTTY
+          ? ora({ text: "Checking your key", color: "yellow", spinner: "line" }).start()
+          : null;
+
+      const result = await verifyApiKey(apiKey, baseUrl);
+
+      if (result.error) {
         if (opts.json) {
-          console.log(JSON.stringify({ ok: false, error: message, masked_key: masked, profile }));
+          console.log(JSON.stringify({ ok: false, error: result.error, masked_key: masked, profile }));
         } else {
-          console.error(`Network error: ${message}`);
+          const msg = "Couldn't reach SLNG to check your key. Check your connection and try again.";
+          spinner ? spinner.fail(msg) : console.error(msg);
         }
         process.exit(1);
       }
 
-      if (res.status === 200) {
-        let agentsCount: number | undefined;
-        try {
-          const body = (await res.json()) as unknown;
-          if (Array.isArray(body)) agentsCount = body.length;
-          else if (body && typeof body === "object" && Array.isArray((body as { agents?: unknown[] }).agents)) {
-            agentsCount = (body as { agents: unknown[] }).agents.length;
-          }
-        } catch {
-          // body not JSON or unexpected shape — still a successful auth
-        }
+      if (result.ok) {
+        const account = result.account ?? {};
         if (opts.json) {
-          console.log(JSON.stringify({ ok: true, status: 200, masked_key: masked, profile, agents_count: agentsCount }));
+          console.log(JSON.stringify({ ok: true, status: 200, profile, masked_key: masked, account }));
         } else {
-          const tail = agentsCount === undefined ? "" : ` · ${agentsCount} agent${agentsCount === 1 ? "" : "s"}`;
-          console.log(`Authenticated as ${masked} (profile: ${profile})${tail}`);
+          const line = formatAccount(account, profile, masked);
+          spinner ? spinner.succeed(line) : console.log(line);
         }
         return;
       }
 
-      if (res.status === 401) {
+      // The gateway may return 401; /v1/me itself returns 403 for a bad key.
+      if (result.status === 401 || result.status === 403) {
         if (opts.json) {
-          console.log(JSON.stringify({ ok: false, status: 401, masked_key: masked, profile }));
+          console.log(JSON.stringify({ ok: false, status: result.status, masked_key: masked, profile }));
         } else {
-          console.error(`Authentication failed (401) for profile "${profile}". The key may be invalid or revoked.`);
+          const msg = `That key didn't work for profile "${profile}". It may be invalid or revoked.`;
+          spinner ? spinner.fail(msg) : console.error(msg);
         }
         process.exit(1);
       }
 
-      let snippet = "";
-      try {
-        snippet = (await res.text()).slice(0, 200);
-      } catch {
-        // ignore
-      }
       if (opts.json) {
-        console.log(JSON.stringify({ ok: false, status: res.status, masked_key: masked, profile, body: snippet }));
+        console.log(JSON.stringify({ ok: false, status: result.status, masked_key: masked, profile, body: result.body ?? "" }));
       } else {
-        console.error(`Unexpected response: ${res.status} ${res.statusText}${snippet ? ` — ${snippet}` : ""}`);
+        const msg = `Couldn't check your key right now (status ${result.status}). Try again.`;
+        spinner ? spinner.warn(msg) : console.error(msg);
       }
       process.exit(1);
     });
+}
+
+function formatAccount(account: Account, profile: string, masked: string): string {
+  const who = account.email
+    ? `${account.name ?? "?"} <${account.email}>`
+    : account.name ?? masked;
+  const parts = [`Signed in as ${who}`];
+  if (account.org_name) {
+    parts.push(account.tier ? `${account.org_name} (${account.tier})` : account.org_name);
+  }
+  if (account.api_key_label) parts.push(`key "${account.api_key_label}"`);
+  parts.push(`profile: ${profile}`);
+  return parts.join(" · ");
 }
 
 function maskKey(k: string): string {

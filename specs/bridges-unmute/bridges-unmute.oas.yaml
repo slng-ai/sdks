@@ -9,10 +9,10 @@ info:
 servers:
   - url: https://api.slng.ai
     description: Production
-    x-api-token: zpka_your_api_key_here
+    x-api-token: slng_cu_your_api_key_here
   - url: https://stageapi.slng.ai
     description: Staging
-    x-api-token: zpka_your_api_key_here
+    x-api-token: slng_cu_your_api_key_here
 security:
   - BearerAuth: []
 paths:

@@ -9,6 +9,8 @@ import {
   removeProfile,
   useProfile,
 } from "../lib/config";
+import { verifyApiKey } from "../lib/verify";
+import { BrandSpinner } from "./BrandSpinner";
 
 type Mode =
   | { kind: "list" }
@@ -27,6 +29,7 @@ export function Profiles({ onExit }: Props): React.ReactElement {
   const [mode, setMode] = useState<Mode>({ kind: "list" });
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string>("");
+  const [checking, setChecking] = useState(false);
   // Bump to force the list view to re-read currentProfile/listProfiles after
   // a mutation. The lib reads from disk on every call, so bumping a key is
   // enough to trigger a render with fresh values.
@@ -41,6 +44,7 @@ export function Profiles({ onExit }: Props): React.ReactElement {
       setMode({ kind: "list" });
       setDraft("");
       setError("");
+      setChecking(false);
     }
   });
 
@@ -92,19 +96,41 @@ export function Profiles({ onExit }: Props): React.ReactElement {
         <Text bold>New profile: {mode.name}</Text>
         <Box marginTop={1}>
           <Text color="yellow">API key </Text>
-          <Text dimColor>(zpka_…) </Text>
+          <Text dimColor>(slng_cu_…) </Text>
           <TextInput
             value={draft}
             onChange={(v) => {
               setDraft(v);
               if (error) setError("");
             }}
-            onSubmit={(raw) => {
+            onSubmit={async (raw) => {
+              if (checking) return;
               const apiKey = raw.trim();
               if (!apiKey) {
                 setError("API key is required.");
                 return;
               }
+              if (!apiKey.startsWith("slng_")) {
+                setError("That doesn't look like a Slng API key (expected slng_cu_…).");
+                return;
+              }
+
+              // Verify against /v1/me before persisting the profile.
+              setError("");
+              setChecking(true);
+              const result = await verifyApiKey(apiKey);
+              setChecking(false);
+              if (!result.ok) {
+                if (result.status === 401 || result.status === 403) {
+                  setError("That key didn't work. Check it and try again.");
+                } else if (result.error) {
+                  setError("Couldn't reach SLNG to check your key. Check your connection and try again.");
+                } else {
+                  setError(`Couldn't check your key right now (status ${result.status}). Try again.`);
+                }
+                return;
+              }
+
               try {
                 addProfile(mode.name, { apiKey });
                 useProfile(mode.name);
@@ -117,7 +143,14 @@ export function Profiles({ onExit }: Props): React.ReactElement {
             mask="*"
           />
         </Box>
-        {error && (
+        {checking && (
+          <Box marginTop={1}>
+            <Text>
+              <BrandSpinner /> Checking your key…
+            </Text>
+          </Box>
+        )}
+        {error && !checking && (
           <Box marginTop={1}>
             <Text color="red">✗ {error}</Text>
           </Box>

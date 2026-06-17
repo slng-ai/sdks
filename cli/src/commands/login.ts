@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { createInterface } from "node:readline/promises";
+import ora from "ora";
 import {
   addProfile,
   currentProfile,
@@ -9,8 +10,7 @@ import {
   useProfile,
   DEFAULT_PROFILE,
 } from "../lib/config";
-
-const DEFAULT_AGENTS_BASE_URL = "https://api.agents.slng.ai";
+import { verifyApiKey } from "../lib/verify";
 
 export function loginCommand(): Command {
   return new Command("login")
@@ -42,7 +42,7 @@ EXAMPLES
           console.log(`creating new profile "${name}".`);
         }
 
-        const apiKey = (await rl.question("API key (zpka_…): ")).trim();
+        const apiKey = (await rl.question("API key (slng_cu_…): ")).trim();
         if (!apiKey) {
           console.error("aborted: no API key provided.");
           process.exit(1);
@@ -59,23 +59,23 @@ EXAMPLES
 
         if (opts.verify === false) return;
 
-        // Verify with the same /v1/agents probe whoami uses.
+        // Quietly check the key works before we hand back to the prompt.
         const cfg = load(name);
-        const agentsBase = process.env.VOICEAI_AGENTS_BASE_URL ?? DEFAULT_AGENTS_BASE_URL;
-        const url = `${agentsBase}/v1/agents`;
-        try {
-          const res = await fetch(url, { headers: { Authorization: `Bearer ${cfg.apiKey ?? apiKey}` } });
-          if (res.status === 200) {
-            console.log(`verified: key works against ${agentsBase}.`);
-          } else if (res.status === 401) {
-            console.error(`warning: key was saved but failed auth (401). Run \`voiceai login --profile ${name}\` again to fix.`);
-            process.exit(1);
-          } else {
-            console.error(`warning: unexpected status ${res.status} ${res.statusText} from ${agentsBase}.`);
-          }
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`warning: could not verify key (${message}). It was still saved.`);
+        const spinner = ora({ text: "Checking your key", color: "yellow", spinner: "line" }).start();
+        const result = await verifyApiKey(cfg.apiKey ?? apiKey, cfg.baseUrl);
+        if (result.ok) {
+          const account = result.account ?? {};
+          const detail = account.name
+            ? ` Signed in as ${account.name}${account.org_name ? `, ${account.org_name}` : ""}.`
+            : "";
+          spinner.succeed(`Key verified.${detail}`);
+        } else if (result.error) {
+          spinner.warn("Couldn't reach SLNG to check your key. It's saved; try again when you're back online.");
+        } else if (result.status === 401 || result.status === 403) {
+          spinner.fail(`That key didn't work. It's saved, but run \`voiceai login --profile ${name}\` again to fix it.`);
+          process.exit(1);
+        } else {
+          spinner.warn(`Couldn't check your key right now (status ${result.status}). It's saved.`);
         }
 
         if (currentProfile() !== name) {

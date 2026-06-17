@@ -15,7 +15,7 @@ import {
 
 const CONFIG_EPILOGUE = `
 KEYS
-  apiKey              Bearer token (zpka_…). Get one at https://app.slng.ai/api-keys.
+  apiKey              Bearer token (slng_cu_…). Get one at https://app.slng.ai/api-keys.
                       Overridden by VOICEAI_API_KEY env.
   baseUrl             Override the API base URL. Default: https://api.slng.ai.
                       Overridden by VOICEAI_BASE_URL env.
@@ -31,8 +31,8 @@ PROFILES
   \`voiceai config use <name>\` or override per command with --profile.
 
 EXAMPLES
-  $ voiceai config set apiKey zpka_…                  write to the current profile
-  $ voiceai config set --profile work apiKey zpka_…   write to a specific profile
+  $ voiceai config set apiKey slng_cu_…                  write to the current profile
+  $ voiceai config set --profile work apiKey slng_cu_…   write to a specific profile
   $ voiceai config profiles                           list profiles, * marks the current one
   $ voiceai config use work                           set persistent default to "work"
   $ voiceai config add staging                        interactive add (use \`voiceai login\` instead)
