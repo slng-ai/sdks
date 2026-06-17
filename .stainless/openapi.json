@@ -2874,6 +2874,44 @@ components:
         slngWhisper:
           summary: SLNG-hosted Whisper Large v3
           value: slng/openai/whisper:large-v3
+    AgentIdPath:
+      name: agent_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/UUID"
+      description: Voice agent ID.
+    CallIdPath:
+      name: call_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/UUID"
+      description: Call ID.
+    CallStatusQuery:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Filter calls by status.
+    PageQuery:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number (1-indexed).
+    PageSizeQuery:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+      description: Page size.
   securitySchemes:
     BearerAuth:
       type: http

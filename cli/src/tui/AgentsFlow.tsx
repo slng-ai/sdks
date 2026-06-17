@@ -1,0 +1,356 @@
+import React, { useEffect, useState } from "react";
+import { Box, Text, useInput } from "ink";
+import SelectInput from "ink-select-input";
+import TextInput from "ink-text-input";
+import { agentsRequest, formatAgentsError } from "../lib/agents";
+import { BrandSpinner } from "./BrandSpinner";
+
+interface Props {
+  onExit: () => void;
+}
+
+interface Agent {
+  id: string;
+  name?: string;
+  language?: string;
+  region?: string;
+  created_at?: string;
+}
+
+interface CallItem {
+  id?: string;
+  call_direction?: string;
+  status?: string;
+  phone_number?: string;
+  call_duration_ms?: number;
+}
+
+type Mode =
+  | { kind: "loading" }
+  | { kind: "list" }
+  | { kind: "detail"; agent: Agent }
+  | { kind: "dispatch"; agent: Agent }
+  | { kind: "calls"; agent: Agent; loading: boolean; items: CallItem[] }
+  | { kind: "confirm-delete"; agent: Agent }
+  | { kind: "busy"; label: string }
+  | { kind: "result"; title: string; lines: string[]; back: Mode }
+  | { kind: "error"; message: string; back: Mode };
+
+export function AgentsFlow({ onExit }: Props): React.ReactElement {
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [mode, setMode] = useState<Mode>({ kind: "loading" });
+  const [phone, setPhone] = useState("");
+
+  const loadAgents = async (): Promise<void> => {
+    setMode({ kind: "loading" });
+    const r = await agentsRequest<Agent[]>("GET", "/v1/agents");
+    if (!r.ok) {
+      setMode({ kind: "error", message: formatAgentsError(r), back: { kind: "list" } });
+      return;
+    }
+    setAgents(Array.isArray(r.data) ? r.data : []);
+    setMode({ kind: "list" });
+  };
+
+  useEffect(() => {
+    void loadAgents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Esc navigation. SelectInput/TextInput consume their own keys; esc still fires here.
+  useInput((_input, key) => {
+    if (!key.escape) return;
+    switch (mode.kind) {
+      case "list":
+        onExit();
+        break;
+      case "detail":
+        setMode({ kind: "list" });
+        break;
+      case "dispatch":
+      case "confirm-delete":
+        setMode({ kind: "detail", agent: mode.agent });
+        break;
+      case "calls":
+        setMode({ kind: "detail", agent: mode.agent });
+        break;
+      case "result":
+        setMode(mode.back);
+        break;
+      case "error":
+        setMode(mode.back);
+        break;
+      // loading / busy: ignore esc
+    }
+  });
+
+  // --- loading / busy / error ---------------------------------------------
+  if (mode.kind === "loading" || mode.kind === "busy") {
+    const label = mode.kind === "busy" ? mode.label : "Loading agents…";
+    return (
+      <Box marginTop={1} paddingX={1}>
+        <Text>
+          <BrandSpinner /> {label}
+        </Text>
+      </Box>
+    );
+  }
+
+  if (mode.kind === "error") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text color="red">✗ {mode.message}</Text>
+        <Text dimColor>esc to go back</Text>
+      </Box>
+    );
+  }
+
+  if (mode.kind === "result") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text color="green">✓ {mode.title}</Text>
+        {mode.lines.map((l, i) => (
+          <Text key={i}>{l}</Text>
+        ))}
+        <Box marginTop={1}>
+          <Text dimColor>esc to go back</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // --- list ----------------------------------------------------------------
+  if (mode.kind === "list") {
+    if (!agents.length) {
+      return (
+        <Box flexDirection="column" marginTop={1} paddingX={1}>
+          <Text bold>Agents</Text>
+          <Text dimColor>No agents yet. Create one with `voiceai agents create --file agent.json`.</Text>
+          <Box marginTop={1}>
+            <Text dimColor>esc to go back</Text>
+          </Box>
+        </Box>
+      );
+    }
+    const items = agents.map((a) => ({
+      label: `${a.name ?? "(unnamed)"}  ·  ${a.language ?? "?"}/${a.region ?? "?"}`,
+      value: a.id,
+    }));
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Agents ({agents.length})</Text>
+        <Box marginTop={1}>
+          <SelectInput
+            items={items}
+            limit={10}
+            onSelect={(item) => {
+              const agent = agents.find((a) => a.id === item.value);
+              if (agent) setMode({ kind: "detail", agent });
+            }}
+          />
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>↑↓ choose · enter open · esc back</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // --- detail (+ actions) --------------------------------------------------
+  if (mode.kind === "detail") {
+    const a = mode.agent;
+    const actions = [
+      { label: "📞  Dispatch a call", value: "dispatch" },
+      { label: "📋  View calls", value: "calls" },
+      { label: "🌐  Create web session", value: "websession" },
+      { label: "📑  Duplicate", value: "duplicate" },
+      { label: "🗑   Delete", value: "delete" },
+      { label: "←   Back to list", value: "back" },
+    ];
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>{a.name ?? "(unnamed)"}</Text>
+        <Text dimColor>id: {a.id}</Text>
+        <Text dimColor>
+          language: {a.language ?? "?"} · region: {a.region ?? "?"}
+          {a.created_at ? ` · created: ${a.created_at}` : ""}
+        </Text>
+        <Box marginTop={1}>
+          <SelectInput
+            items={actions}
+            onSelect={(item) => {
+              switch (item.value) {
+                case "dispatch":
+                  setPhone("");
+                  setMode({ kind: "dispatch", agent: a });
+                  break;
+                case "calls":
+                  void openCalls(a);
+                  break;
+                case "websession":
+                  void createWebSession(a);
+                  break;
+                case "duplicate":
+                  void duplicate(a);
+                  break;
+                case "delete":
+                  setMode({ kind: "confirm-delete", agent: a });
+                  break;
+                case "back":
+                  setMode({ kind: "list" });
+                  break;
+              }
+            }}
+          />
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>esc back · edit agents with `voiceai agents update --file`</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // --- dispatch a call -----------------------------------------------------
+  if (mode.kind === "dispatch") {
+    const a = mode.agent;
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Dispatch a call · {a.name ?? a.id}</Text>
+        <Box marginTop={1}>
+          <Text color="yellow">Phone (E.164) </Text>
+          <TextInput
+            value={phone}
+            onChange={setPhone}
+            placeholder="+15551234567"
+            onSubmit={(raw) => void dispatchCall(a, raw.trim())}
+          />
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>enter to dispatch · esc to cancel</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // --- calls list ----------------------------------------------------------
+  if (mode.kind === "calls") {
+    if (mode.loading) {
+      return (
+        <Box marginTop={1} paddingX={1}>
+          <Text>
+            <BrandSpinner /> Loading calls…
+          </Text>
+        </Box>
+      );
+    }
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Calls · {mode.agent.name ?? mode.agent.id}</Text>
+        {mode.items.length === 0 ? (
+          <Text dimColor>No calls yet.</Text>
+        ) : (
+          mode.items.map((c, i) => (
+            <Text key={c.id ?? i}>
+              {(c.status ?? "?").padEnd(10)} {(c.call_direction ?? "?").padEnd(9)} {c.phone_number ?? ""}
+              {typeof c.call_duration_ms === "number" ? ` · ${c.call_duration_ms}ms` : ""}
+            </Text>
+          ))
+        )}
+        <Box marginTop={1}>
+          <Text dimColor>esc to go back</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // --- confirm delete ------------------------------------------------------
+  if (mode.kind === "confirm-delete") {
+    const a = mode.agent;
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text color="red">Delete agent "{a.name ?? a.id}"? This can't be undone.</Text>
+        <Box marginTop={1}>
+          <SelectInput
+            items={[
+              { label: "No, keep it", value: "no" },
+              { label: "Yes, delete", value: "yes" },
+            ]}
+            onSelect={(item) => {
+              if (item.value === "yes") void doDelete(a);
+              else setMode({ kind: "detail", agent: a });
+            }}
+          />
+        </Box>
+        <Text dimColor>esc to cancel</Text>
+      </Box>
+    );
+  }
+
+  return <Text />;
+
+  // --- actions -------------------------------------------------------------
+
+  async function dispatchCall(agent: Agent, phoneNumber: string): Promise<void> {
+    if (!phoneNumber) return;
+    setMode({ kind: "busy", label: `Dispatching call to ${phoneNumber}…` });
+    const r = await agentsRequest<{ call_id?: string; message?: string }>("POST", `/v1/agents/${agent.id}/calls`, {
+      body: { phone_number: phoneNumber },
+    });
+    if (!r.ok) {
+      setMode({ kind: "error", message: formatAgentsError(r), back: { kind: "detail", agent } });
+      return;
+    }
+    setMode({
+      kind: "result",
+      title: "Call dispatched",
+      lines: [`call_id: ${r.data?.call_id ?? ""}`, ...(r.data?.message ? [r.data.message] : [])],
+      back: { kind: "detail", agent },
+    });
+  }
+
+  async function openCalls(agent: Agent): Promise<void> {
+    setMode({ kind: "calls", agent, loading: true, items: [] });
+    const r = await agentsRequest<{ items?: CallItem[] }>("GET", `/v1/agents/${agent.id}/calls`);
+    if (!r.ok) {
+      setMode({ kind: "error", message: formatAgentsError(r), back: { kind: "detail", agent } });
+      return;
+    }
+    setMode({ kind: "calls", agent, loading: false, items: r.data?.items ?? [] });
+  }
+
+  async function createWebSession(agent: Agent): Promise<void> {
+    setMode({ kind: "busy", label: "Creating web session…" });
+    const r = await agentsRequest<Record<string, string>>("POST", `/v1/agents/${agent.id}/web-sessions`, { body: {} });
+    if (!r.ok) {
+      setMode({ kind: "error", message: formatAgentsError(r), back: { kind: "detail", agent } });
+      return;
+    }
+    const d = r.data ?? {};
+    setMode({
+      kind: "result",
+      title: "Web session created",
+      lines: [`room: ${d.room_name ?? ""}`, `livekit_url: ${d.livekit_url ?? ""}`, `token: ${d.livekit_token ?? ""}`],
+      back: { kind: "detail", agent },
+    });
+  }
+
+  async function duplicate(agent: Agent): Promise<void> {
+    setMode({ kind: "busy", label: `Duplicating ${agent.name ?? agent.id}…` });
+    const r = await agentsRequest<Agent>("POST", `/v1/agents/${agent.id}/duplicate`, { body: {} });
+    if (!r.ok) {
+      setMode({ kind: "error", message: formatAgentsError(r), back: { kind: "detail", agent } });
+      return;
+    }
+    await loadAgents();
+  }
+
+  async function doDelete(agent: Agent): Promise<void> {
+    setMode({ kind: "busy", label: `Deleting ${agent.name ?? agent.id}…` });
+    const r = await agentsRequest("DELETE", `/v1/agents/${agent.id}`);
+    if (!r.ok) {
+      setMode({ kind: "error", message: formatAgentsError(r), back: { kind: "detail", agent } });
+      return;
+    }
+    await loadAgents();
+  }
+}
