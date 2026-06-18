@@ -271,7 +271,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
         <Text dimColor>id: {a.id}</Text>
         <Text dimColor>
           language: {a.language ?? "?"} · region: {a.region ?? "?"}
-          {a.created_at ? ` · created: ${a.created_at}` : ""}
+          {a.created_at ? ` · created: ${fmtDate(a.created_at)}` : ""}
         </Text>
         {!canDispatch && (
           <Text dimColor>No outbound number configured — call dispatch unavailable.</Text>
