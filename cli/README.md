@@ -233,6 +233,13 @@ voiceai agents calls tool-exec <agent_id> <call_id> --file result.json
 voiceai agents web-sessions create <agent_id>
 ```
 
+IDs are positional or named flags, whichever you prefer:
+
+```sh
+voiceai agents calls get a1b2 c3d4
+voiceai agents calls get --agent-id a1b2 --call-id c3d4   # equivalent
+```
+
 Every subcommand supports `--json`. On failure the exit code is non-zero and,
 with `--json`, the API's error body is printed to stdout.
 

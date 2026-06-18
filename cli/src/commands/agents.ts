@@ -58,6 +58,16 @@ function row(cells: (string | number | undefined | null)[]): string {
   return cells.map((c) => (c === undefined || c === null ? "" : String(c))).join("\t");
 }
 
+/** Resolve an id from either the positional arg or its named flag (positional wins). */
+function resolveId(what: string, flag: string, positional?: string, viaFlag?: string): string {
+  const v = positional ?? viaFlag;
+  if (!v) {
+    process.stderr.write(`missing ${what}: pass it positionally or with ${flag}.\n`);
+    process.exit(1);
+  }
+  return v;
+}
+
 // --- command tree ----------------------------------------------------------
 
 export function agentsCommand(): Command {
@@ -88,6 +98,7 @@ EXAMPLES
   $ voiceai agents calls list <id> --json | jq '.items[].status'
 
 NOTES
+  • IDs can be positional or named flags: \`agents calls get a1 c2\` == \`--agent-id a1 --call-id c2\`.
   • create/update/replace/tool-exec take a JSON body via --file <path> (or "-" for stdin).
   • Every command supports --json.
   • The interactive TUI (run \`voiceai\` with no args → Agents) browses agents and runs
@@ -123,10 +134,12 @@ NOTES
 
   // agents get <agent_id>
   cmd
-    .command("get <agent_id>")
+    .command("get [agent_id]")
     .description("Show a single agent")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
       const data = await send<Record<string, unknown>>(
         opts.json,
         `loading agent ${agentId}`,
@@ -156,11 +169,13 @@ NOTES
 
   // agents update <agent_id> --file (PATCH)
   cmd
-    .command("update <agent_id>")
+    .command("update [agent_id]")
     .description("Update an agent (partial, PATCH)")
     .requiredOption("-f, --file <path>", 'JSON body file ("-" for stdin)')
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
       const body = readJsonInput(opts.file);
       const data = await send<Record<string, unknown>>(
         opts.json,
@@ -175,11 +190,13 @@ NOTES
 
   // agents replace <agent_id> --file (PUT)
   cmd
-    .command("replace <agent_id>")
+    .command("replace [agent_id]")
     .description("Replace an agent (full, PUT)")
     .requiredOption("-f, --file <path>", 'JSON body file ("-" for stdin)')
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
       const body = readJsonInput(opts.file);
       const data = await send<Record<string, unknown>>(
         opts.json,
@@ -194,21 +211,25 @@ NOTES
 
   // agents delete <agent_id>
   cmd
-    .command("delete <agent_id>")
+    .command("delete [agent_id]")
     .description("Delete an agent")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
       await send(opts.json, `deleting agent ${agentId}`, agentsRequest("DELETE", `/v1/agents/${agentId}`));
       if (!opts.json) console.log(`deleted agent ${agentId}`);
     });
 
   // agents duplicate <agent_id> [--file]
   cmd
-    .command("duplicate <agent_id>")
+    .command("duplicate [agent_id]")
     .description("Duplicate an agent")
     .option("-f, --file <path>", 'optional JSON overrides ("-" for stdin)')
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
       const body = opts.file ? readJsonInput(opts.file) : undefined;
       const data = await send<Record<string, unknown>>(
         opts.json,
@@ -233,12 +254,14 @@ function callsCommand(): Command {
 
   // calls dispatch <agent_id> --phone <e164> [--file args.json]
   calls
-    .command("dispatch <agent_id>")
+    .command("dispatch [agent_id]")
     .description("Dispatch an outbound call")
     .requiredOption("--phone <e164>", "Destination phone number, E.164 (e.g. +15551234567)")
     .option("-f, --file <path>", 'optional call arguments as JSON ("-" for stdin)')
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
       const args = opts.file ? readJsonInput(opts.file) : undefined;
       const body: Record<string, unknown> = { phone_number: opts.phone };
       if (args !== undefined) body.arguments = args;
@@ -252,12 +275,14 @@ function callsCommand(): Command {
 
   // calls list <agent_id> [--page --page-size]
   calls
-    .command("list <agent_id>")
+    .command("list [agent_id]")
     .description("List calls for an agent")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
     .option("--page <n>", "Page number")
     .option("--page-size <n>", "Page size")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
       const data = await send<{ items?: Array<Record<string, unknown>>; meta?: Record<string, unknown> }>(
         opts.json,
         `loading calls for ${agentId}`,
@@ -279,10 +304,14 @@ function callsCommand(): Command {
 
   // calls get <agent_id> <call_id>
   calls
-    .command("get <agent_id> <call_id>")
+    .command("get [agent_id] [call_id]")
     .description("Show a single call")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
+    .option("--call-id <id>", "Call id (alternative to the positional)")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, callId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, callIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
+      const callId = resolveId("call id", "--call-id", callIdArg, opts.callId);
       const data = await send<Record<string, unknown>>(
         opts.json,
         `loading call ${callId}`,
@@ -296,11 +325,15 @@ function callsCommand(): Command {
 
   // calls tool-exec <agent_id> <call_id> --file
   calls
-    .command("tool-exec <agent_id> <call_id>")
+    .command("tool-exec [agent_id] [call_id]")
     .description("Submit a tool execution result for a call")
     .requiredOption("-f, --file <path>", 'JSON body file ("-" for stdin)')
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
+    .option("--call-id <id>", "Call id (alternative to the positional)")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, callId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, callIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
+      const callId = resolveId("call id", "--call-id", callIdArg, opts.callId);
       const body = readJsonInput(opts.file);
       const data = await send<Record<string, unknown>>(
         opts.json,
@@ -319,11 +352,13 @@ function webSessionsCommand(): Command {
   const ws = new Command("web-sessions").description("Create browser web sessions for an agent");
 
   ws
-    .command("create <agent_id>")
+    .command("create [agent_id]")
     .description("Create a web session (returns LiveKit connection details)")
     .option("-f, --file <path>", 'optional JSON body ("-" for stdin)')
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
     .option("--json", "Output JSON")
-    .action(async (agentId: string, opts) => {
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
       const body = opts.file ? readJsonInput(opts.file) : undefined;
       const data = await send<Record<string, unknown>>(
         opts.json,
