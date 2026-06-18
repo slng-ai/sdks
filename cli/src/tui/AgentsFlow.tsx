@@ -29,8 +29,10 @@ interface Agent {
   language?: string;
   region?: string;
   created_at?: string;
-  // Set when the agent has an outbound SIP trunk; required to dispatch calls.
+  updated_at?: string;
+  // Set when the agent has SIP trunks; outbound is required to dispatch calls.
   sip_outbound_trunk_id?: string | null;
+  sip_inbound_trunk_id?: string | null;
 }
 
 interface CallItem {
@@ -42,6 +44,47 @@ interface CallItem {
   call_duration_ms?: number;
   call_started_at?: string;
   created_at?: string;
+}
+
+// --- agents list formatting (mirrors the dashboard Agents table) -----------
+
+// Column widths for the agents list rows. SelectInput prefixes a 2-col
+// indicator, so the header is padded by 2 to line up.
+const AGENT_COLS = { name: 30, language: 10, telephony: 11 };
+
+function telephonyLabel(a: Agent): string {
+  return a.sip_outbound_trunk_id || a.sip_inbound_trunk_id ? "Phone" : "Web only";
+}
+
+function fmtRelative(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const secs = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  const mins = secs / 60;
+  const hours = mins / 60;
+  const days = hours / 24;
+  if (secs < 60) return `${Math.floor(secs)}s`;
+  if (mins < 60) return `${Math.floor(mins)}m`;
+  if (hours < 24) return `${Math.floor(hours)}h`;
+  if (days < 30) return `${Math.floor(days)}d`;
+  if (days < 365) return `${Math.floor(days / 30)}mo`;
+  return `${Math.floor(days / 365)}y`;
+}
+
+function pad(s: string, w: number): string {
+  // Reserve a 2-col gutter so adjacent columns never touch.
+  const max = w - 2;
+  return (s.length > max ? `${s.slice(0, max - 1)}…` : s).padEnd(w);
+}
+
+function agentRowLabel(a: Agent): string {
+  return (
+    pad(a.name ?? "(unnamed)", AGENT_COLS.name) +
+    pad(a.language ?? "?", AGENT_COLS.language) +
+    pad(telephonyLabel(a), AGENT_COLS.telephony) +
+    fmtRelative(a.updated_at ?? a.created_at)
+  );
 }
 
 // --- call formatting (mirrors the dashboard Calls table) -------------------
@@ -228,14 +271,18 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
         </Box>
       );
     }
-    const items = agents.map((a) => ({
-      label: `${a.name ?? "(unnamed)"}  ·  ${a.language ?? "?"}/${a.region ?? "?"}`,
-      value: a.id,
-    }));
+    const items = agents.map((a) => ({ label: agentRowLabel(a), value: a.id }));
+    const header =
+      "  " + // align past SelectInput's 2-col indicator
+      pad("AGENT", AGENT_COLS.name) +
+      pad("LANGUAGE", AGENT_COLS.language) +
+      pad("TELEPHONY", AGENT_COLS.telephony) +
+      "UPDATED";
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>Agents ({agents.length})</Text>
-        <Box marginTop={1}>
+        <Box marginTop={1} flexDirection="column">
+          <Text dimColor>{header}</Text>
           <SelectInput
             items={items}
             limit={10}
