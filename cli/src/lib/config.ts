@@ -22,6 +22,8 @@ export type SttMode = "mic" | "file";
 export interface ProfileConfig {
   apiKey?: string;
   baseUrl?: string;
+  // Base URL for the Voice Agents API (`voiceai agents …`). Distinct host from baseUrl.
+  agentsBaseUrl?: string;
   region?: Region;
   worldPart?: WorldPart;
   defaultTtsModel?: string;
@@ -86,6 +88,7 @@ function migrateLegacy(): void {
   for (const key of [
     "apiKey",
     "baseUrl",
+    "agentsBaseUrl",
     "region",
     "worldPart",
     "defaultTtsModel",
@@ -185,6 +188,7 @@ export function load(profile?: string): Config {
     ...fromFile,
     apiKey: process.env.VOICEAI_API_KEY ?? fromFile.apiKey,
     baseUrl: process.env.VOICEAI_BASE_URL ?? fromFile.baseUrl,
+    agentsBaseUrl: process.env.VOICEAI_AGENTS_BASE_URL ?? fromFile.agentsBaseUrl,
   };
 }
 
@@ -220,6 +224,7 @@ export function save(updates: Partial<ProfileConfig>, opts: SaveOptions = {}): C
     ...merged,
     apiKey: process.env.VOICEAI_API_KEY ?? merged.apiKey,
     baseUrl: process.env.VOICEAI_BASE_URL ?? merged.baseUrl,
+    agentsBaseUrl: process.env.VOICEAI_AGENTS_BASE_URL ?? merged.agentsBaseUrl,
   };
 }
 

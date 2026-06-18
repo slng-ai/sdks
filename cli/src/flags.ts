@@ -7,6 +7,7 @@ import { modelsCommand } from "./commands/models";
 import { voicesCommand } from "./commands/voices";
 import { whoamiCommand } from "./commands/whoami";
 import { loginCommand } from "./commands/login";
+import { agentsCommand } from "./commands/agents";
 import { setActiveProfile } from "./lib/config";
 
 const ROOT_EPILOGUE = `
@@ -21,6 +22,7 @@ EXAMPLES
   $ voiceai models --tts                                 list deployed TTS models
   $ voiceai voices --model slng/deepgram/aura:2-en       list catalogued voices
   $ voiceai whoami                                       check that your API key is valid
+  $ voiceai agents list                                  list your voice agents
   $ voiceai --profile work whoami                        run any command under a named profile
   $ voiceai config profiles                              list configured profiles
 
@@ -28,6 +30,7 @@ ENVIRONMENT
   VOICEAI_PROFILE            Select a named profile (overridden by --profile).
   VOICEAI_API_KEY            Bearer token. Overrides the active profile's key.
   VOICEAI_BASE_URL           Override the API base URL (e.g. staging).
+  VOICEAI_AGENTS_BASE_URL    Override the agents API base URL (used by \`agents\`).
 
   Env vars override anything in ~/.config/voiceai/config.json.
 `;
@@ -56,6 +59,7 @@ export async function runFlagMode(argv: string[]): Promise<void> {
   program.addCommand(voicesCommand());
   program.addCommand(whoamiCommand());
   program.addCommand(loginCommand());
+  program.addCommand(agentsCommand());
 
   await program.parseAsync(argv, { from: "user" });
 }

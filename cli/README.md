@@ -204,6 +204,45 @@ voiceai whoami
 voiceai whoami --json | jq .ok
 ```
 
+### Agents
+
+Manage voice agents, their calls, and browser web sessions. These hit the Voice
+Agents API (`https://api.agents.slng.ai` by default; override with
+`VOICEAI_AGENTS_BASE_URL` or `voiceai config set agentsBaseUrl <url>`).
+
+```sh
+voiceai agents list                            # list agents
+voiceai agents list --json | jq '.[].id'       # scriptable
+voiceai agents get <agent_id>
+
+# Create / update / replace take a JSON body matching the Voice Agents API.
+voiceai agents create --file agent.json
+cat agent.json | voiceai agents update <agent_id> --file -   # PATCH from stdin
+voiceai agents replace <agent_id> --file agent.json          # PUT
+voiceai agents duplicate <agent_id>
+voiceai agents delete <agent_id>
+
+# Calls
+voiceai agents calls dispatch <agent_id> --phone +15551234567
+voiceai agents calls dispatch <agent_id> --phone +15551234567 --file args.json
+voiceai agents calls list <agent_id> --page 1 --page-size 20
+voiceai agents calls get <agent_id> <call_id>
+voiceai agents calls tool-exec <agent_id> <call_id> --file result.json
+
+# Web sessions (returns LiveKit connection details)
+voiceai agents web-sessions create <agent_id>
+```
+
+IDs are positional or named flags, whichever you prefer:
+
+```sh
+voiceai agents calls get a1b2 c3d4
+voiceai agents calls get --agent-id a1b2 --call-id c3d4   # equivalent
+```
+
+Every subcommand supports `--json`. On failure the exit code is non-zero and,
+with `--json`, the API's error body is printed to stdout.
+
 ### Configuration
 
 ```sh
@@ -255,6 +294,7 @@ Per-profile keys (env overrides apply to the resolved profile):
 |---|---|---|
 | `apiKey` | `VOICEAI_API_KEY` | Bearer token (slng_cu_…). |
 | `baseUrl` | `VOICEAI_BASE_URL` | Override the API base URL (e.g. `https://stageapi.slng.ai`). |
+| `agentsBaseUrl` | `VOICEAI_AGENTS_BASE_URL` | Override the Voice Agents API base URL (used by `voiceai agents …`). |
 | `region` | — | Pin every request to a region (auto if unset). |
 | `worldPart` | — | Pin every request to a world-part (auto if unset). |
 | `defaultTtsModel` | — | Skip the TTS model picker in the TUI. |

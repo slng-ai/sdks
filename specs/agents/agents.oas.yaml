@@ -1,151 +1,27 @@
 openapi: 3.0.3
 info:
-  title: SLNG Gateway API - Unmute (SLNG official) Bridges
-  version: 0.1.0
-  description: Unified API for speech-to-text and text-to-speech services.
+  title: SLNG Voice Agents API
+  version: 1.0.0
+  description: |
+    Public API for managing Voice Agents, dispatching outbound calls, and creating web (non-telephony) sessions.
+
+    Base URL: `https://api.agents.slng.ai`
   contact:
     name: SLNG Support
     email: support@slng.ai
 servers:
-  - url: https://api.slng.ai
+  - url: https://api.agents.slng.ai
     description: Production
-    x-api-token: slng_cu_your_api_key_here
-  - url: https://stageapi.slng.ai
-    description: Staging
-    x-api-token: slng_cu_your_api_key_here
 security:
-  - BearerAuth: []
+  - bearerAuth: []
+tags:
+  - name: Agents
+    description: Voice agent CRUD.
+  - name: Calls
+    description: Call dispatch and status.
+  - name: Sessions
+    description: Web (non-telephony) sessions.
 paths:
-  /v1/bridges/unmute/stt/{model_variant}:
-    x-zuplo-path:
-      pathMode: url-pattern
-    parameters:
-      - $ref: "#/components/parameters/SttModelVariantPath"
-      - $ref: "#/components/parameters/RegionQuery"
-      - $ref: "#/components/parameters/WorldPartQuery"
-    post:
-      operationId: unmute-stt-http
-      summary: Unmute STT Bridge
-      description: Transcribe audio via SLNG's native WebSocket protocol bridge. The model_variant path parameter specifies the target STT model (e.g., deepgram/nova:3, slng/openai/whisper:large-v3).
-      tags:
-        - "Type: Bridges"
-        - "Provider: Unmute (SLNG official)"
-        - Unmute STT Bridge
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: "#/components/schemas/UnmuteSttRequest"
-      responses:
-        "200":
-          $ref: "#/components/responses/CognigyTranscriptionSuccess"
-        "400":
-          $ref: "#/components/responses/ProviderBadRequest"
-        "401":
-          $ref: "#/components/responses/ProviderUnauthorized"
-        "403":
-          $ref: "#/components/responses/ForbiddenBearerToken"
-        "500":
-          $ref: "#/components/responses/ProviderInternalServerError"
-        "503":
-          $ref: "#/components/responses/ProviderServiceUnavailable"
-      x-zuplo-route:
-        corsPolicy: anything-goes
-        handler:
-          export: default
-          module: $import(./routes/public/bridges/unmute/stt/{model_variant}/index)
-          options: {}
-        policies:
-          inbound:
-            - api-key-inbound
-            - credit-precheck-inbound
-      x-slng-service-type: bridges
-      x-slng-provider-id: unmute
-      x-slng-provider-name: Unmute (SLNG official)
-  /v1/bridges/unmute/tts/{model_variant}:
-    x-zuplo-path:
-      pathMode: url-pattern
-    parameters:
-      - $ref: "#/components/parameters/TtsModelVariantPath"
-      - $ref: "#/components/parameters/RegionQuery"
-      - $ref: "#/components/parameters/WorldPartQuery"
-    post:
-      operationId: unmute-tts-http
-      summary: Unmute TTS Bridge
-      description: Synthesize speech via SLNG's native WebSocket protocol bridge. The model_variant path parameter specifies the target TTS model (e.g., deepgram/aura:2).
-      tags:
-        - "Type: Bridges"
-        - "Provider: Unmute (SLNG official)"
-        - Unmute TTS Bridge
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UnmuteTtsRequest"
-            examples:
-              deepgram:
-                summary: Deepgram Aura
-                value:
-                  voice: aura-2-thalia-en
-                  text: Hello, this is a test of text to speech synthesis.
-              orpheus:
-                summary: Orpheus
-                value:
-                  voice: tara
-                  text: Hello, this is a test of text to speech synthesis.
-      responses:
-        "200":
-          $ref: "#/components/responses/TtsSynthesisSuccess"
-        "400":
-          $ref: "#/components/responses/ProviderBadRequest"
-        "401":
-          $ref: "#/components/responses/ProviderUnauthorized"
-        "403":
-          $ref: "#/components/responses/ForbiddenBearerToken"
-        "500":
-          $ref: "#/components/responses/ProviderInternalServerError"
-        "503":
-          $ref: "#/components/responses/ProviderServiceUnavailable"
-      x-zuplo-route:
-        corsPolicy: anything-goes
-        handler:
-          export: default
-          module: $import(./routes/public/bridges/unmute/tts/{model_variant}/index)
-          options: {}
-        policies:
-          inbound:
-            - api-key-inbound
-            - credit-precheck-inbound
-      x-slng-service-type: bridges
-      x-slng-provider-id: unmute
-      x-slng-provider-name: Unmute (SLNG official)
-  /v1/me:
-    get:
-      operationId: meGet
-      summary: Get current account
-      description: Return the account, organization, and API key associated with the bearer token in the request. Use this to confirm which key is in use and which organization and plan tier it belongs to.
-      tags:
-        - Account
-      responses:
-        "200":
-          description: The authenticated account.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Account"
-              example:
-                name: Bruce Wayne
-                email: batman@wayne.com
-                org_id: 7c3e9a14-2b6f-4d80-9e51-1a2b3c4d5e6f
-                org_name: Wayne Corp
-                api_key_label: batcave laptop
-                tier: hobby
-        "403":
-          $ref: "#/components/responses/AccountForbidden"
-        "500":
-          $ref: "#/components/responses/AccountInternalError"
   /v1/agents:
     get:
       operationId: listAgents
@@ -425,7 +301,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 duplicate-tool-id:
                   summary: Tool IDs must be unique within an agent
@@ -440,7 +316,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 user-not-found:
                   summary: Authenticated user could not be resolved
@@ -451,7 +327,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 no-organisation-membership:
                   summary: Caller has no accessible organisation
@@ -462,29 +338,29 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 deployment-not-found:
                   summary: No runtime is configured for this region
                   value:
-                    detail: No runtime is configured for region 'us-east'
+                    detail: "No runtime is configured for region 'us-east'"
         "409":
           description: Conflict.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 duplicate-agent-name:
                   summary: Agent name already exists in the organisation
                   value:
-                    detail: Agent with name 'Appointment Reminder' already exists
+                    detail: "Agent with name 'Appointment Reminder' already exists"
         "422":
           description: Validation error.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 missing-human-transfer-trunk:
                   summary: Human transfer requires outbound telephony
@@ -495,7 +371,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 internal-error:
                   summary: Unexpected application error
@@ -506,15 +382,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 inbound-dispatch-rule-failed:
                   summary: Inbound call routing setup failed
                   value:
                     detail: Failed to create inbound dispatch rule
-    servers:
-      - url: https://api.agents.slng.ai
-        description: Production
+
   /v1/agents/{agent_id}:
     parameters:
       - $ref: "#/components/parameters/AgentIdPath"
@@ -626,9 +500,7 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-    servers:
-      - url: https://api.agents.slng.ai
-        description: Production
+
   /v1/agents/{agent_id}/duplicate:
     parameters:
       - $ref: "#/components/parameters/AgentIdPath"
@@ -677,9 +549,7 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-    servers:
-      - url: https://api.agents.slng.ai
-        description: Production
+
   /v1/agents/{agent_id}/calls:
     parameters:
       - $ref: "#/components/parameters/AgentIdPath"
@@ -710,7 +580,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 outbound-telephony-not-configured:
                   summary: Agent is missing an outbound connection
@@ -718,19 +588,19 @@ paths:
                     detail: Outbound telephony is not configured for this agent (missing outbound connection).
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "402":
           description: Payment required.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 insufficient-credits:
                   summary: Organisation balance is depleted
                   value:
                     detail: Insufficient credit balance. Please top up credits or upgrade your plan.
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
         "422":
@@ -738,7 +608,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 invalid-phone-number:
                   summary: Phone number failed request validation
@@ -756,7 +626,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 call-dispatch-failed:
                   summary: Upstream dispatch failure
@@ -789,9 +659,7 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-    servers:
-      - url: https://api.agents.slng.ai
-        description: Production
+
   /v1/agents/{agent_id}/calls/{call_id}:
     parameters:
       - $ref: "#/components/parameters/AgentIdPath"
@@ -819,9 +687,7 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-    servers:
-      - url: https://api.agents.slng.ai
-        description: Production
+
   /v1/agents/{agent_id}/calls/{call_id}/tool-executions:
     parameters:
       - $ref: "#/components/parameters/AgentIdPath"
@@ -856,9 +722,7 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-    servers:
-      - url: https://api.agents.slng.ai
-        description: Production
+
   /v1/agents/{agent_id}/web-sessions:
     parameters:
       - $ref: "#/components/parameters/AgentIdPath"
@@ -888,19 +752,19 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "402":
           description: Payment required.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 insufficient-credits:
                   summary: Organisation balance is depleted
                   value:
                     detail: Insufficient credit balance. Please top up credits or upgrade your plan.
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
         "422":
@@ -912,110 +776,67 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentsErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               examples:
                 web-session-dispatch-failed:
                   summary: Upstream dispatch failure
                   value:
                     detail: "Failed to dispatch web session: upstream dispatcher unavailable"
-    servers:
-      - url: https://api.agents.slng.ai
-        description: Production
-tags:
-  - name: Unmute STT Bridge
-    description: SLNG native WebSocket STT protocol bridge.
-  - name: Unmute TTS Bridge
-    description: SLNG native WebSocket TTS protocol bridge.
-  - name: "Type: Bridges"
-    description: Grouping by service type (Bridges).
-  - name: "Provider: Unmute (SLNG official)"
-    description: Grouping by provider (Unmute (SLNG official)).
-  - name: Account
-    description: Inspect the authenticated account and organization.
-  - name: Agents
-    description: Voice agent CRUD.
-  - name: Calls
-    description: Call dispatch and status.
-  - name: Sessions
-    description: Web (non-telephony) sessions.
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+
+  parameters:
+    AgentIdPath:
+      name: agent_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/UUID"
+      description: Voice agent ID.
+    CallIdPath:
+      name: call_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/UUID"
+      description: Call ID.
+    CallStatusQuery:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Filter calls by status.
+    PageQuery:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number (1-indexed).
+    PageSizeQuery:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+      description: Page size.
+
   responses:
-    TtsSynthesisSuccess:
-      description: Synthesis successful.
-      content:
-        audio/*:
-          schema:
-            $ref: "#/components/schemas/AudioBinary"
-    ProviderServiceUnavailable:
-      description: Service unavailable.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ProviderErrorResponse"
-    ProviderInternalServerError:
-      description: Internal server error from the provider.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ProviderErrorResponse"
-          examples:
-            processing-error:
-              summary: Processing error
-              value:
-                error: Service error
-                details: Internal processing error
-    ForbiddenBearerToken:
-      description: Missing or invalid Bearer token.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-    ProviderUnauthorized:
-      description: Invalid or missing API key.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ProviderErrorResponse"
-    ProviderBadRequest:
-      description: Bad request - invalid parameters provided.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ProviderErrorResponse"
-          examples:
-            validation-error:
-              summary: Validation error
-              value:
-                error: Validation error
-                details: "Missing required field: text"
-    CognigyTranscriptionSuccess:
-      description: Transcription successful.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/CognigySTTTranscriptionResponse"
-    AccountForbidden:
-      description: Missing or invalid API key.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/AccountError"
-          example:
-            error: API key id not found
-    AccountInternalError:
-      description: Internal server error.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/AccountError"
-          example:
-            error: Internal server error
     BadRequestError:
       description: Bad request.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/AgentsErrorResponse"
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             bad-request:
               summary: Generic bad request
@@ -1026,7 +847,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/AgentsErrorResponse"
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             unauthorized:
               summary: Authentication failed
@@ -1037,7 +858,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/AgentsErrorResponse"
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             forbidden:
               summary: Access denied
@@ -1048,7 +869,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/AgentsErrorResponse"
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             conflict:
               summary: Resource already exists or cannot be changed in current state
@@ -1059,7 +880,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/AgentsErrorResponse"
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             insufficient-credits:
               summary: Organisation balance is depleted
@@ -1070,7 +891,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/AgentsErrorResponse"
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             not-found:
               summary: Resource not found
@@ -1081,7 +902,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/AgentsErrorResponse"
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             validation-error:
               summary: Request validation failed
@@ -1097,7 +918,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/AgentsErrorResponse"
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             internal-server-error:
               summary: Unexpected application error
@@ -1108,189 +929,19 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/AgentsErrorResponse"
+            $ref: "#/components/schemas/ErrorResponse"
           examples:
             upstream-failure:
               summary: Upstream provider or dispatcher failed
               value:
                 detail: The upstream service failed to process the request.
+
   schemas:
-    Account:
-      type: object
-      description: The account associated with the authenticated API key.
-      required:
-        - name
-        - email
-        - org_id
-        - org_name
-        - api_key_label
-        - tier
-      properties:
-        name:
-          type: string
-          description: Display name of the account owner.
-          example: Bruce Wayne
-        email:
-          type: string
-          format: email
-          description: Email address of the account owner.
-          example: batman@wayne.com
-        org_id:
-          type: string
-          format: uuid
-          description: Unique identifier of the organization the account belongs to.
-          example: 7c3e9a14-2b6f-4d80-9e51-1a2b3c4d5e6f
-        org_name:
-          type: string
-          description: Display name of the organization.
-          example: Wayne Corp
-        api_key_label:
-          type: string
-          description: Label of the API key used to authenticate the request.
-          example: batcave laptop
-        tier:
-          type: string
-          description: Plan tier of the organization.
-          example: hobby
-    AccountError:
-      type: object
-      description: Error envelope for the Account API. A short, user-presentable string only.
-      required:
-        - error
-      additionalProperties: false
-      properties:
-        error:
-          type: string
-    AudioBinary:
-      type: string
-      format: binary
-      description: Binary audio data.
-    UnmuteTtsRequest:
-      type: object
-      description: Unmute TTS request.
-      properties:
-        voice:
-          type: string
-          description: Voice identifier.
-        text:
-          type: string
-          description: Text to synthesize.
-      required:
-        - text
-    ProviderErrorResponse:
-      type: object
-      description: |
-        Provider error response. Contains error information from the upstream provider.
-        Common errors include invalid speakers, unsupported languages, or malformed requests.
-      properties:
-        error:
-          type: string
-          description: Error type or category (e.g., "TTS service error", "Validation error").
-          example: TTS service error
-        status:
-          type: number
-          description: Original HTTP status code from the provider (may differ from gateway response code).
-          example: 400
-        details:
-          type: string
-          description: |
-            Detailed error message from the provider. For TTS errors, this typically includes
-            the specific validation failure (e.g., invalid speaker ID for the selected model/language).
-          example: "Rime TTS API error: 400 Bad Request - Invalid argument: Invalid speaker: aurelie"
-      required:
-        - error
-    ErrorResponse:
-      type: object
-      description: Standard error response.
-      properties:
-        error:
-          type: string
-          description: Error type or code.
-        message:
-          type: string
-          description: Human-readable error message.
-        statusCode:
-          type: integer
-          description: HTTP status code.
-      required:
-        - error
-    CognigySTTTranscriptionResponse:
-      type: object
-      description: Cognigy STT transcription response.
-      properties:
-        type:
-          type: string
-          description: Response type.
-          enum:
-            - transcription
-        is_final:
-          type: boolean
-          description: Whether this is a final transcription.
-        alternatives:
-          type: array
-          description: Transcription alternatives.
-          items:
-            $ref: "#/components/schemas/CognigyTranscriptionAlternative"
-        channel:
-          type: integer
-          description: Audio channel number.
-        language:
-          type: string
-          description: Detected language code.
-      required:
-        - type
-        - is_final
-        - alternatives
-    CognigyTranscriptionAlternative:
-      type: object
-      description: Transcription alternative.
-      properties:
-        confidence:
-          type: number
-          description: Confidence score.
-        transcript:
-          type: string
-          description: Transcribed text.
-    UnmuteSttRequest:
-      type: object
-      description: Unmute STT request.
-      properties:
-        audio:
-          type: string
-          format: binary
-          description: Audio file to transcribe.
-        language:
-          type: string
-          description: Language code for recognition.
-        sample_rate:
-          type: integer
-          description: Audio sample rate in Hz.
-          enum:
-            - 8000
-            - 16000
-            - 22050
-            - 24000
-            - 32000
-            - 48000
-        encoding:
-          type: string
-          description: Audio encoding format.
-          enum:
-            - linear16
-            - mp3
-            - opus
-        enable_vad:
-          type: boolean
-          description: Enable voice activity detection.
-        enable_partials:
-          type: boolean
-          description: Enable partial transcription results.
-      required:
-        - audio
     UUID:
       type: string
       format: uuid
       example: 550e8400-e29b-41d4-a716-446655440000
+
     LivekitDeploymentNameOut:
       type: object
       additionalProperties: false
@@ -1300,20 +951,44 @@ components:
         name:
           type: string
           maxLength: 255
+
     DateTime:
       type: string
       format: date-time
-      example: 2026-01-15T10:30:00Z
+      example: "2026-01-15T10:30:00Z"
+
     NullableDateTime:
       type: string
       format: date-time
       nullable: true
-      example: 2026-01-15T10:30:00Z
+      example: "2026-01-15T10:30:00Z"
+
+    ErrorResponse:
+      type: object
+      additionalProperties: true
+      description: |
+        Error payloads can vary depending on where the error is raised (edge gateway vs backend).
+
+        Common shapes include:
+        - `{ "error": "message" }`
+        - `{ "detail": "message" }`
+        - `{ "detail": [ { "loc": [...], "msg": "...", "type": "..." } ] }` (validation)
+      properties:
+        error:
+          type: string
+        detail:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+
     E164PhoneNumber:
       type: string
-      pattern: ^\+[1-9]\d{1,14}$
+      pattern: "^\\+[1-9]\\d{1,14}$"
       description: Phone number in E.164 format.
       example: "+14155551234"
+
     TtsFallbackModel:
       type: object
       additionalProperties: false
@@ -1329,6 +1004,7 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+
     ModelsFallbacks:
       type: object
       additionalProperties: false
@@ -1348,6 +1024,7 @@ components:
           items:
             $ref: "#/components/schemas/TtsFallbackModel"
           default: []
+
     ModelsConfig:
       type: object
       additionalProperties: false
@@ -1361,7 +1038,7 @@ components:
         stt:
           type: string
           description: STT model (provider/model:variant).
-          example: slng/deepgram/nova:3-en
+          example: "slng/deepgram/nova:3-en"
         llm:
           type: string
           description: |
@@ -1370,15 +1047,15 @@ components:
             - bedrock-mantle/nvidia.nemotron-super-3-120b
             - bedrock-mantle/nvidia.nemotron-nano-3-30b
             - groq/openai/gpt-oss-120b
-          example: groq/openai/gpt-oss-120b
+          example: "groq/openai/gpt-oss-120b"
         tts:
           type: string
           description: TTS model (provider/model:variant).
-          example: slng/deepgram/aura:2-en
+          example: "slng/deepgram/aura:2-en"
         tts_voice:
           type: string
           description: Voice identifier for TTS.
-          example: aura-2-thalia-en
+          example: "aura-2-thalia-en"
         stt_kwargs:
           type: object
           additionalProperties: true
@@ -1412,11 +1089,13 @@ components:
           type: boolean
           default: true
           description: When true, play technical-difficulties audio before hangup on terminal failures.
+
     ToolExecutionPolicy:
       type: object
       properties:
         pre_action_message:
           $ref: "#/components/schemas/PreActionMessagePolicy"
+
     PreActionMessagePolicy:
       type: object
       properties:
@@ -1431,6 +1110,7 @@ components:
         Optional "pre action" message behavior for tools.
         When enabled, `text` is required (except for the built-in `hangup` tool).
         This field is static configuration and does not support runtime personalization.
+
     IdleNudgesConfig:
       type: object
       additionalProperties: false
@@ -1469,6 +1149,7 @@ components:
       description: |
         Optional silence recovery behavior. The runtime can send two follow-up nudges,
         then speak a final message and hang up.
+
     TemplateTool:
       type: object
       additionalProperties: false
@@ -1479,21 +1160,19 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - template
+          enum: ["template"]
         id:
           $ref: "#/components/schemas/UUID"
         template:
           type: string
-          enum:
-            - hangup
-            - voicemail_detection
+          enum: ["hangup", "voicemail_detection"]
         prompt:
           type: string
           nullable: true
           description: Optional override for the default tool prompt.
         execution_policy:
           $ref: "#/components/schemas/ToolExecutionPolicy"
+
     BuiltInTool:
       type: object
       additionalProperties: false
@@ -1504,19 +1183,15 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - built_in
+          enum: ["built_in"]
         id:
           $ref: "#/components/schemas/UUID"
         built_in:
           type: string
-          enum:
-            - current_datetime
+          enum: ["current_datetime"]
         source:
           type: string
-          enum:
-            - contextual
-            - system
+          enum: ["contextual", "system"]
           default: contextual
           description: |
             - `contextual`: LLM-invoked tool
@@ -1536,6 +1211,7 @@ components:
         Configurable first-party utility tool.
         When `source=contextual`, `system` must be omitted.
         When `source=system`, `system` is required.
+
     WebhookToolAuthBearerCreate:
       type: object
       additionalProperties: false
@@ -1545,10 +1221,10 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - bearer
+          enum: ["bearer"]
         token:
           type: string
+
     WebhookToolAuthHmacCreate:
       type: object
       additionalProperties: false
@@ -1558,10 +1234,10 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - hmac
+          enum: ["hmac"]
         secret:
           type: string
+
     WebhookToolAuthCreate:
       oneOf:
         - title: Bearer token auth
@@ -1574,6 +1250,7 @@ components:
             - $ref: "#/components/schemas/WebhookToolAuthHmacCreate"
       discriminator:
         propertyName: type
+
     WebhookToolAuthBearerUpdate:
       type: object
       additionalProperties: false
@@ -1582,12 +1259,12 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - bearer
+          enum: ["bearer"]
         token:
           type: string
           nullable: true
           description: Omit to keep the existing secret.
+
     WebhookToolAuthHmacUpdate:
       type: object
       additionalProperties: false
@@ -1596,12 +1273,12 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - hmac
+          enum: ["hmac"]
         secret:
           type: string
           nullable: true
           description: Omit to keep the existing secret.
+
     WebhookToolAuthUpdate:
       oneOf:
         - title: Bearer token auth
@@ -1614,6 +1291,7 @@ components:
             - $ref: "#/components/schemas/WebhookToolAuthHmacUpdate"
       discriminator:
         propertyName: type
+
     SystemEvent:
       type: string
       enum:
@@ -1622,6 +1300,7 @@ components:
         - call_end
         - tool_succeeded
         - tool_failed
+
     SystemTrigger:
       type: object
       additionalProperties: false
@@ -1636,6 +1315,7 @@ components:
       description: |
         For `tool_succeeded` and `tool_failed`, `source_tool_id` is required.
         For all other events, `source_tool_id` must be omitted.
+
     SystemArgumentType:
       type: string
       enum:
@@ -1648,6 +1328,7 @@ components:
         - number[]
         - boolean[]
         - transcript_messages
+
     SystemArgumentSourceConstant:
       type: object
       additionalProperties: false
@@ -1657,9 +1338,9 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - constant
+          enum: ["constant"]
         value: {}
+
     SystemArgumentSourceTemplate:
       type: object
       additionalProperties: false
@@ -1669,12 +1350,12 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - template
+          enum: ["template"]
         template:
           type: string
           minLength: 1
           maxLength: 2000
+
     SystemArgumentSourceTranscriptMessages:
       type: object
       additionalProperties: false
@@ -1683,13 +1364,13 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - transcript_messages
+          enum: ["transcript_messages"]
         max_messages:
           type: integer
           minimum: 1
           maximum: 2000
           default: 200
+
     SystemArgumentSourceSimple:
       type: object
       additionalProperties: false
@@ -1708,6 +1389,7 @@ components:
             - phone_number
             - trigger_event
             - call_end_reason
+
     SystemArgumentSource:
       oneOf:
         - title: Constant
@@ -1728,6 +1410,7 @@ components:
             - $ref: "#/components/schemas/SystemArgumentSourceSimple"
       discriminator:
         propertyName: type
+
     SystemArgumentRow:
       type: object
       additionalProperties: false
@@ -1751,6 +1434,7 @@ components:
           nullable: true
         source:
           $ref: "#/components/schemas/SystemArgumentSource"
+
     SystemToolConfig:
       type: object
       additionalProperties: false
@@ -1768,6 +1452,7 @@ components:
             $ref: "#/components/schemas/SystemArgumentRow"
           default: []
       description: Configuration for system-triggered webhook tools.
+
     WebhookToolCreate:
       type: object
       required:
@@ -1780,8 +1465,7 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - webhook
+          enum: ["webhook"]
         id:
           $ref: "#/components/schemas/UUID"
         name:
@@ -1809,18 +1493,12 @@ components:
           $ref: "#/components/schemas/WebhookToolAuthCreate"
         http_method:
           type: string
-          enum:
-            - POST
-            - PUT
-            - PATCH
-            - DELETE
+          enum: ["POST", "PUT", "PATCH", "DELETE"]
           default: POST
           description: HTTP method used when invoking the webhook.
         webhook_format:
           type: string
-          enum:
-            - envelope
-            - raw
+          enum: ["envelope", "raw"]
           default: envelope
           description: |
             - `envelope`: send SLNG metadata plus arguments in the request body
@@ -1840,9 +1518,7 @@ components:
             Defaults to `true` for contextual tools and `false` for system tools when omitted.
         source:
           type: string
-          enum:
-            - contextual
-            - system
+          enum: ["contextual", "system"]
           default: contextual
           description: |
             - `contextual`: LLM-invoked tool (user-driven)
@@ -1859,6 +1535,7 @@ components:
         Webhook secrets are write-only. When using bearer/hmac auth:
         - On create: `auth.token` / `auth.secret` is required.
         - On update: you can omit `auth.token` / `auth.secret` to keep the existing secret.
+
     WebhookToolUpdate:
       type: object
       required:
@@ -1871,8 +1548,7 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - webhook
+          enum: ["webhook"]
         id:
           $ref: "#/components/schemas/UUID"
         name:
@@ -1898,18 +1574,12 @@ components:
           $ref: "#/components/schemas/WebhookToolAuthUpdate"
         http_method:
           type: string
-          enum:
-            - POST
-            - PUT
-            - PATCH
-            - DELETE
+          enum: ["POST", "PUT", "PATCH", "DELETE"]
           default: POST
           description: HTTP method used when invoking the webhook.
         webhook_format:
           type: string
-          enum:
-            - envelope
-            - raw
+          enum: ["envelope", "raw"]
           default: envelope
           description: |
             - `envelope`: send SLNG metadata plus arguments in the request body
@@ -1927,15 +1597,14 @@ components:
           nullable: true
         source:
           type: string
-          enum:
-            - contextual
-            - system
+          enum: ["contextual", "system"]
           default: contextual
         system:
           $ref: "#/components/schemas/SystemToolConfig"
         execution_policy:
           $ref: "#/components/schemas/ToolExecutionPolicy"
       description: Same schema as create, but bearer/hmac secrets can be omitted to keep the existing secret.
+
     HumanTransferTool:
       type: object
       additionalProperties: false
@@ -1947,8 +1616,7 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - human_transfer
+          enum: ["human_transfer"]
         id:
           $ref: "#/components/schemas/UUID"
         name:
@@ -1967,6 +1635,7 @@ components:
           $ref: "#/components/schemas/ToolExecutionPolicy"
       description: |
         Transfers the caller to a human (requires an outbound connection on the agent).
+
     ToolCreate:
       oneOf:
         - title: Template tool
@@ -1987,6 +1656,7 @@ components:
             - $ref: "#/components/schemas/HumanTransferTool"
       discriminator:
         propertyName: type
+
     ToolUpdate:
       oneOf:
         - title: Template tool
@@ -2007,6 +1677,7 @@ components:
             - $ref: "#/components/schemas/HumanTransferTool"
       discriminator:
         propertyName: type
+
     TemplateToolOut:
       type: object
       additionalProperties: false
@@ -2017,20 +1688,18 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - template
+          enum: ["template"]
         id:
           $ref: "#/components/schemas/UUID"
         template:
           type: string
-          enum:
-            - hangup
-            - voicemail_detection
+          enum: ["hangup", "voicemail_detection"]
         prompt:
           type: string
           nullable: true
         execution_policy:
           $ref: "#/components/schemas/ToolExecutionPolicy"
+
     WebhookToolOut:
       type: object
       additionalProperties: false
@@ -2045,14 +1714,13 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - webhook
+          enum: ["webhook"]
         id:
           $ref: "#/components/schemas/UUID"
         name:
           type: string
           maxLength: 64
-          pattern: ^[a-z_][a-z0-9_]*$
+          pattern: "^[a-z_][a-z0-9_]*$"
         description:
           type: string
           maxLength: 500
@@ -2073,17 +1741,11 @@ components:
           description: Auth type (bearer/hmac). Secrets are write-only and never returned.
         http_method:
           type: string
-          enum:
-            - POST
-            - PUT
-            - PATCH
-            - DELETE
+          enum: ["POST", "PUT", "PATCH", "DELETE"]
           nullable: true
         webhook_format:
           type: string
-          enum:
-            - envelope
-            - raw
+          enum: ["envelope", "raw"]
           nullable: true
         timeout_seconds:
           type: number
@@ -2096,13 +1758,12 @@ components:
           nullable: true
         source:
           type: string
-          enum:
-            - contextual
-            - system
+          enum: ["contextual", "system"]
         system:
           $ref: "#/components/schemas/SystemToolConfig"
         execution_policy:
           $ref: "#/components/schemas/ToolExecutionPolicy"
+
     HumanTransferToolOut:
       type: object
       additionalProperties: false
@@ -2114,14 +1775,13 @@ components:
       properties:
         type:
           type: string
-          enum:
-            - human_transfer
+          enum: ["human_transfer"]
         id:
           $ref: "#/components/schemas/UUID"
         name:
           type: string
           maxLength: 64
-          pattern: ^[a-z_][a-z0-9_]*$
+          pattern: "^[a-z_][a-z0-9_]*$"
         description:
           type: string
           maxLength: 500
@@ -2131,6 +1791,7 @@ components:
           description: Phone number or templated value.
         execution_policy:
           $ref: "#/components/schemas/ToolExecutionPolicy"
+
     ToolOut:
       oneOf:
         - title: Template tool
@@ -2147,6 +1808,7 @@ components:
             - $ref: "#/components/schemas/HumanTransferToolOut"
       discriminator:
         propertyName: type
+
     VoiceAgentCreate:
       type: object
       additionalProperties: false
@@ -2214,6 +1876,7 @@ components:
           items:
             $ref: "#/components/schemas/RuntimeVariableDefinition"
           default: []
+
     VoiceAgentUpdate:
       type: object
       additionalProperties: false
@@ -2275,6 +1938,7 @@ components:
           nullable: true
           items:
             $ref: "#/components/schemas/RuntimeVariableDefinition"
+
     VoiceAgentDuplicateCreate:
       type: object
       additionalProperties: false
@@ -2285,6 +1949,7 @@ components:
           type: string
           maxLength: 255
           description: Name for the duplicated agent.
+
     TemplateVariableMeta:
       type: object
       additionalProperties: true
@@ -2293,6 +1958,7 @@ components:
           type: boolean
         default:
           type: string
+
     RuntimeVariableDefinition:
       type: object
       additionalProperties: false
@@ -2308,6 +1974,7 @@ components:
           type: string
           maxLength: 500
           description: LLM-visible description of what value should be stored.
+
     VoiceAgentOut:
       type: object
       additionalProperties: false
@@ -2378,6 +2045,7 @@ components:
         deleted_at:
           $ref: "#/components/schemas/DateTime"
           nullable: true
+
     AgentCallCreate:
       type: object
       additionalProperties: false
@@ -2395,6 +2063,7 @@ components:
             maxLength: 1024
           default: {}
           description: Per-call template argument overrides. Maximum 32 keys. Each value may be up to 1024 characters. Combined value payload may not exceed 8192 characters.
+
     AgentCallResponse:
       type: object
       additionalProperties: false
@@ -2407,6 +2076,7 @@ components:
         message:
           type: string
           example: Call dispatched successfully
+
     AgentWebSessionCreate:
       type: object
       additionalProperties: false
@@ -2423,6 +2093,7 @@ components:
           type: string
           nullable: true
           description: Optional display name for the web participant.
+
     AgentWebSessionResponse:
       type: object
       additionalProperties: false
@@ -2451,6 +2122,7 @@ components:
         message:
           type: string
           example: Web session created successfully
+
     CallEvent:
       type: object
       additionalProperties: false
@@ -2473,18 +2145,11 @@ components:
           maxLength: 200
         level:
           type: string
-          enum:
-            - debug
-            - info
-            - warning
-            - error
+          enum: ["debug", "info", "warning", "error"]
           default: info
         component:
           type: string
-          enum:
-            - stt
-            - llm
-            - tts
+          enum: ["stt", "llm", "tts"]
           nullable: true
         from_model:
           type: string
@@ -2496,9 +2161,7 @@ components:
           nullable: true
         reason:
           type: string
-          enum:
-            - hard_fail
-            - timeout
+          enum: ["hard_fail", "timeout"]
           nullable: true
         timeout_s:
           type: number
@@ -2511,26 +2174,19 @@ components:
         error_code:
           type: integer
           nullable: true
+
     ToolExecutionKind:
       type: string
-      enum:
-        - webhook
-        - template
-        - human_transfer
-        - built_in
+      enum: ["webhook", "template", "human_transfer", "built_in"]
+
     ToolInvocationSource:
       type: string
-      enum:
-        - system
-        - contextual
+      enum: ["system", "contextual"]
+
     ToolExecutionOutcome:
       type: string
-      enum:
-        - succeeded
-        - failed
-        - timed_out
-        - skipped
-        - cancelled
+      enum: ["succeeded", "failed", "timed_out", "skipped", "cancelled"]
+
     AgentCallToolExecutionCreate:
       type: object
       additionalProperties: false
@@ -2609,6 +2265,7 @@ components:
           type: string
           maxLength: 20000
           nullable: true
+
     AgentCallToolExecutionClientOut:
       type: object
       additionalProperties: false
@@ -2647,6 +2304,7 @@ components:
         error_type:
           type: string
           nullable: true
+
     AgentCallListItemOut:
       type: object
       additionalProperties: false
@@ -2672,9 +2330,7 @@ components:
           type: string
         web_session_origin:
           type: string
-          enum:
-            - dashboard_test
-            - api
+          enum: ["dashboard_test", "api"]
           nullable: true
         arguments:
           type: object
@@ -2712,6 +2368,7 @@ components:
           $ref: "#/components/schemas/DateTime"
         updated_at:
           $ref: "#/components/schemas/DateTime"
+
     AgentCallDetailOut:
       allOf:
         - $ref: "#/components/schemas/AgentCallListItemOut"
@@ -2731,6 +2388,7 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/AgentCallToolExecutionClientOut"
+
     PaginationMeta:
       type: object
       additionalProperties: false
@@ -2752,6 +2410,7 @@ components:
         pages:
           type: integer
           minimum: 0
+
     PaginatedAgentCallListOut:
       type: object
       additionalProperties: false
@@ -2765,156 +2424,3 @@ components:
             $ref: "#/components/schemas/AgentCallListItemOut"
         meta:
           $ref: "#/components/schemas/PaginationMeta"
-    AgentsErrorResponse:
-      type: object
-      additionalProperties: true
-      description: |
-        Error payloads can vary depending on where the error is raised (edge gateway vs backend).
-
-        Common shapes include:
-        - `{ "error": "message" }`
-        - `{ "detail": "message" }`
-        - `{ "detail": [ { "loc": [...], "msg": "...", "type": "..." } ] }` (validation)
-      properties:
-        error:
-          type: string
-        detail:
-          oneOf:
-            - type: string
-            - type: array
-              items:
-                type: object
-  parameters:
-    RegionQuery:
-      name: region
-      in: query
-      required: false
-      description: Target region override. Auto-selected if not provided. Equivalent to the `X-Region-Override` header; the header takes precedence when both are set.
-      schema:
-        type: string
-        enum:
-          - ap-southeast-2
-          - eu-north-1
-          - us-east-1
-    WorldPartQuery:
-      name: world-part
-      in: query
-      required: false
-      description: Target world part override. Auto-selected if not provided. Equivalent to the `X-World-Part-Override` header; the header takes precedence when both are set.
-      schema:
-        type: string
-        enum:
-          - ap
-          - eu
-          - na
-    TtsModelVariantPath:
-      name: model_variant
-      in: path
-      required: true
-      description: Target TTS model. Any WebSocket-capable TTS model is supported.
-      schema:
-        type: string
-        enum:
-          - cartesia/sonic:3
-          - deepgram/aura:2
-          - elevenlabs/eleven-flash:2
-          - elevenlabs/eleven-flash:2.5
-          - elevenlabs/eleven-multilingual:2
-          - elevenlabs/eleven:3
-          - kugelaudio/kugel:1
-          - kugelaudio/kugel:1-turbo
-          - kugelaudio/kugel:2
-          - murf/murftts:falcon
-          - sarvam/bulbul:v3
-          - slng/canopylabs/orpheus:en
-          - slng/deepgram/aura:2-en
-          - slng/deepgram/aura:2-es
-          - slng/rime/arcana:3-en
-          - slng/rime/arcana:3-hi
-          - slng/rime/arcana:ar
-          - slng/rime/arcana:de
-          - slng/rime/arcana:en
-          - slng/rime/arcana:es
-          - slng/rime/arcana:fr
-          - slng/rime/coda:0-id
-          - soniox/tts-rt:v1
-      examples:
-        deepgramAura:
-          summary: Deepgram Aura 2
-          value: deepgram/aura:2
-        orpheus:
-          summary: SLNG-hosted Orpheus English
-          value: slng/canopylabs/orpheus:en
-    SttModelVariantPath:
-      name: model_variant
-      in: path
-      required: true
-      description: Target STT model. Must support WebSocket streaming with final_transcript.
-      schema:
-        type: string
-        enum:
-          - deepgram/nova:2
-          - deepgram/nova:3
-          - deepgram/nova:3-medical
-          - reson8/reson8stt:v1
-          - slng/deepgram/nova:3-en
-          - slng/deepgram/nova:3-es
-          - slng/deepgram/nova:3-hi
-          - slng/deepgram/nova:3-kn
-          - slng/deepgram/nova:3-mr
-          - slng/deepgram/nova:3-multi
-          - slng/deepgram/nova:3-ta
-          - slng/deepgram/nova:3-te
-          - slng/openai/whisper:large-v3
-          - soniox/speech-ai:rt-v4
-      examples:
-        deepgramNova3:
-          summary: Deepgram Nova 3
-          value: deepgram/nova:3
-        slngWhisper:
-          summary: SLNG-hosted Whisper Large v3
-          value: slng/openai/whisper:large-v3
-    AgentIdPath:
-      name: agent_id
-      in: path
-      required: true
-      schema:
-        $ref: "#/components/schemas/UUID"
-      description: Voice agent ID.
-    CallIdPath:
-      name: call_id
-      in: path
-      required: true
-      schema:
-        $ref: "#/components/schemas/UUID"
-      description: Call ID.
-    CallStatusQuery:
-      name: status
-      in: query
-      required: false
-      schema:
-        type: string
-      description: Filter calls by status.
-    PageQuery:
-      name: page
-      in: query
-      required: false
-      schema:
-        type: integer
-        minimum: 1
-        default: 1
-      description: Page number (1-indexed).
-    PageSizeQuery:
-      name: page_size
-      in: query
-      required: false
-      schema:
-        type: integer
-        minimum: 1
-      description: Page size.
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      description: |
-        API key issued by SLNG. Pass as `Authorization: Bearer <token>`.
