@@ -38,7 +38,66 @@ interface CallItem {
   call_direction?: string;
   status?: string;
   phone_number?: string;
+  web_session_origin?: string;
   call_duration_ms?: number;
+  call_started_at?: string;
+  created_at?: string;
+}
+
+// --- call formatting (mirrors the dashboard Calls table) -------------------
+
+function statusColor(status?: string): "green" | "red" | "cyan" | undefined {
+  const s = (status ?? "").toLowerCase();
+  if (["completed", "succeeded", "success", "done", "ended"].includes(s)) return "green";
+  if (["failed", "error", "failure", "canceled", "cancelled", "no_answer", "busy"].includes(s)) return "red";
+  if (["in_progress", "in progress", "active", "ringing", "running", "pending", "queued", "dispatched"].includes(s))
+    return "cyan";
+  return undefined;
+}
+
+function fmtDuration(ms?: number): string {
+  if (typeof ms !== "number" || ms <= 0) return "—";
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function fmtDate(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function caller(c: CallItem): string {
+  return c.phone_number || c.web_session_origin || (c.id ? c.id.slice(0, 8) : "—");
+}
+
+// Fixed column widths so rows line up like the dashboard table.
+const COLS = { caller: 22, direction: 11, status: 13, duration: 8, started: 18 };
+
+function CallRow({ c, header }: { c?: CallItem; header?: boolean }): React.ReactElement {
+  if (header) {
+    return (
+      <Box>
+        <Box width={COLS.caller}><Text dimColor>CALLER</Text></Box>
+        <Box width={COLS.direction}><Text dimColor>DIRECTION</Text></Box>
+        <Box width={COLS.status}><Text dimColor>STATUS</Text></Box>
+        <Box width={COLS.duration}><Text dimColor>DURATION</Text></Box>
+        <Box width={COLS.started}><Text dimColor>STARTED</Text></Box>
+      </Box>
+    );
+  }
+  const call = c as CallItem;
+  return (
+    <Box>
+      <Box width={COLS.caller}><Text>{caller(call)}</Text></Box>
+      <Box width={COLS.direction}><Text>{call.call_direction ?? "—"}</Text></Box>
+      <Box width={COLS.status}><Text color={statusColor(call.status)}>{call.status ?? "—"}</Text></Box>
+      <Box width={COLS.duration}><Text>{fmtDuration(call.call_duration_ms)}</Text></Box>
+      <Box width={COLS.started}><Text>{fmtDate(call.call_started_at ?? call.created_at)}</Text></Box>
+    </Box>
+  );
 }
 
 type Mode =
@@ -289,17 +348,19 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>Calls · {mode.agent.name ?? mode.agent.id}</Text>
         {mode.items.length === 0 ? (
-          <Text dimColor>No calls yet.</Text>
+          <Box marginTop={1}>
+            <Text dimColor>No calls yet.</Text>
+          </Box>
         ) : (
-          mode.items.map((c, i) => (
-            <Text key={c.id ?? i}>
-              {(c.status ?? "?").padEnd(10)} {(c.call_direction ?? "?").padEnd(9)} {c.phone_number ?? ""}
-              {typeof c.call_duration_ms === "number" ? ` · ${c.call_duration_ms}ms` : ""}
-            </Text>
-          ))
+          <Box flexDirection="column" marginTop={1}>
+            <CallRow header />
+            {mode.items.map((c, i) => (
+              <CallRow key={c.id ?? i} c={c} />
+            ))}
+          </Box>
         )}
         <Box marginTop={1}>
-          <Text dimColor>esc to go back</Text>
+          <Text dimColor>{mode.items.length} call{mode.items.length === 1 ? "" : "s"} · dates in local time · esc to go back</Text>
         </Box>
       </Box>
     );
