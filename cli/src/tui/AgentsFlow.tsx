@@ -15,6 +15,8 @@ interface Agent {
   language?: string;
   region?: string;
   created_at?: string;
+  // Set when the agent has an outbound SIP trunk; required to dispatch calls.
+  sip_outbound_trunk_id?: string | null;
 }
 
 interface CallItem {
@@ -159,8 +161,10 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
   // --- detail (+ actions) --------------------------------------------------
   if (mode.kind === "detail") {
     const a = mode.agent;
+    // Outbound dispatch needs a telephony (outbound SIP) connection on the agent.
+    const canDispatch = Boolean(a.sip_outbound_trunk_id);
     const actions = [
-      { label: "📞  Dispatch a call", value: "dispatch" },
+      ...(canDispatch ? [{ label: "📞  Dispatch a call", value: "dispatch" }] : []),
       { label: "📋  View calls", value: "calls" },
       { label: "🌐  Create web session", value: "websession" },
       { label: "📑  Duplicate", value: "duplicate" },
@@ -175,6 +179,9 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
           language: {a.language ?? "?"} · region: {a.region ?? "?"}
           {a.created_at ? ` · created: ${a.created_at}` : ""}
         </Text>
+        {!canDispatch && (
+          <Text dimColor>No outbound number configured — call dispatch unavailable.</Text>
+        )}
         <Box marginTop={1}>
           <SelectInput
             items={actions}
