@@ -1,9 +1,23 @@
 import React, { useEffect, useState } from "react";
+import { spawn } from "node:child_process";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
+import Link from "ink-link";
 import { agentsRequest, formatAgentsError } from "../lib/agents";
 import { BrandSpinner } from "./BrandSpinner";
+
+const DASHBOARD_URL = "https://app.slng.ai";
+
+/** Open a URL in the user's default browser; no-op if the opener isn't available. */
+function openExternal(url: string): void {
+  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  try {
+    spawn(cmd, [url], { stdio: "ignore", detached: true }).unref();
+  } catch {
+    // best-effort; the URL is also shown on screen as a fallback
+  }
+}
 
 interface Props {
   onExit: () => void;
@@ -36,6 +50,7 @@ type Mode =
   | { kind: "confirm-delete"; agent: Agent }
   | { kind: "busy"; label: string }
   | { kind: "result"; title: string; lines: string[]; back: Mode }
+  | { kind: "open-url"; title: string; url: string; back: Mode }
   | { kind: "error"; message: string; back: Mode };
 
 export function AgentsFlow({ onExit }: Props): React.ReactElement {
@@ -77,8 +92,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
         setMode({ kind: "detail", agent: mode.agent });
         break;
       case "result":
-        setMode(mode.back);
-        break;
+      case "open-url":
       case "error":
         setMode(mode.back);
         break;
@@ -114,6 +128,27 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
         {mode.lines.map((l, i) => (
           <Text key={i}>{l}</Text>
         ))}
+        <Box marginTop={1}>
+          <Text dimColor>esc to go back</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (mode.kind === "open-url") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text color="green">✓ {mode.title}</Text>
+        <Box marginTop={1}>
+          <Text>
+            If it didn't open:{" "}
+            <Link url={mode.url}>
+              <Text color="cyan" underline>
+                {mode.url}
+              </Text>
+            </Link>
+          </Text>
+        </Box>
         <Box marginTop={1}>
           <Text dimColor>esc to go back</Text>
         </Box>
@@ -166,7 +201,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
     const actions = [
       ...(canDispatch ? [{ label: "📞  Dispatch a call", value: "dispatch" }] : []),
       { label: "📋  View calls", value: "calls" },
-      { label: "🌐  Create web session", value: "websession" },
+      { label: "🌐  Test in browser (dashboard)", value: "test" },
       { label: "📑  Duplicate", value: "duplicate" },
       { label: "🗑   Delete", value: "delete" },
       { label: "←   Back to list", value: "back" },
@@ -194,8 +229,8 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
                 case "calls":
                   void openCalls(a);
                   break;
-                case "websession":
-                  void createWebSession(a);
+                case "test":
+                  testInBrowser(a);
                   break;
                 case "duplicate":
                   void duplicate(a);
@@ -325,20 +360,12 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
     setMode({ kind: "calls", agent, loading: false, items: r.data?.items ?? [] });
   }
 
-  async function createWebSession(agent: Agent): Promise<void> {
-    setMode({ kind: "busy", label: "Creating web session…" });
-    const r = await agentsRequest<Record<string, string>>("POST", `/v1/agents/${agent.id}/web-sessions`, { body: {} });
-    if (!r.ok) {
-      setMode({ kind: "error", message: formatAgentsError(r), back: { kind: "detail", agent } });
-      return;
-    }
-    const d = r.data ?? {};
-    setMode({
-      kind: "result",
-      title: "Web session created",
-      lines: [`room: ${d.room_name ?? ""}`, `livekit_url: ${d.livekit_url ?? ""}`, `token: ${d.livekit_token ?? ""}`],
-      back: { kind: "detail", agent },
-    });
+  function testInBrowser(agent: Agent): void {
+    // A web session is browser/WebRTC (mic + speaker) — open the dashboard tester
+    // rather than dumping a LiveKit token. Raw sessions stay in `voiceai agents web-sessions create`.
+    const url = `${DASHBOARD_URL}/agent-infra/${agent.id}/test`;
+    openExternal(url);
+    setMode({ kind: "open-url", title: "Opening the browser tester in your dashboard…", url, back: { kind: "detail", agent } });
   }
 
   async function duplicate(agent: Agent): Promise<void> {
