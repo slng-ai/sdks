@@ -1,0 +1,61 @@
+name: sync model catalog
+
+# Keeps cli/src/lib/live-models.generated.ts in sync with the public catalog API
+# (`GET /v1/catalog/models`). On a schedule it regenerates the file and opens a
+# PR when it changed; on PRs that touch the catalog it fails if the committed
+# file is stale (or was hand-edited). See scripts/sync-catalog-models.ts.
+
+on:
+  schedule:
+    # Daily at 06:00 UTC.
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - cli/src/lib/live-models.generated.ts
+      - scripts/sync-catalog-models.ts
+      - package.json
+      - .github/workflows/sync-models.yml
+
+jobs:
+  # On PRs: ensure the committed snapshot matches the script's output.
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun run sync-models:check
+
+  # On schedule / manual dispatch: regenerate and open a PR if anything changed.
+  sync:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun run sync-models
+      - name: open / update PR on changes
+        uses: peter-evans/create-pull-request@v7
+        with:
+          add-paths: cli/src/lib/live-models.generated.ts
+          branch: chore/sync-model-catalog
+          delete-branch: true
+          commit-message: "chore(cli): sync model catalog from /v1/catalog/models"
+          title: "chore(cli): sync model catalog"
+          body: |
+            Automated refresh of `cli/src/lib/live-models.generated.ts` from the
+            public catalog API (`GET /v1/catalog/models`). Review the diff to see
+            which models / regions / protocols changed.
+
+            Opened by `.github/workflows/sync-models.yml`. Subsequent runs update
+            this same PR rather than opening new ones.
+          author: voiceai-release-bot <noreply@slng.ai>
+          committer: voiceai-release-bot <noreply@slng.ai>

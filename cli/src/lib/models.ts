@@ -1,6 +1,8 @@
-// Model catalog. Source of truth = Slng's admin API (LIVE_MODELS, refreshed
-// via `bun run sync-live-models` with ADMIN_API_SECRET). Voice catalog
-// (voice-tools manifests) drives `voicesFor()` independently.
+// Model catalog. Source of truth = the public catalog API (LIVE_MODELS,
+// refreshed via `bun run sync-models` — CI does this daily and opens a PR; see
+// .github/workflows/sync-models.yml). `bun run sync-live-models` is the internal
+// admin-API alternative for full/manual regens (needs ADMIN_API_SECRET). Voice
+// catalog (voice-tools manifests) drives `voicesFor()` independently.
 //
 // When LIVE_MODELS is empty (e.g. a fresh checkout where no one has yet run
 // sync-live-models with the secret), we fall back to keys present in the

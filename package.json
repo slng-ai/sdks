@@ -10,6 +10,8 @@
     "sync-specs": "bash scripts/sync-specs.sh",
     "sync-voice-tools": "bash scripts/sync-voice-tools.sh",
     "sync-live-models": "bun scripts/sync-live-models.ts",
+    "sync-models": "bun scripts/sync-catalog-models.ts",
+    "sync-models:check": "bun scripts/sync-catalog-models.ts --check",
     "gen-sdk-catalogs": "bun scripts/gen-sdk-catalogs.ts",
     "gen-ws-types": "bash scripts/gen-ws-types.sh",
     "gen-voices": "bun scripts/gen-voice-catalog.ts",
