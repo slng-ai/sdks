@@ -66,17 +66,35 @@ export function agentsCommand(): Command {
     .addHelpText(
       "afterAll",
       `
+COMMANDS
+  list                                   list your agents
+  get <id>                               show one agent
+  create --file <f>                      create an agent from a JSON body
+  update <id> --file <f>                 patch an agent (PATCH)
+  replace <id> --file <f>                replace an agent (PUT)
+  duplicate <id>                         copy an agent
+  delete <id>                            delete an agent
+  calls dispatch <id> --phone <e164>     start an outbound call
+  calls list <id>                        list an agent's calls
+  calls get <id> <call_id>               show one call
+  calls tool-exec <id> <call_id> -f <f>  submit a tool-execution result
+  web-sessions create <id>               create a browser session (LiveKit details)
+
 EXAMPLES
-  $ voiceai agents list                              list your agents
-  $ voiceai agents get <agent_id>                    show one agent
-  $ voiceai agents create --file agent.json          create from a JSON body
-  $ cat agent.json | voiceai agents update <id> -f - patch from stdin
+  $ voiceai agents list
+  $ voiceai agents create --file agent.json
+  $ cat agent.json | voiceai agents update <id> --file -
   $ voiceai agents calls dispatch <id> --phone +15551234567
   $ voiceai agents calls list <id> --json | jq '.items[].status'
 
-Create/update bodies are JSON matching the Voice Agents API schema. The agents
-host defaults to ${agentsBaseUrl()} (override with VOICEAI_AGENTS_BASE_URL or
-\`voiceai config set agentsBaseUrl <url>\`).
+NOTES
+  • create/update/replace/tool-exec take a JSON body via --file <path> (or "-" for stdin).
+  • Every command supports --json.
+  • The interactive TUI (run \`voiceai\` with no args → Agents) browses agents and runs
+    quick actions (dispatch a call, view calls, web session, duplicate, delete). Creating
+    or editing agents is CLI-only, via --file.
+  • Agents host defaults to ${agentsBaseUrl()} (override with VOICEAI_AGENTS_BASE_URL or
+    \`voiceai config set agentsBaseUrl <url>\`).
 `,
     );
 
