@@ -8,6 +8,7 @@ import { Settings } from "./Settings";
 import { AgentsFlow } from "./AgentsFlow";
 import { ApiKeySetup } from "./ApiKeySetup";
 import { load } from "../lib/config";
+import pkg from "../../package.json" with { type: "json" };
 
 export type Screen = "menu" | "tts" | "stt" | "agents" | "settings" | "api-key-setup";
 
@@ -24,6 +25,7 @@ export function App(): React.ReactElement {
       <Box flexDirection="column" paddingX={1} paddingY={0}>
         <Banner />
         <Text dimColor>  Voice AI for builders — text-to-speech, speech-to-text, real-time.</Text>
+        <Text dimColor>  v{pkg.version}</Text>
       </Box>
 
       {screen === "api-key-setup" && <ApiKeySetup onDone={() => setScreen("menu")} />}

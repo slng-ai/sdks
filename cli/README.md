@@ -1,19 +1,24 @@
 # voiceai
 
+[![npm](https://img.shields.io/npm/v/voiceai-cli?label=voiceai-cli&color=F2DD52)](https://www.npmjs.com/package/voiceai-cli)
+
 The official [Voiceai](https://slng.ai) CLI — text-to-speech, speech-to-text,
-real-time streaming.
+real-time streaming, and voice agents.
 
 ```
-         _|    _|    _|_|_|  _|        _|      _|    _|_|_|
-       _|    _|    _|        _|        _|_|    _|  _|
-     _|    _|        _|_|    _|        _|  _|  _|  _|  _|_|
-   _|    _|              _|  _|        _|    _|_|  _|    _|
- _|    _|          _|_|_|    _|_|_|_|  _|      _|    _|_|_|
+ ███████╗ ██╗      ███╗   ██╗  ██████╗      ██╗     ██╗
+ ██╔════╝ ██║      ████╗  ██║ ██╔════╝     ██╔╝    ██╔╝
+ ███████╗ ██║      ██╔██╗ ██║ ██║  ███╗   ██╔╝    ██╔╝
+ ╚════██║ ██║      ██║╚██╗██║ ██║   ██║  ██╔╝    ██╔╝
+ ███████║ ███████╗ ██║ ╚████║ ╚██████╔╝ ██╔╝    ██╔╝
+ ╚══════╝ ╚══════╝ ╚═╝  ╚═══╝  ╚═════╝  ╚═╝     ╚═╝
 
    Voice AI for builders — text-to-speech, speech-to-text, real-time.
+   v0.1.12
 
    ❯ 🗣  Text → Speech - Synthesize
      👂  Speech → Text - Transcribe
+     🤖  Agents - Browse & dispatch
      ⚙️   Settings
      ❌   Quit
 
@@ -142,6 +147,30 @@ Mic mode opens a WebSocket and streams 16-bit PCM frames; partial
 transcripts appear in dim italic, finals get appended. File mode does a
 one-shot HTTP upload.
 
+**Agents**
+
+Browse your voice agents and run quick actions without leaving the terminal.
+
+```
+  AGENT                         LANGUAGE  TELEPHONY  UPDATED
+❯ Lovable Travel Agent (demo)   English   Web only   21h
+  Attio CRM Lead Intake         English   Phone      15d
+
+  Lovable Travel Agent (demo)
+  language: en · region: eu-central · created: 2026-05-28 14:06
+  ❯ 📞  Dispatch a call
+    📋  View calls
+    🌐  Test in browser (dashboard)
+    📑  Duplicate
+    🗑   Delete
+```
+
+The list is a table (`AGENT · LANGUAGE · TELEPHONY · UPDATED`); enter opens an
+agent. **Dispatch a call** only appears when the agent has outbound telephony.
+**View calls** shows a color-coded table (green = completed, red = failed) with
+local-time dates. **Test in browser** opens the dashboard tester. Creating or
+editing agents is flag-mode only, via `--file` (see [Agents](#agents) below).
+
 ## Flag mode
 
 ### Text → speech
@@ -200,6 +229,7 @@ voiceai voices --model slng/deepgram/aura:2-en --json | jq '.[] | .name'
 
 ```sh
 # Verify VOICEAI_API_KEY against GET /v1/me (no TTS/STT credits used).
+# Prints the account it resolves to: name, org, and plan tier.
 voiceai whoami
 voiceai whoami --json | jq .ok
 ```
