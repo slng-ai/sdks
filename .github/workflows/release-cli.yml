@@ -237,10 +237,16 @@ jobs:
           # Force in case a previous run left a stale branch for this version.
           git push --force origin "$branch"
 
-          gh pr create \
-            --repo slng-ai/homebrew-tap \
-            --base main \
-            --head "$branch" \
-            --title "voiceai ${version}" \
-            --body "Automated formula bump for voiceai ${version}, released from slng-ai/sdks at \`cli-v${version}\`." \
-            || echo "PR already exists for ${branch}; updated the branch in place."
+          # Open a PR only if one doesn't already exist for this branch. Don't
+          # swallow `gh pr create` failures — a permissions error (the tap token
+          # needs `pull_requests: write`) must fail the job, not pass silently.
+          if gh pr view "$branch" --repo slng-ai/homebrew-tap >/dev/null 2>&1; then
+            echo "PR for $branch already exists; updated the branch in place."
+          else
+            gh pr create \
+              --repo slng-ai/homebrew-tap \
+              --base main \
+              --head "$branch" \
+              --title "voiceai ${version}" \
+              --body "Automated formula bump for voiceai ${version}, released from slng-ai/sdks at \`cli-v${version}\`."
+          fi
