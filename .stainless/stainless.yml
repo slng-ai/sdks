@@ -25,7 +25,7 @@ targets:
     package_name: voiceai-sdk
     production_repo: slng-ai/voiceai-sdk
     publish:
-      npm: false
+      npm: true
   python:
     edition: python.2025-11-20
     # PyPI accepts `voiceai-sdk` as the dist name, but Python package_name
@@ -35,7 +35,7 @@ targets:
     package_name: voiceai_sdk
     production_repo: slng-ai/voiceai-sdk-python
     publish:
-      pypi: false
+      pypi: true
 
 # `environments` are a map of the name of the environment (e.g. "sandbox",
 # "production") to the corresponding url to use.
