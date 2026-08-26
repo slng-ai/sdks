@@ -7,7 +7,8 @@ import { load, requireApiKey } from "./config";
 export const DEFAULT_AGENTS_BASE_URL = "https://api.agents.slng.ai";
 
 export interface AgentsRequestOptions {
-  query?: Record<string, string | number | undefined>;
+  // An array value is repeated (?k=a&k=b); the tools list filters that way.
+  query?: Record<string, string | number | string[] | undefined>;
   body?: unknown;
 }
 
@@ -16,6 +17,7 @@ export interface AgentsResult<T = unknown> {
   status?: number; // HTTP status; undefined on network error
   data?: T; // parsed JSON body (if any)
   error?: string; // network error message
+  retryAfter?: string; // Retry-After header, present on a real 429
 }
 
 /** Resolve the agents host: profile/env override, else production. */
@@ -35,7 +37,11 @@ export async function agentsRequest<T = unknown>(
   const apiKey = requireApiKey();
   const url = new URL(`${agentsBaseUrl()}${path}`);
   for (const [k, v] of Object.entries(opts.query ?? {})) {
-    if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+    if (Array.isArray(v)) {
+      for (const one of v) if (one !== "") url.searchParams.append(k, String(one));
+    } else if (v !== undefined && v !== "") {
+      url.searchParams.set(k, String(v));
+    }
   }
 
   const headers: Record<string, string> = { Authorization: `Bearer ${apiKey}` };
@@ -62,12 +68,19 @@ export async function agentsRequest<T = unknown>(
     }
   }
 
-  return { ok: res.status >= 200 && res.status < 300, status: res.status, data };
+  return {
+    ok: res.status >= 200 && res.status < 300,
+    status: res.status,
+    data,
+    retryAfter: res.headers.get("retry-after") ?? undefined,
+  };
 }
 
 /**
- * Human-readable one-liner for a failed AgentsResult. Pulls the API's error
- * message and request id when present (shape: { error, slng_request_id }).
+ * Human-readable one-liner for a failed AgentsResult. Handles both error
+ * shapes the platform emits: the flat { error, slng_request_id } of the agents
+ * routes, and the nested { detail, error: { code, message, request_id } } of
+ * the shared-resource routes.
  */
 export function formatAgentsError(result: AgentsResult): string {
   if (result.error) return result.error;
@@ -77,10 +90,19 @@ export function formatAgentsError(result: AgentsResult): string {
   if (typeof d === "string" && d) {
     bits.push(d);
   } else if (d && typeof d === "object") {
-    const msg = d.error ?? d.message ?? d.detail;
+    // Nested envelope wins when present — it carries the machine-readable code.
+    const nested = (typeof d.error === "object" && d.error !== null ? d.error : undefined) as
+      | Record<string, unknown>
+      | undefined;
+    const msg = nested?.message ?? d.error ?? d.message ?? d.detail;
     if (msg) bits.push(typeof msg === "string" ? msg : JSON.stringify(msg));
-    const reqId = d.slng_request_id ?? d.request_id;
+    const code = nested?.code;
+    if (code) bits.push(String(code));
+    const reqId = d.slng_request_id ?? d.request_id ?? nested?.request_id;
     if (reqId) bits.push(`slng_request_id=${String(reqId)}`);
+  }
+  if (result.status === 429) {
+    bits.push(result.retryAfter ? `rate limited; retry after ${result.retryAfter}s` : "rate limited");
   }
   return bits.length ? bits.join(" · ") : "request failed";
 }
