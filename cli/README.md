@@ -296,6 +296,34 @@ that case `get` shows your organisation's tool and notes the shadowed curated on
 on stderr; `--source curated|org` picks a side explicitly. `get --json` is always
 a single object, never an array.
 
+### SIP trunks
+
+Read-only view of your organisation's SIP trunks, inbound and outbound.
+
+```sh
+voiceai trunks list                              # every trunk, both directions
+voiceai trunks list --direction outbound         # only outbound trunks
+voiceai trunks list --json | jq -r '.[].name'    # scriptable
+voiceai trunks list --json | jq '[.[] | select(.usable | not)]'   # what is broken
+```
+
+`list` prints `DIRECTION`, `NAME`, `NUMBERS`, `STATUS`, `USABLE`, and `IN USE BY`,
+tab-separated, so `cut -f3` works. Every empty cell is `-`, never blank.
+
+Inbound and outbound trunks are separate objects, so the same name can exist on
+both sides and `DIRECTION` is part of a trunk's identity.
+
+The listing is organisation-wide. The platform exposes trunks only through an
+agent, so the command reads every agent in your organisation and merges the
+results — that is what makes an inbound trunk already attached to one agent
+visible. An organisation with no agents cannot be enumerated at all, and says so
+rather than reporting an empty list.
+
+Two limits worth knowing. The platform withholds any trunk that is both unusable
+and attached to no agent, so such a trunk cannot appear here; the command says so
+on stderr on every run. And the reachable view carries no SIP address, transport,
+provider, or setup mode, which is why there is no `trunks get`.
+
 ### Configuration
 
 ```sh
