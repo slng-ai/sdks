@@ -9,6 +9,7 @@ import { whoamiCommand } from "./commands/whoami";
 import { loginCommand } from "./commands/login";
 import { agentsCommand } from "./commands/agents";
 import { toolCommand } from "./commands/tool";
+import { secretCommand } from "./commands/secret";
 import { trunksCommand } from "./commands/trunks";
 import { setActiveProfile } from "./lib/config";
 
@@ -27,6 +28,8 @@ EXAMPLES
   $ voiceai agents list                                  list your voice agents
   $ voiceai tool list                                    list tools your agents can call
   $ voiceai tool get api_request                         show one tool by name
+  $ voiceai secret list                                  list your organisation's vault entries
+  $ voiceai secret get STRIPE_KEY                        check one secret by name
   $ voiceai trunks list                                  list your organisation's SIP trunks
   $ voiceai --profile work whoami                        run any command under a named profile
   $ voiceai config profiles                              list configured profiles
@@ -66,6 +69,7 @@ export async function runFlagMode(argv: string[]): Promise<void> {
   program.addCommand(loginCommand());
   program.addCommand(agentsCommand());
   program.addCommand(toolCommand());
+  program.addCommand(secretCommand());
   program.addCommand(trunksCommand());
 
   await program.parseAsync(argv, { from: "user" });

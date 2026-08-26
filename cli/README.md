@@ -296,6 +296,31 @@ that case `get` shows your organisation's tool and notes the shadowed curated on
 on stderr; `--source curated|org` picks a side explicitly. `get --json` is always
 a single object, never an array.
 
+### Secrets
+
+Read-only view of your organisation's vault. Use it to check that a secret a tool
+declares is actually present before you rely on it.
+
+```sh
+voiceai secret list                        # every secret and variable
+voiceai secret list --json | jq '.[].name' # scriptable
+voiceai secret get STRIPE_KEY              # one entry, every property
+voiceai secret get STRIPE_KEY >/dev/null   # exit 0 if present, 1 if not
+```
+
+`list` prints `NAME`, `KIND`, `VALUE`, and `DESCRIPTION`, tab-separated, so
+`cut -f1` works. The `VALUE` column is `yes`/`no` — whether a value is stored,
+never the value itself.
+
+**Values are never displayed.** The vault holds two kinds: a `secret` is
+write-once and cannot be read back at all, while a `variable` is non-sensitive
+config the API *would* return in plaintext. The CLI redacts both, in every output
+mode including `--json`, so no vault value can end up in your terminal scrollback
+or your CI logs. Use `has_value` to tell whether an entry is populated.
+
+Secret names are matched **exactly and case-sensitively** — `stripe_key` will not
+find `STRIPE_KEY`. `get` exits non-zero when the name does not exist, so a shell
+script can gate on it without parsing output.
 ### SIP trunks
 
 Read-only view of your organisation's SIP trunks, inbound and outbound.
