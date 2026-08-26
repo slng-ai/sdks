@@ -8,6 +8,7 @@ import { voicesCommand } from "./commands/voices";
 import { whoamiCommand } from "./commands/whoami";
 import { loginCommand } from "./commands/login";
 import { agentsCommand } from "./commands/agents";
+import { toolCommand } from "./commands/tool";
 import { setActiveProfile } from "./lib/config";
 
 const ROOT_EPILOGUE = `
@@ -23,6 +24,8 @@ EXAMPLES
   $ voiceai voices --model slng/deepgram/aura:2-en       list catalogued voices
   $ voiceai whoami                                       check that your API key is valid
   $ voiceai agents list                                  list your voice agents
+  $ voiceai tool list                                    list tools your agents can call
+  $ voiceai tool get api_request                         show one tool by name
   $ voiceai --profile work whoami                        run any command under a named profile
   $ voiceai config profiles                              list configured profiles
 
@@ -60,6 +63,7 @@ export async function runFlagMode(argv: string[]): Promise<void> {
   program.addCommand(whoamiCommand());
   program.addCommand(loginCommand());
   program.addCommand(agentsCommand());
+  program.addCommand(toolCommand());
 
   await program.parseAsync(argv, { from: "user" });
 }

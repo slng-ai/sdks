@@ -1,0 +1,12 @@
+# Untracked paths copied into each new git worktree.
+# One path per line. Symlinks are skipped.
+
+# Credentials — gitignored, but every worktree needs them to hit the live API.
+.env
+.env.local
+
+# Spec Kit state (templates, scripts, constitution, feature specs).
+# .specify/feature.json is gitignored on purpose: it is a per-checkout pointer
+# to the active feature, so a copied one may name a feature this worktree has
+# never seen. Re-run /speckit-specify or edit it if it looks wrong.
+.specify

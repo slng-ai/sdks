@@ -273,6 +273,29 @@ voiceai agents calls get --agent-id a1b2 --call-id c3d4   # equivalent
 Every subcommand supports `--json`. On failure the exit code is non-zero and,
 with `--json`, the API's error body is printed to stdout.
 
+### Tools
+
+Read-only view of the tools your agents can call.
+
+```sh
+voiceai tool list                          # curated + your organisation's tools
+voiceai tool list --source org             # only tools your organisation authored
+voiceai tool list --json | jq '.[].name'   # scriptable
+voiceai tool get api_request               # one tool, every property
+voiceai tool get end_call --source curated # disambiguate a name collision
+```
+
+`list` prints `NAME`, `TYPE`, `SOURCE`, and `VERSION`, tab-separated, so `cut -f4`
+works. A tool that has never been published shows `-` rather than a version.
+
+Tool names are matched **exactly and case-sensitively** — `API_REQUEST` will not
+find `api_request`.
+
+A name can belong to both a curated tool and one your organisation authored. In
+that case `get` shows your organisation's tool and notes the shadowed curated one
+on stderr; `--source curated|org` picks a side explicitly. `get --json` is always
+a single object, never an array.
+
 ### Configuration
 
 ```sh
