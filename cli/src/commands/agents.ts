@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import ora from "ora";
 import { agentsRequest, agentsBaseUrl, formatAgentsError, type AgentsResult } from "../lib/agents";
+import { pushCommand } from "./push";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -89,6 +90,7 @@ COMMANDS
   calls get <id> <call_id>               show one call
   calls tool-exec <id> <call_id> -f <f>  submit a tool-execution result
   web-sessions create <id>               create a browser session (LiveKit details)
+  push <dir>                             push an unmute-compiled agent package
 
 EXAMPLES
   $ voiceai agents list
@@ -96,6 +98,7 @@ EXAMPLES
   $ cat agent.json | voiceai agents update <id> --file -
   $ voiceai agents calls dispatch <id> --phone +15551234567
   $ voiceai agents calls list <id> --json | jq '.items[].status'
+  $ voiceai agents push examples/slng-support --dry-run
 
 NOTES
   • IDs can be positional or named flags: \`agents calls get a1 c2\` == \`--agent-id a1 --call-id c2\`.
@@ -244,6 +247,7 @@ NOTES
 
   cmd.addCommand(callsCommand());
   cmd.addCommand(webSessionsCommand());
+  cmd.addCommand(pushCommand());
   return cmd;
 }
 

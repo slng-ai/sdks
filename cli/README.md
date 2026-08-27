@@ -273,6 +273,49 @@ voiceai agents calls get --agent-id a1b2 --call-id c3d4   # equivalent
 Every subcommand supports `--json`. On failure the exit code is non-zero and,
 with `--json`, the API's error body is printed to stdout.
 
+#### Pushing a compiled package
+
+`unmute compile --target slng` writes a deployment body into `build/slng/` and
+stops — it opens no connection to SLNG, and it writes **names** everywhere the
+platform wants identifiers, because no compiler can invent an id a server
+assigns. `agents push` closes that gap: it resolves every name, mints the
+attachment ids the platform requires, and creates or replaces the agent.
+
+```sh
+voiceai agents push examples/slng-support --dry-run   # check, change nothing
+voiceai agents push examples/slng-support             # push it
+voiceai agents push . --json | jq -r '.agent.id'      # scriptable
+```
+
+The directory may be the package root or the compiled `build/slng` directory.
+
+Nothing is created until every check passes. Missing vault entries and
+unresolved tool names are reported **together**, each with the dashboard page
+that fixes it — a push that cannot succeed leaves your organisation exactly as
+it was. Note that a vault entry of kind `variable` does not satisfy a tool's
+secret requirement; the platform counts secrets only.
+
+Updating **replaces** the agent with what the package declares: a reference the
+package no longer names is detached, and configuration added in the dashboard
+since the last push is overwritten. `--dry-run` lists what would be detached
+before you commit to it.
+
+```sh
+voiceai agents push . --run-samples          # also execute each tool's sample
+```
+
+A package that ships its own tool bodies needs each one created and published
+before the agent can reference it, and the platform will not publish a `code` or
+`api_request` tool until one successful run has proved it. Those runs execute
+against your real dependencies — a webhook really fires — so `push` never
+performs one without `--run-samples`. Write the input as
+`build/slng/samples/<tool>.json`; a tool that needs a run and has no sample is
+reported before anything is created, not discovered halfway through.
+
+Packages carrying `mcp_refs` are refused: an MCP attachment needs a schema hash
+computed from the server's own `tools/list` response, which means connecting to
+it. Attach MCP servers in the dashboard for now.
+
 ### Tools
 
 Read-only view of the tools your agents can call.
