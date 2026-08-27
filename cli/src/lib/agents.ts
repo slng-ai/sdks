@@ -96,6 +96,18 @@ export function formatAgentsError(result: AgentsResult): string {
       | undefined;
     const msg = nested?.message ?? d.error ?? d.message ?? d.detail;
     if (msg) bits.push(typeof msg === "string" ? msg : JSON.stringify(msg));
+    // "Fix the highlighted fields" is useless without the fields. The platform
+    // names them; drop them and a 422 becomes an unactionable one-liner.
+    const fields = Array.isArray(nested?.fields) ? (nested.fields as unknown[]) : undefined;
+    if (fields?.length) {
+      const named = fields
+        .map((f) => {
+          const row = f as Record<string, unknown>;
+          return row.path ? `${String(row.path)}: ${String(row.message ?? "invalid")}` : null;
+        })
+        .filter(Boolean);
+      if (named.length) bits.push(named.join("; "));
+    }
     const code = nested?.code;
     if (code) bits.push(String(code));
     const reqId = d.slng_request_id ?? d.request_id ?? nested?.request_id;
