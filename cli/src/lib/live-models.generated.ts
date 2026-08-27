@@ -152,6 +152,48 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     }
   },
   {
+    "code": "fish/asr:default",
+    "enabled": true,
+    "internal": false,
+    "service_type": "stt",
+    "name": "Fish STT",
+    "provider_code": "fish",
+    "short_description": "ASR model created for batch transcription processes by Fish Audio.",
+    "capabilities": [
+      "HTTP",
+      "Batch",
+      "Long processing"
+    ],
+    "languages": [
+      "ar",
+      "de",
+      "en",
+      "es",
+      "fr",
+      "it",
+      "ja",
+      "ko",
+      "nl",
+      "pl",
+      "pt",
+      "ru",
+      "zh"
+    ],
+    "streaming": true,
+    "deployments": {
+      "regions": [
+        "us"
+      ],
+      "worldParts": [
+        "us"
+      ],
+      "platforms": [],
+      "protocols": [
+        "https"
+      ]
+    }
+  },
+  {
     "code": "gradium/stt:default",
     "enabled": true,
     "internal": false,
@@ -1177,6 +1219,44 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       ],
       "worldParts": [
         "us"
+      ],
+      "platforms": [],
+      "protocols": [
+        "https",
+        "wss"
+      ]
+    }
+  },
+  {
+    "code": "gradium/tts:default",
+    "enabled": true,
+    "internal": false,
+    "service_type": "tts",
+    "name": "Gradium TTS",
+    "provider_code": "gradium",
+    "short_description": "Seamless real-time streaming with natural, expressive speech that masters complex pronunciations. Perfect text-audio synchronization through high-precision word-level timestamps.",
+    "capabilities": [
+      "Streaming",
+      "Expressive voice",
+      "Customizable"
+    ],
+    "languages": [
+      "de",
+      "en",
+      "es",
+      "fr",
+      "ja",
+      "ko",
+      "pt"
+    ],
+    "streaming": true,
+    "docs_url": "https://docs.slng.ai/api-reference/tts/gradium-tts/gradium-tts-default-http",
+    "deployments": {
+      "regions": [
+        "eu"
+      ],
+      "worldParts": [
+        "eu"
       ],
       "platforms": [],
       "protocols": [
