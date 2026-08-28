@@ -27,7 +27,7 @@ EXAMPLES
   $ voiceai whoami                                       check that your API key is valid
   $ voiceai agents list                                  list your voice agents
   $ voiceai tool list                                    list tools your agents can call
-  $ voiceai tool get api_request                         show one tool by name
+  $ voiceai tool get lookup_customer                     show one tool or MCP server by name
   $ voiceai secret list                                  list your organisation's vault entries
   $ voiceai secret get STRIPE_KEY                        check one secret by name
   $ voiceai trunks list                                  list your organisation's SIP trunks

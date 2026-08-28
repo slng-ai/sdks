@@ -321,23 +321,22 @@ it. Attach MCP servers in the dashboard for now.
 Read-only view of the tools your agents can call.
 
 ```sh
-voiceai tool list                          # curated + your organisation's tools
-voiceai tool list --source org             # only tools your organisation authored
-voiceai tool list --json | jq '.[].name'   # scriptable
-voiceai tool get api_request               # one tool, every property
-voiceai tool get end_call --source curated # disambiguate a name collision
+voiceai tool list                            # your organisation's tools
+voiceai tool list --json | jq '.[].name'     # scriptable
+voiceai tool get lookup_customer             # one tool, every property
+voiceai tool get knowledge_base              # MCP server and discovered tools
 ```
 
-`list` prints `NAME`, `TYPE`, `SOURCE`, and `VERSION`, tab-separated, so `cut -f4`
+`list` prints `NAME`, `TYPE`, and `VERSION`, tab-separated, so `cut -f3`
 works. A tool that has never been published shows `-` rather than a version.
 
 Tool names are matched **exactly and case-sensitively** — `API_REQUEST` will not
 find `api_request`.
 
-A name can belong to both a curated tool and one your organisation authored. In
-that case `get` shows your organisation's tool and notes the shadowed curated one
-on stderr; `--source curated|org` picks a side explicitly. `get --json` is always
-a single object, never an array.
+`get` first looks for an organisation tool. If none exists, it looks for an MCP
+server and returns its connection details and discovered tool schemas. If both
+have the same name, the organisation tool wins. `get --json` is always a single
+object, never an array.
 
 ### Secrets
 

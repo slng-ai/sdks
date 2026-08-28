@@ -1,4 +1,4 @@
-import { Command, Option } from "commander";
+import { Command } from "commander";
 import ora from "ora";
 import { agentsRequest, formatAgentsError } from "../lib/agents";
 
@@ -7,16 +7,12 @@ import { agentsRequest, formatAgentsError } from "../lib/agents";
 // routes. Those routes are mounted include_in_schema=False, so they never reach
 // the OpenAPI document or the generated SDK — hence the hand-written shapes.
 
-export const SOURCES = ["curated", "org"] as const;
-export type ToolSource = (typeof SOURCES)[number];
-
 export interface ToolListItem {
   id: string;
   name: string;
   tool_type: string;
   description: string;
   last_run_status: string | null;
-  source: ToolSource;
   latest_version: number | null;
   config_valid: boolean | null;
   arg_schema: Record<string, unknown> | null;
@@ -24,7 +20,20 @@ export interface ToolListItem {
 
 // The detail record is the list row plus fields nothing here type-checks —
 // printTool walks it generically. See data-model.md for the full field list.
-export type ToolDetail = ToolListItem & Record<string, unknown>;
+export type ToolDetail = ToolListItem & { source?: "curated" | "org" } & Record<string, unknown>;
+
+export interface McpServerListItem {
+  id: string;
+  name: string;
+  url_template: string;
+  transport: string;
+  revision: number;
+  capability_status: string;
+  capability_observed_at: string | null;
+  capability_tool_count: number | null;
+}
+
+export type McpServerDetail = McpServerListItem & Record<string, unknown>;
 
 // --- helpers ---------------------------------------------------------------
 
@@ -65,19 +74,12 @@ export async function listAllTools(names?: string[]): Promise<ToolListItem[]> {
   return out;
 }
 
-/**
- * A name can belong to both a curated tool and an org tool. Without --source the
- * org tool wins — authoring a tool under a curated name is a deliberate override
- * — and the curated one is reported as shadowed rather than hidden.
- */
-export function pickTool(
-  rows: ToolListItem[],
-  source?: ToolSource,
-): { chosen?: ToolListItem; shadowed?: ToolListItem } {
-  if (source) return { chosen: rows.find((r) => r.source === source) };
-  const org = rows.find((r) => r.source === "org");
-  if (org) return { chosen: org, shadowed: rows.find((r) => r.source === "curated") };
-  return { chosen: rows[0] };
+export async function findMcpServer(name: string): Promise<McpServerListItem | undefined> {
+  const res = await agentsRequest<McpServerListItem[]>("GET", "/v1/agents/mcp-servers", {
+    query: { name: [name], limit: 1 },
+  });
+  if (!res.ok) throw new Error(formatAgentsError(res));
+  return Array.isArray(res.data) ? res.data[0] : undefined;
 }
 
 /** Exit non-zero, keeping stdout valid JSON under --json. */
@@ -106,12 +108,19 @@ function summarise(key: string, v: unknown): string {
   return String(v);
 }
 
-export function printTool(tool: ToolDetail): void {
-  const first = ["name", "latest_version", "source", "tool_type", "description", "id"];
-  const keys = [...first, ...Object.keys(tool).filter((k) => !first.includes(k))];
+function printDetails(details: Record<string, unknown>, first: string[]): void {
+  const keys = [...first, ...Object.keys(details).filter((key) => !first.includes(key))];
   for (const k of keys) {
-    console.log(`${k.padEnd(22)}${summarise(k, tool[k])}`);
+    console.log(`${k.padEnd(22)}${summarise(k, details[k])}`);
   }
+}
+
+export function printTool(tool: ToolDetail): void {
+  printDetails(tool, ["name", "latest_version", "tool_type", "description", "id"]);
+}
+
+export function printMcpServer(server: McpServerDetail): void {
+  printDetails(server, ["name", "transport", "capability_status", "description", "id"]);
 }
 
 // --- command tree ----------------------------------------------------------
@@ -127,28 +136,22 @@ COMMANDS
   get <tool-name>          show one tool in full
 
 EXAMPLES
-  $ voiceai tool list                          curated + your own tools
-  $ voiceai tool list --source org             only tools your org authored
+  $ voiceai tool list                          your organisation's tools
   $ voiceai tool list --json | jq '.[].name'   scriptable
-  $ voiceai tool get api_request               one tool, all properties
-  $ voiceai tool get end_call --source curated disambiguate a name collision
+  $ voiceai tool get lookup_customer           one tool, all properties
+  $ voiceai tool get knowledge_base            MCP server and discovered tools
 
 NOTES
-  Tool names are matched exactly and are case-sensitive.
-
-  A name can belong to both a curated tool and one your organisation authored.
-  \`get\` shows your organisation's and notes the shadowed curated one on stderr;
-  \`--source\` picks a side explicitly.
+  Names are matched exactly and are case-sensitive. If a tool and MCP server
+  share a name, the organisation tool is returned.
 `,
     );
 
   cmd
     .command("list")
-    .description("List every tool available to your organisation")
-    .addOption(new Option("--source <source>", "Restrict to one source").choices(SOURCES))
+    .description("List your organisation's tools")
     .option("--json", "Output JSON")
     .action(async (opts) => {
-      const source: ToolSource | undefined = opts.source;
       const spinner = spin("loading tools");
       let tools: ToolListItem[];
       try {
@@ -158,28 +161,25 @@ NOTES
         fail(opts.json, (e as Error).message);
       }
       spinner?.stop();
-      const rows = source ? tools.filter((t) => t.source === source) : tools;
       if (opts.json) {
-        console.log(JSON.stringify(rows, null, 2));
+        console.log(JSON.stringify(tools, null, 2));
         return;
       }
-      if (!rows.length) {
+      if (!tools.length) {
         console.log("no tools found.");
         return;
       }
-      console.log(row(["NAME", "TYPE", "SOURCE", "VERSION"]));
-      for (const t of rows) {
-        console.log(row([t.name, t.tool_type, t.source, versionCell(t.latest_version)]));
+      console.log(row(["NAME", "TYPE", "VERSION"]));
+      for (const t of tools) {
+        console.log(row([t.name, t.tool_type, versionCell(t.latest_version)]));
       }
     });
 
   cmd
     .command("get <tool-name>")
-    .description("Show one tool by its exact name")
-    .addOption(new Option("--source <source>", "Disambiguate a name collision").choices(SOURCES))
+    .description("Show one tool or MCP server by its exact name")
     .option("--json", "Output JSON")
     .action(async (name: string, opts) => {
-      const source: ToolSource | undefined = opts.source;
       const spinner = spin(`loading ${name}`);
       let rows: ToolListItem[];
       try {
@@ -188,33 +188,41 @@ NOTES
         spinner?.stop();
         fail(opts.json, (e as Error).message);
       }
-      const { chosen, shadowed } = pickTool(rows, source);
-      if (!chosen) {
+      const chosen = rows[0];
+      if (chosen) {
+        const res = await agentsRequest<ToolDetail>(
+          "GET",
+          `/v1/agents/tools/${encodeURIComponent(chosen.id)}`,
+        );
+        spinner?.stop();
+        if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
+        if (opts.json) console.log(JSON.stringify(res.data, null, 2));
+        else printTool(res.data);
+        return;
+      }
+
+      let mcp: McpServerListItem | undefined;
+      try {
+        mcp = await findMcpServer(name);
+      } catch (e) {
+        spinner?.stop();
+        fail(opts.json, (e as Error).message);
+      }
+      if (!mcp) {
         spinner?.stop();
         fail(
           opts.json,
-          `tool "${name}" not found${source ? ` with source '${source}'` : ""}. ` +
-            "names are matched exactly and are case-sensitive.",
+          `tool or MCP server "${name}" not found. names are matched exactly and are case-sensitive.`,
         );
       }
-      // The list row omits config, code_src, secrets and gate status.
-      const res = await agentsRequest<ToolDetail>(
+      const res = await agentsRequest<McpServerDetail>(
         "GET",
-        `/v1/agents/tools/${encodeURIComponent(chosen.id)}`,
+        `/v1/agents/mcp-servers/${encodeURIComponent(mcp.id)}`,
       );
       spinner?.stop();
       if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
-      if (shadowed) {
-        process.stderr.write(
-          `note: a curated tool named ${name} is shadowed by your organisation's tool; ` +
-            "show it with --source curated\n",
-        );
-      }
-      if (opts.json) {
-        console.log(JSON.stringify(res.data, null, 2));
-        return;
-      }
-      printTool(res.data);
+      if (opts.json) console.log(JSON.stringify(res.data, null, 2));
+      else printMcpServer(res.data);
     });
 
   return cmd;
