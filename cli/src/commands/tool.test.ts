@@ -1,5 +1,5 @@
 import { test, expect, afterEach } from "bun:test";
-import { listAllTools, pickTool, versionCell, PAGE_SIZE, type ToolListItem } from "./tool";
+import { listAllTools, versionCell, PAGE_SIZE, type ToolListItem } from "./tool";
 
 process.env.VOICEAI_API_KEY = "slng_test_key";
 
@@ -15,7 +15,6 @@ function item(over: Partial<ToolListItem> = {}): ToolListItem {
     tool_type: over.tool_type ?? "code",
     description: over.description ?? "",
     last_run_status: null,
-    source: over.source ?? "org",
     latest_version: over.latest_version ?? 1,
     config_valid: null,
     arg_schema: null,
@@ -71,40 +70,11 @@ test("listAllTools sends repeated name filters", async () => {
 });
 
 test("listAllTools surfaces a failed request as an error", async () => {
-  globalThis.fetch = (async () =>
+  globalThis.fetch = (async (_url: URL | string) =>
     new Response(JSON.stringify({ detail: "nope", error: { code: "X", message: "nope", request_id: "rid-1" } }), {
       status: 500,
     })) as typeof fetch;
   await expect(listAllTools()).rejects.toThrow(/nope/);
-});
-
-// --- collision selection (FR-006a, FR-006b) --------------------------------
-
-test("pickTool prefers the org tool and reports the shadowed curated one", () => {
-  const rows = [item({ name: "end_call", source: "curated" }), item({ name: "end_call", source: "org" })];
-  const { chosen, shadowed } = pickTool(rows);
-  expect(chosen?.source).toBe("org");
-  expect(shadowed?.source).toBe("curated");
-});
-
-test("pickTool with --source selects that side and shadows nothing", () => {
-  const rows = [item({ name: "end_call", source: "curated" }), item({ name: "end_call", source: "org" })];
-  expect(pickTool(rows, "curated").chosen?.source).toBe("curated");
-  expect(pickTool(rows, "curated").shadowed).toBeUndefined();
-});
-
-test("pickTool returns nothing when --source matches no row", () => {
-  expect(pickTool([item({ source: "org" })], "curated").chosen).toBeUndefined();
-});
-
-test("pickTool returns the single row when there is no collision", () => {
-  const { chosen, shadowed } = pickTool([item({ source: "curated" })]);
-  expect(chosen?.source).toBe("curated");
-  expect(shadowed).toBeUndefined();
-});
-
-test("pickTool returns nothing for an empty result", () => {
-  expect(pickTool([]).chosen).toBeUndefined();
 });
 
 // ---------------------------------------------------------------------------
@@ -143,11 +113,6 @@ async function runCli(
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-const collision = [
-  item({ id: "id-curated", name: "end_call", source: "curated", latest_version: 1 }),
-  item({ id: "id-org", name: "end_call", source: "org", latest_version: 3 }),
-];
-
 function detailServer(rows: ToolListItem[]) {
   return (req: Request) => {
     const path = new URL(req.url).pathname;
@@ -160,28 +125,54 @@ function detailServer(rows: ToolListItem[]) {
   };
 }
 
-// --- get: collision (FR-006a, FR-006b, FR-009) -----------------------------
+// --- get: code and MCP details ---------------------------------------------
 
-test("get prefers the org tool and keeps the shadow note off stdout", async () => {
-  const r = await runCli(["tool", "get", "end_call"], detailServer(collision));
+test("get returns full code tool details", async () => {
+  const rows = [item({ id: "id-code", name: "echo", latest_version: 3 })];
+  const r = await runCli(["tool", "get", "echo"], detailServer(rows));
   expect(r.code).toBe(0);
   expect(r.stdout).toContain("latest_version        3");
-  expect(r.stdout).not.toContain("shadow");
-  expect(r.stderr).toContain("shadowed");
+  expect(r.stdout).toContain("code_src              3 lines");
 });
 
-test("get --source curated selects the other row with no note", async () => {
-  const r = await runCli(["tool", "get", "end_call", "--source", "curated"], detailServer(collision));
+test("get falls back to MCP and returns discovered tool schemas", async () => {
+  const r = await runCli(["tool", "get", "knowledge", "--json"], (req) => {
+    const path = new URL(req.url).pathname;
+    if (path === "/v1/agents/tools") return json([]);
+    if (path === "/v1/agents/mcp-servers") {
+      return json([
+        {
+          id: "mcp-1",
+          name: "knowledge",
+          url_template: "https://mcp.example.com",
+          transport: "streamable_http",
+          revision: 2,
+          capability_status: "healthy",
+          capability_observed_at: "2026-08-28T12:00:00Z",
+          capability_tool_count: 1,
+        },
+      ]);
+    }
+    return json({
+      id: "mcp-1",
+      name: "knowledge",
+      url_template: "https://mcp.example.com",
+      transport: "streamable_http",
+      revision: 2,
+      capability_status: "healthy",
+      capability_observed_at: "2026-08-28T12:00:00Z",
+      capability_tool_count: 1,
+      capabilities: {
+        tools: [{ name: "search", input_schema: { type: "object" }, output_schema: null }],
+        truncated: false,
+        pages_fetched: 1,
+      },
+    });
+  });
   expect(r.code).toBe(0);
-  expect(r.stdout).toContain("latest_version        1");
-  expect(r.stderr).not.toContain("shadowed");
-});
-
-test("get --json emits a single object, never an array, on a collision", async () => {
-  const r = await runCli(["tool", "get", "end_call", "--json"], detailServer(collision));
   const parsed = JSON.parse(r.stdout);
-  expect(Array.isArray(parsed)).toBe(false);
-  expect(parsed.latest_version).toBe(3);
+  expect(parsed.name).toBe("knowledge");
+  expect(parsed.capabilities.tools[0].name).toBe("search");
 });
 
 // --- get: not found (FR-007) -----------------------------------------------
@@ -204,19 +195,13 @@ test("get --json still emits parseable JSON when it fails", async () => {
 test("list writes only data to stdout when not a TTY", async () => {
   const r = await runCli(["tool", "list"], () => json([item({ name: "solo", tool_type: "code", latest_version: null })]));
   expect(r.code).toBe(0);
-  expect(r.stdout).toBe("NAME\tTYPE\tSOURCE\tVERSION\nsolo\tcode\torg\t-\n");
+  expect(r.stdout).toBe("NAME\tTYPE\tVERSION\nsolo\tcode\t-\n");
 });
 
-test("list --source org reports an empty catalogue and still exits 0", async () => {
-  const r = await runCli(["tool", "list", "--source", "org"], () => json([item({ source: "curated" })]));
+test("list reports an empty catalogue and still exits 0", async () => {
+  const r = await runCli(["tool", "list"], () => json([]));
   expect(r.code).toBe(0);
   expect(r.stdout.trim()).toBe("no tools found.");
-});
-
-test("list rejects an invalid --source", async () => {
-  const r = await runCli(["tool", "list", "--source", "nonsense"], () => json([]));
-  expect(r.code).toBe(1);
-  expect(r.stderr).toContain("Allowed choices are curated, org");
 });
 
 // --- failure modes that cannot be induced live (FR-013, SC-004) ------------

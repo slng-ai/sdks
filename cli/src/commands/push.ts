@@ -15,7 +15,7 @@ import {
 } from "../lib/package";
 import { verifyApiKey } from "../lib/verify";
 import { listSecrets, redact, type VaultEntry } from "./secret";
-import { listAllTools, pickTool, type ToolListItem } from "./tool";
+import { listAllTools, type ToolListItem } from "./tool";
 
 // --- dashboard ------------------------------------------------------------
 // Every blocker points at the page that fixes it. Nothing here is created by
@@ -61,7 +61,6 @@ export interface PlannedRef {
   version: number | null;
   attachmentId: string;
   reused: boolean;
-  shadowed?: "curated";
   /** Everything unmute wrote alongside the name, preserved verbatim. */
   carried: Record<string, unknown>;
 }
@@ -287,11 +286,7 @@ export function buildPlan(input: PlanInputs): PushPlan {
   const singletons: string[] = [];
 
   for (const body of pkg.tools) {
-    const existing = pickTool(catalogue.filter((r) => r.name === body.name)).chosen;
-    // Only an org tool can be updated; a curated row of the same name is
-    // shadowed by authoring one, so a shipped body always creates or updates
-    // the org-side tool.
-    const orgRow = catalogue.find((r) => r.name === body.name && r.source === "org");
+    const orgRow = catalogue.find((r) => r.name === body.name);
     if (orgRow && orgRow.tool_type !== body.tool_type) {
       typeConflicts.push(
         `${body.name}: package says ${body.tool_type}, the existing tool is ${orgRow.tool_type}`,
@@ -302,7 +297,7 @@ export function buildPlan(input: PlanInputs): PushPlan {
     // then version. Refuse instead of touching a shared tool.
     if (isManagedSingleton(body)) {
       const held = (input.orgTools ?? []).find(
-        (r) => r.tool_type === body.tool_type && r.source === "org",
+        (r) => r.tool_type === body.tool_type,
       );
       if (held) {
         singletons.push(
@@ -323,7 +318,6 @@ export function buildPlan(input: PlanInputs): PushPlan {
       hasSample,
       willRun: green && hasSample && runSamples,
     });
-    void existing;
   }
 
   if (singletons.length) {
@@ -374,7 +368,7 @@ export function buildPlan(input: PlanInputs): PushPlan {
   for (const ref of pkg.agent.tool_refs ?? []) {
     const { tool: name, ...carried } = ref as PackageToolRef;
     const rows = catalogue.filter((r) => r.name === name);
-    const { chosen, shadowed } = pickTool(rows);
+    const chosen = rows[0];
     const shipsBody = shipped.has(name);
 
     if (!chosen && !shipsBody) {
@@ -391,7 +385,6 @@ export function buildPlan(input: PlanInputs): PushPlan {
       version: shipsBody ? null : (chosen?.latest_version ?? null),
       attachmentId: existingAttachment ?? mint(),
       reused: Boolean(existingAttachment),
-      shadowed: shadowed ? "curated" : undefined,
       carried,
     });
   }
@@ -743,7 +736,6 @@ export function planJson(plan: PushPlan): Record<string, unknown> {
       version: r.version,
       attachment_id: r.attachmentId,
       reused: r.reused,
-      ...(r.shadowed ? { shadowed: r.shadowed } : {}),
       ...r.carried,
     })),
     removals: plan.removals,
@@ -995,15 +987,6 @@ NOTES
           process.stderr.write(`${renderBlockers(plan.blockers)}\n`);
         }
         process.exit(1);
-      }
-
-      for (const ref of plan.refs) {
-        if (ref.shadowed) {
-          note(
-            `note: a curated tool named ${ref.name} is shadowed by your organisation's tool; ` +
-              "the organisation's is used.",
-          );
-        }
       }
 
       if (opts.dryRun) {

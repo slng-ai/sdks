@@ -84,7 +84,6 @@ function toolRow(over: Partial<ToolListItem> = {}): ToolListItem {
     tool_type: "end_call",
     description: "",
     last_run_status: null,
-    source: "org",
     latest_version: 3,
     config_valid: true,
     arg_schema: null,
@@ -308,18 +307,6 @@ test("the tool name is replaced by ids and every other field survives", () => {
   expect(ref.carried).not.toHaveProperty("tool");
 });
 
-test("an org tool shadows a curated one of the same name and the shadow is recorded", () => {
-  const plan = planFor({
-    catalogue: [
-      toolRow({ id: "curated-id", source: "curated", latest_version: 1 }),
-      toolRow({ id: "org-id", source: "org", latest_version: 3 }),
-    ],
-  });
-  expect(plan.refs[0]?.toolId).toBe("org-id");
-  expect(plan.refs[0]?.version).toBe(3);
-  expect(plan.refs[0]?.shadowed).toBe("curated");
-});
-
 // ---------------------------------------------------------------------------
 // T029 — attachment identity (FR-023, FR-024, FR-025)
 // ---------------------------------------------------------------------------
@@ -443,7 +430,7 @@ test("a context-bound tool needs no sample and never runs", () => {
 test("changing a tool's type is refused with both types named", () => {
   const plan = planFor({
     pkgDir: writePackage({ tools: [{ name: "end_call", tool_type: "code" }] }),
-    catalogue: [toolRow({ name: "end_call", tool_type: "end_call", source: "org" })],
+    catalogue: [toolRow({ name: "end_call", tool_type: "end_call" })],
   });
   const b = plan.blockers.find((x) => x.kind === "tool_type_immutable");
   expect(b?.items[0]).toContain("code");
@@ -628,7 +615,7 @@ async function runCli(
 }
 
 const mutating = (calls: Call[]) => calls.filter((c) => c.method !== "GET");
-const orgTool = toolRow({ id: "tool-org", name: "end_call", source: "org", latest_version: 3 });
+const orgTool = toolRow({ id: "tool-org", name: "end_call", latest_version: 3 });
 
 // --- T013: blockers exit 1 and change nothing (FR-009, SC-002) -------------
 
@@ -683,7 +670,7 @@ test("--json stays parseable on a blocker exit and reports changed:false", async
   expect(doc.blockers[0].url).toBe("https://app.slng.ai/vault/secrets");
 });
 
-// --- T015: dry-run mutates nothing; the shadow note is on stderr -----------
+// --- T015: dry-run mutates nothing -----------------------------------------
 
 test("--dry-run issues no mutating request and reports what it would do", async () => {
   const dir = writePackage();
@@ -692,20 +679,6 @@ test("--dry-run issues no mutating request and reports what it would do", async 
   expect(mutating(r.calls)).toEqual([]);
   expect(r.stdout).toContain("would create agent");
   expect(r.stdout).toContain("no changes made.");
-});
-
-test("the shadowed-curated note goes to stderr while the result goes to stdout", async () => {
-  const dir = writePackage();
-  const r = await runCli(["agents", "push", dir, "--dry-run"], {
-    tools: [
-      toolRow({ id: "curated-id", source: "curated", latest_version: 1 }),
-      toolRow({ id: "org-id", source: "org", latest_version: 3 }),
-    ],
-  });
-  expect(r.code).toBe(0);
-  expect(r.stderr).toContain("shadowed");
-  expect(r.stdout).not.toContain("shadowed");
-  expect(r.stdout).toContain("org-id");
 });
 
 test("--dry-run --json emits the plan as one document", async () => {
@@ -913,7 +886,7 @@ test("shipping a body for a type the org already holds is refused", () => {
       tools: [{ name: "push_test_tool", tool_type: "end_call" }],
     }),
     catalogue: [],
-    orgTools: [toolRow({ id: "existing", name: "end_call", tool_type: "end_call", source: "org" })],
+    orgTools: [toolRow({ id: "existing", name: "end_call", tool_type: "end_call" })],
   });
   const b = plan.blockers.find((x) => x.kind === "singleton_exists");
   expect(b?.items[0]).toContain("push_test_tool");
@@ -933,18 +906,6 @@ test("a singleton type is allowed when the org holds none", () => {
   expect(plan.blockers.find((x) => x.kind === "singleton_exists")).toBeUndefined();
 });
 
-test("a curated end_call in the catalogue does not count as the org holding one", () => {
-  const plan = planFor({
-    pkgDir: writePackage({
-      agent: { tool_refs: [{ tool: "push_test_tool" }] },
-      tools: [{ name: "push_test_tool", tool_type: "end_call" }],
-    }),
-    catalogue: [],
-    orgTools: [toolRow({ id: "c", name: "end_call", tool_type: "end_call", source: "curated" })],
-  });
-  expect(plan.blockers.find((x) => x.kind === "singleton_exists")).toBeUndefined();
-});
-
 test("a non-singleton type is never blocked by an existing tool of that type", () => {
   const plan = planFor({
     pkgDir: writePackage({
@@ -954,7 +915,7 @@ test("a non-singleton type is never blocked by an existing tool of that type", (
     }),
     runSamples: true,
     catalogue: [],
-    orgTools: [toolRow({ id: "x", name: "other_code", tool_type: "code", source: "org" })],
+    orgTools: [toolRow({ id: "x", name: "other_code", tool_type: "code" })],
   });
   expect(plan.blockers.find((x) => x.kind === "singleton_exists")).toBeUndefined();
 });
@@ -983,7 +944,7 @@ test("a detached tool is named, not just its uuid", () => {
         { attachment_id: "att-drop", tool_id: "tool-gone" },
       ],
     },
-    orgTools: [toolRow({ id: "tool-gone", name: "meteo-forecat", tool_type: "code", source: "org" })],
+    orgTools: [toolRow({ id: "tool-gone", name: "meteo-forecat", tool_type: "code" })],
   });
   expect(plan.removals[0]).toMatchObject({ tool_id: "tool-gone", name: "meteo-forecat" });
 });
@@ -1222,11 +1183,6 @@ test("planJson refs carry every key the contract names", () => {
   expect(typeof ref[0]?.attachment_id).toBe("string");
   // Carried fields are preserved byte-for-byte alongside, not nested (FR-026).
   expect(ref[0]).toHaveProperty("invocation");
-});
-
-test("planJson omits shadowed when there is no collision", () => {
-  const ref = (planJson(planFor()).refs as Record<string, unknown>[])[0];
-  expect(ref).not.toHaveProperty("shadowed");
 });
 
 test("the success report does not repeat the organisation the header just named", () => {
