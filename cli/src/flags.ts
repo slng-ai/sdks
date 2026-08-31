@@ -9,6 +9,7 @@ import { whoamiCommand } from "./commands/whoami";
 import { loginCommand } from "./commands/login";
 import { agentsCommand } from "./commands/agents";
 import { toolCommand } from "./commands/tool";
+import { mcpCommand } from "./commands/mcp";
 import { secretCommand } from "./commands/secret";
 import { trunksCommand } from "./commands/trunks";
 import { setActiveProfile } from "./lib/config";
@@ -28,9 +29,14 @@ EXAMPLES
   $ voiceai agents list                                  list your voice agents
   $ voiceai tool list                                    list tools your agents can call
   $ voiceai tool get api_request                         show one tool by name
+  $ voiceai mcp list                                     list MCP servers your agents can call
+  $ voiceai mcp get firecrawl-mcp                        show one MCP server by name
+  $ voiceai mcp tools firecrawl-mcp                      list the tools that server exposes
   $ voiceai secret list                                  list your organisation's vault entries
   $ voiceai secret get STRIPE_KEY                        check one secret by name
+  $ voiceai secret create --secrets-file .env.local      create vault entries from a file
   $ voiceai trunks list                                  list your organisation's SIP trunks
+  $ voiceai trunks get nicotestslng                      show one trunk, per agent
   $ voiceai --profile work whoami                        run any command under a named profile
   $ voiceai config profiles                              list configured profiles
 
@@ -69,6 +75,7 @@ export async function runFlagMode(argv: string[]): Promise<void> {
   program.addCommand(loginCommand());
   program.addCommand(agentsCommand());
   program.addCommand(toolCommand());
+  program.addCommand(mcpCommand());
   program.addCommand(secretCommand());
   program.addCommand(trunksCommand());
 

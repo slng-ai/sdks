@@ -321,23 +321,50 @@ it. Attach MCP servers in the dashboard for now.
 Read-only view of the tools your agents can call.
 
 ```sh
-voiceai tool list                          # curated + your organisation's tools
-voiceai tool list --source org             # only tools your organisation authored
+voiceai tool list                          # every tool your agents can call
 voiceai tool list --json | jq '.[].name'   # scriptable
 voiceai tool get api_request               # one tool, every property
-voiceai tool get end_call --source curated # disambiguate a name collision
+voiceai tool get check_order --json | jq .arg_schema   # the tool's input schema
 ```
 
-`list` prints `NAME`, `TYPE`, `SOURCE`, and `VERSION`, tab-separated, so `cut -f4`
-works. A tool that has never been published shows `-` rather than a version.
+`list` prints `NAME`, `TYPE`, and `VERSION`, tab-separated, so `cut -f3` works. A
+tool that has never been published shows `-` rather than a version.
 
 Tool names are matched **exactly and case-sensitively** — `API_REQUEST` will not
 find `api_request`.
 
-A name can belong to both a curated tool and one your organisation authored. In
-that case `get` shows your organisation's tool and notes the shadowed curated one
-on stderr; `--source curated|org` picks a side explicitly. `get --json` is always
-a single object, never an array.
+`--json` carries `arg_schema`, the JSON Schema of the tool's input — derived from
+the pydantic model for a `code` tool. `get --json` is always a single object,
+never an array.
+
+### MCP servers
+
+Read-only view of the MCP servers your agents can call.
+
+```sh
+voiceai mcp list                            # every server your agents can call
+voiceai mcp list --json | jq '.[].name'     # scriptable
+voiceai mcp get firecrawl-mcp               # one server, every property
+voiceai mcp tools firecrawl-mcp             # the tools that server exposes
+voiceai mcp tools firecrawl-mcp --json | jq '.[].input_schema'
+```
+
+`list` prints `NAME`, `TRANSPORT`, `STATUS`, and `TOOLS`, tab-separated. Server
+names are matched **exactly and case-sensitively**.
+
+`STATUS` and `TOOLS` come from the last capability probe, not from a live call —
+a server can be listed and still be unreachable. `capability_observed_at` on
+`get` says when the probe ran.
+
+`tools` lists what one server exposes — `NAME` and the first line of each
+description, tab-separated. `tools --json` gives the whole array, with every
+tool's `input_schema`, `output_schema`, and `schema_hash`.
+
+Every subcommand reads the stored probe; none calls the server. If the probe was
+truncated, `tools` says so on stderr rather than presenting a short list as
+complete.
+
+Auth is reported as the vault secret's **name**, never its value.
 
 ### Secrets
 
@@ -364,6 +391,33 @@ or your CI logs. Use `has_value` to tell whether an entry is populated.
 Secret names are matched **exactly and case-sensitively** — `stripe_key` will not
 find `STRIPE_KEY`. `get` exits non-zero when the name does not exist, so a shell
 script can gate on it without parsing output.
+`create` makes a new entry, or every entry in a dotenv-style file:
+
+```sh
+voiceai secret create STRIPE_KEY                  # prompts for the value, no echo
+voiceai secret create --secrets-file .env.local   # one entry per KEY=VALUE
+voiceai secret create --secrets-file .env --overwrite     # replace what exists
+voiceai secret create --kind variable REGION      # a variable, not a secret
+```
+
+It reads the vault first and **never overwrites silently**. Any name already
+present is listed by name and confirmed before anything is written; `--overwrite`
+answers in advance. Without it the run is refused whole — not even the safe
+creates go through — so `--json` reports `would_create` and `would_overwrite` for
+a script to act on.
+
+The file is parsed with the platform's own dotenv parser, so comments, `export `
+prefixes, quoting and multi-line values all behave as they do in a shell. A
+`KEY=` with no value is kept, not skipped.
+
+**There is no `--value` flag.** A value passed as an argument is recorded in
+shell history and visible in `ps` to every user on the machine, so the value is
+prompted for without echo, or read from stdin when piped:
+
+```sh
+printf %s "$TOKEN" | voiceai secret create STRIPE_KEY
+```
+
 ### SIP trunks
 
 Read-only view of your organisation's SIP trunks, inbound and outbound.
@@ -373,6 +427,8 @@ voiceai trunks list                              # every trunk, both directions
 voiceai trunks list --direction outbound         # only outbound trunks
 voiceai trunks list --json | jq -r '.[].name'    # scriptable
 voiceai trunks list --json | jq '[.[] | select(.usable | not)]'   # what is broken
+voiceai trunks get nicotestslng                  # one trunk, per agent
+voiceai trunks get t --direction inbound         # when the name is on both sides
 ```
 
 `list` prints `DIRECTION`, `NAME`, `NUMBERS`, `STATUS`, `USABLE`, and `IN USE BY`,
@@ -387,10 +443,17 @@ results — that is what makes an inbound trunk already attached to one agent
 visible. An organisation with no agents cannot be enumerated at all, and says so
 rather than reporting an empty list.
 
-Two limits worth knowing. The platform withholds any trunk that is both unusable
-and attached to no agent, so such a trunk cannot appear here; the command says so
-on stderr on every run. And the reachable view carries no SIP address, transport,
-provider, or setup mode, which is why there is no `trunks get`.
+`get` adds no fields — the reachable view carries no SIP address, transport,
+provider, or setup mode, and there is no per-trunk route, so it costs the same
+reads as `list`. What it adds is the breakdown `list` folds away: `selectable`,
+`is_current`, and `unavailable_reason` are **per agent**, and `list` reduces them
+to one `usable` flag and the first `in_use_by` name it sees. A trunk listed as
+usable can still be unusable for the agent you care about — `get` says which.
+A name on both sides is refused rather than guessed; pass `--direction`.
+
+One limit worth knowing. The platform withholds any trunk that is both unusable
+and attached to no agent, so such a trunk cannot appear in either command; both
+say so on stderr on every run.
 
 ### Configuration
 
