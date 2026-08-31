@@ -14,7 +14,7 @@ real-time streaming, and voice agents.
  ╚══════╝ ╚══════╝ ╚═╝  ╚═══╝  ╚═════╝  ╚═╝     ╚═╝
 
    Voice AI for builders — text-to-speech, speech-to-text, real-time.
-   v0.1.12
+   v0.1.14
 
    ❯ 🗣  Text → Speech - Synthesize
      👂  Speech → Text - Transcribe
@@ -464,10 +464,10 @@ voiceai config set apiKey slng_cu_…           # write to the current profile
 voiceai config set --profile work apiKey slng_cu_…   # write to a specific profile
 voiceai config set defaultTtsModel slng/deepgram/aura:2-en
 voiceai config set defaultTtsVoice amalthea
-voiceai config profiles                    # list profiles (★ marks the current)
+voiceai config profiles                    # list profiles (★ marks the current), alias: list
 voiceai config use work                    # set persistent default
 voiceai config add staging                 # add a profile interactively
-voiceai config remove staging              # delete a profile
+voiceai config remove staging              # delete a profile, alias: rm
 voiceai config reset --force               # wipe ~/.config/voiceai + legacy slng dir
 ```
 
