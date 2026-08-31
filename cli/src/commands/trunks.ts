@@ -198,6 +198,36 @@ export function mergeReports(reports: Report[]): Trunk[] {
   );
 }
 
+/** One agent's answer about one trunk — the row `mergeReports` folds away. */
+export interface AgentView {
+  agent: string;
+  selectable: boolean;
+  is_current: boolean;
+  unavailable_reason: string | null;
+}
+
+/**
+ * Every agent's answer about one trunk, in list order.
+ *
+ * `list` reduces these to one `usable` flag and one `in_use_by` name, which is
+ * the right summary and the wrong answer to "why can this agent not use it" —
+ * `selectable` and `unavailable_reason` are per agent, not per trunk.
+ */
+export function agentViews(reports: Report[], direction: Direction, id: string): AgentView[] {
+  const views: AgentView[] = [];
+  for (const { agent, options } of reports) {
+    const o = (options?.[direction] ?? []).find((t) => t.id === id);
+    if (!o) continue; // filtered out of this agent's response entirely
+    views.push({
+      agent: agent.name,
+      selectable: o.selectable,
+      is_current: o.is_current,
+      unavailable_reason: o.selectable ? null : o.unavailable_reason,
+    });
+  }
+  return views;
+}
+
 // --- command tree ----------------------------------------------------------
 
 export function trunksCommand(): Command {
@@ -208,12 +238,15 @@ export function trunksCommand(): Command {
       `
 COMMANDS
   list                     list every SIP trunk available to your organisation
+  get <trunk-name>         show one trunk, and what each agent says about it
 
 EXAMPLES
   $ voiceai trunks list                            every trunk, both directions
   $ voiceai trunks list --direction outbound       only outbound trunks
   $ voiceai trunks list --json | jq -r '.[].name'  scriptable
   $ voiceai trunks list --json | jq '[.[] | select(.usable | not)]'   what is broken
+  $ voiceai trunks get nicotestslng                one trunk, per agent
+  $ voiceai trunks get t --direction inbound       when the name is on both sides
 
 NOTES
   Inbound and outbound trunks are separate objects. The same name can exist on
@@ -226,6 +259,9 @@ NOTES
 
   What is not shown: the platform withholds any trunk that is both unusable and
   attached to no agent. Such a trunk exists but cannot appear in this list.
+
+  \`get\` costs the same reads as \`list\` — there is no per-trunk route, so both
+  ask every agent. What \`get\` adds is the per-agent breakdown \`list\` folds away.
 `,
     );
 
@@ -270,6 +306,81 @@ NOTES
         }
       }
       // Stderr only: the list is as complete as the platform allows, no more.
+      process.stderr.write(`${COMPLETENESS_NOTE}\n`);
+    });
+
+  cmd
+    .command("get <trunk-name>")
+    .description("Show one trunk, and what each agent says about it")
+    .addOption(new Option("--direction <direction>", "Disambiguate a name on both sides").choices(DIRECTIONS))
+    .option("--json", "Output JSON")
+    .action(async (name: string, opts) => {
+      const spinner = spin(`loading ${name}`);
+      let reports: Report[];
+      try {
+        reports = await collectTrunks();
+      } catch (e) {
+        spinner?.stop();
+        fail(opts.json, (e as Error).message);
+      }
+      spinner?.stop();
+      const direction: Direction | undefined = opts.direction;
+      const found = mergeReports(reports).filter(
+        (t) => t.name === name && (!direction || t.direction === direction),
+      );
+
+      if (!found.length) {
+        fail(
+          opts.json,
+          `trunk "${name}" not found${direction ? ` on the ${direction} side` : ""}. ` +
+            "names are matched exactly and are case-sensitive. " +
+            "a trunk both unusable and attached to no agent is not visible at all.",
+        );
+      }
+      // The same name can exist inbound and outbound. Refuse rather than guess:
+      // picking a side silently would report the wrong trunk as the only one.
+      if (found.length > 1) {
+        fail(
+          opts.json,
+          `trunk "${name}" exists on both sides (${found.map((t) => t.direction).join(", ")}). ` +
+            "pick one with --direction.",
+        );
+      }
+
+      const trunk = found[0]!;
+      const views = agentViews(reports, trunk.direction, trunk.id);
+
+      if (opts.json) {
+        console.log(JSON.stringify({ ...trunk, agents: views }, null, 2));
+        process.stderr.write(`${COMPLETENESS_NOTE}\n`);
+        return;
+      }
+
+      for (const [k, v] of [
+        ["name", trunk.name],
+        ["direction", trunk.direction],
+        ["numbers", cell(trunk.numbers.join(", "))],
+        ["status", cell(trunk.status)],
+        ["usable", usableCell(trunk)],
+        ["in use by", cell(trunk.in_use_by)],
+        ["id", trunk.id],
+        ["livekit_trunk_id", cell(trunk.livekit_trunk_id)],
+      ] as [string, string][]) {
+        console.log(`${k.padEnd(18)}${v}`);
+      }
+
+      console.log("");
+      console.log(row(["AGENT", "SELECTABLE", "CURRENT", "REASON"]));
+      for (const v of views) {
+        console.log(
+          row([
+            v.agent,
+            v.selectable ? "yes" : "no",
+            v.is_current ? "yes" : "no",
+            cell(v.unavailable_reason && (REASON_TEXT[v.unavailable_reason] ?? v.unavailable_reason)),
+          ]),
+        );
+      }
       process.stderr.write(`${COMPLETENESS_NOTE}\n`);
     });
 
