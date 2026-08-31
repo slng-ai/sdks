@@ -1,5 +1,6 @@
 import { test, expect, afterEach } from "bun:test";
 import {
+  agentViews,
   collectTrunks,
   mergeReports,
   BATCH_SIZE,
@@ -560,4 +561,101 @@ test("no trunk output carries a SIP credential field", async () => {
   for (const secret of ["auth_username", "auth_password", "twilio_webhook_token"]) {
     expect(stdout).not.toContain(secret);
   }
+});
+
+// --- get: the per-agent view list folds away -------------------------------
+
+test("agentViews keeps each agent's own answer, and skips agents that never saw it", () => {
+  const views = agentViews(
+    [
+      report(agent("a1", "alpha"), { outbound: [option({ id: "t1", is_current: true })] }),
+      report(agent("a2", "beta"), {
+        outbound: [option({ id: "t1", selectable: false, unavailable_reason: "inactive" })],
+      }),
+      // Filtered out of this agent's response entirely — not a row.
+      report(agent("a3", "gamma"), { outbound: [] }),
+    ],
+    "outbound",
+    "t1",
+  );
+  expect(views).toEqual([
+    { agent: "alpha", selectable: true, is_current: true, unavailable_reason: null },
+    { agent: "beta", selectable: false, is_current: false, unavailable_reason: "inactive" },
+  ]);
+});
+
+// The reason is per agent. mergeReports reports the trunk usable because alpha
+// can select it; get must still show why beta cannot.
+test("get shows a per-agent reason that the merged row hides", async () => {
+  const { stdout, code } = await runCli(
+    ["trunks", "get", "a_trunk"],
+    trunkServer([agent("a1", "alpha"), agent("a2", "beta")], {
+      a1: { inbound: [], outbound: [option({ is_current: true })] },
+      a2: {
+        inbound: [],
+        outbound: [option({ selectable: false, unavailable_reason: "different_livekit_project" })],
+      },
+    }),
+  );
+  expect(code).toBe(0);
+  expect(stdout).toContain("usable            yes");
+  expect(stdout).toMatch(/beta\tno\tno\tbelongs to a different telephony project/);
+  expect(stdout).toMatch(/alpha\tyes\tyes\t-/);
+});
+
+test("get --json carries the merged trunk plus every agent view", async () => {
+  const { stdout } = await runCli(
+    ["trunks", "get", "a_trunk", "--json"],
+    trunkServer([agent("a1", "alpha")], {
+      a1: { inbound: [], outbound: [option({ is_current: true })] },
+    }),
+  );
+  const doc = JSON.parse(stdout);
+  expect(doc.name).toBe("a_trunk");
+  expect(doc.agents).toEqual([
+    { agent: "alpha", selectable: true, is_current: true, unavailable_reason: null },
+  ]);
+});
+
+// Direction is part of identity; guessing a side would report the wrong trunk.
+test("get refuses a name that exists on both sides", async () => {
+  const both = trunkServer([agent("a1")], {
+    a1: { inbound: [option({ id: "in-1" })], outbound: [option({ id: "out-1" })] },
+  });
+  const { stderr, code } = await runCli(["trunks", "get", "a_trunk"], both);
+  expect(code).toBe(1);
+  expect(stderr).toContain("--direction");
+
+  const picked = await runCli(["trunks", "get", "a_trunk", "--direction", "inbound"], both);
+  expect(picked.code).toBe(0);
+  expect(picked.stdout).toContain("direction         inbound");
+});
+
+test("get exits 1 and names the invisible-trunk case when nothing matches", async () => {
+  const { stdout, stderr, code } = await runCli(
+    ["trunks", "get", "NOPE"],
+    trunkServer([agent("a1")], { a1: { inbound: [], outbound: [option()] } }),
+  );
+  expect(code).toBe(1);
+  expect(stderr).toContain("case-sensitive");
+  expect(stderr).toContain("attached to no agent");
+  expect(stdout).toBe("");
+});
+
+test("get --json still emits parseable JSON when it fails", async () => {
+  const { stdout, code } = await runCli(
+    ["trunks", "get", "NOPE", "--json"],
+    trunkServer([agent("a1")], { a1: { inbound: [], outbound: [] } }),
+  );
+  expect(code).toBe(1);
+  expect(JSON.parse(stdout).ok).toBe(false);
+});
+
+test("get keeps the completeness note on stderr, off stdout", async () => {
+  const { stdout, stderr } = await runCli(
+    ["trunks", "get", "a_trunk"],
+    trunkServer([agent("a1")], { a1: { inbound: [], outbound: [option()] } }),
+  );
+  expect(stderr).toContain("attached to no agent");
+  expect(stdout).not.toContain("attached to no agent");
 });

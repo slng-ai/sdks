@@ -12,23 +12,25 @@ Field names and nullability confirmed against the live endpoint.
 | Field | Type | Notes |
 |---|---|---|
 | `id` | `string` (UUID) | Identity for the follow-up detail request. Not shown in human output. |
-| `name` | `string` | Not unique on its own — unique only with `source`. |
+| `name` | `string` | Unique within the organisation. |
 | `tool_type` | `string` | Observed: `api_request`, `code`, `end_call`, `send_sms`, `transfer_call`, `current_datetime`, `voicemail_detection`, `user_phone_number`. Treated as an open string, never an exhaustive union. |
 | `description` | `string` | May be empty. |
 | `last_run_status` | `string \| null` | |
-| `source` | `"curated" \| "org"` | Closed set. Part of identity. |
 | `latest_version` | `number \| null` | `null` = never published. Renders as `-`. |
 | `config_valid` | `boolean \| null` | |
-| `arg_schema` | `object \| null` | JSON Schema for the tool's arguments. |
+| `arg_schema` | `object \| null` | JSON Schema for the tool's arguments; derived from the pydantic model for a `code` tool. |
 
 ## ToolDetail — `GET /v1/agents/tools/{id}`
 
 Superset of the row above. Keys confirmed live:
 
 `id`, `organisation_id`, `name`, `tool_type`, `config`, `description`, `declared_secrets`,
-`dependencies`, `argument_defaults`, `code_src`, `last_run_status`, `source`, `latest_version`,
+`dependencies`, `argument_defaults`, `code_src`, `last_run_status`, `latest_version`,
 `content_hash`, `is_current_hash_green`, `is_current_version`, `schema_stale`, `arg_schema`,
 `gate_status`.
+
+Detail also still carries `source`, which the list row dropped. Nothing reads it; `printTool`
+passes it through generically.
 
 Fields the list row does not carry, and the reason FR-006 needs this second request:
 
@@ -48,8 +50,8 @@ Fields the list row does not carry, and the reason FR-006 needs this second requ
 
 ## Derived concepts
 
-**Tool identity** = (`name`, `source`). Two tools may share a name; `end_call`, `send_sms`, and
-`transfer_call` already do in the probed organisation. Every lookup path must carry `source`.
+**Tool identity** = `name`, within the organisation. The list response dropped `source`
+(2026-08-31), so a name resolves to exactly one row and no lookup path carries a source.
 
 **Version** = `latest_version`. Absent means unpublished, not zero.
 
@@ -58,7 +60,6 @@ Fields the list row does not carry, and the reason FR-006 needs this second requ
 | Rule | Source | Enforced |
 |---|---|---|
 | `<tool-name>` is required and non-empty | FR-006 | CLI, before any request |
-| `--source` accepts only `curated` or `org` | FR-006b | CLI, before any request |
 | Name matching is exact and case-sensitive | Server behaviour, confirmed live | Server; the CLI's not-found message says so |
 | `latest_version` absent renders as `-` | FR-004 | CLI |
 | An API key is present | FR-011 | `requireApiKey()`, existing |

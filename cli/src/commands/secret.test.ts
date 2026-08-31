@@ -1,5 +1,16 @@
 import { test, expect, afterEach } from "bun:test";
-import { redact, listSecrets, getSecret, valueCell, type VaultEntry } from "./secret";
+import {
+  redact,
+  listSecrets,
+  getSecret,
+  partition,
+  readSecretsFile,
+  valueCell,
+  type VaultEntry,
+} from "./secret";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 process.env.VOICEAI_API_KEY = "slng_test_key";
 
@@ -348,4 +359,181 @@ test("no vault value reaches any stream, from any command, in any mode", async (
     expect(r.stdout).not.toContain(SENTINEL);
     expect(r.stderr).not.toContain(SENTINEL);
   }
+});
+
+// ---------------------------------------------------------------------------
+// create
+// ---------------------------------------------------------------------------
+
+function envFile(body: string): string {
+  const dir = mkdtempSync(join(tmpdir(), "secret-env-"));
+  const path = join(dir, ".env.local");
+  writeFileSync(path, body);
+  return path;
+}
+
+/** Records every write so a test can assert nothing was sent. */
+function writableVault(rows: VaultEntry[]) {
+  const writes: { method: string; path: string; body: unknown }[] = [];
+  const handler = async (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (req.method !== "GET") {
+      writes.push({ method: req.method, path, body: await req.json().catch(() => null) });
+      return json({ ok: true }, req.method === "POST" ? 201 : 200);
+    }
+    if (path === "/v1/agents/secrets") return json(rows);
+    return json({ detail: "nope", error: { code: "RESOURCE_NOT_FOUND", message: "nope" } }, 404);
+  };
+  return { handler: handler as unknown as (req: Request) => Response, writes };
+}
+
+test("readSecretsFile uses the platform parser: comments, export, quotes, blanks", () => {
+  const path = envFile('# a comment\nFOO=bar\nexport BAZ="two words"\nEMPTY=\n');
+  expect(readSecretsFile(path)).toEqual([
+    { name: "FOO", value: "bar" },
+    { name: "BAZ", value: "two words" },
+    // Written deliberately in the file, so kept — not silently dropped.
+    { name: "EMPTY", value: "" },
+  ]);
+});
+
+test("readSecretsFile names the file it could not read", () => {
+  expect(() => readSecretsFile("/nope/missing.env")).toThrow(/cannot read \/nope\/missing.env/);
+});
+
+test("partition splits against what the vault already holds", () => {
+  const { creates, overwrites } = partition(
+    [{ name: "NEW", value: "a" }, { name: "OLD", value: "b" }],
+    [entry({ name: "OLD" })],
+  );
+  expect(creates.map((p) => p.name)).toEqual(["NEW"]);
+  expect(overwrites.map((p) => p.name)).toEqual(["OLD"]);
+});
+
+test("create refuses a name and --secrets-file together, and neither alone", async () => {
+  const both = await runCli(
+    ["secret", "create", "FOO", "--secrets-file", envFile("A=1")],
+    vaultServer(vault),
+  );
+  expect(both.code).toBe(1);
+  expect(both.stderr).toContain("not both and not neither");
+
+  const neither = await runCli(["secret", "create"], vaultServer(vault));
+  expect(neither.code).toBe(1);
+});
+
+// The whole point: existing entries are named, and nothing is written.
+test("create refuses to overwrite without --overwrite and writes nothing", async () => {
+  const v = writableVault(vault);
+  const r = await runCli(
+    ["secret", "create", "--secrets-file", envFile("FIRECRAWL_API_KEY=new\nBRAND_NEW=x\n")],
+    v.handler,
+  );
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("FIRECRAWL_API_KEY");
+  expect(r.stderr).toContain("--overwrite");
+  // Not even the safe creates go through: the run is all-or-nothing.
+  expect(v.writes).toEqual([]);
+});
+
+test("create --json reports both lists so a script can decide", async () => {
+  const r = await runCli(
+    ["secret", "create", "--secrets-file", envFile("FIRECRAWL_API_KEY=new\nBRAND_NEW=x\n"), "--json"],
+    vaultServer(vault),
+  );
+  expect(r.code).toBe(1);
+  const doc = JSON.parse(r.stdout);
+  expect(doc.ok).toBe(false);
+  expect(doc.would_overwrite).toEqual(["FIRECRAWL_API_KEY"]);
+  expect(doc.would_create).toEqual(["BRAND_NEW"]);
+});
+
+test("create --overwrite POSTs the new ones and PATCHes the existing ones", async () => {
+  const v = writableVault(vault);
+  const r = await runCli(
+    ["secret", "create", "--secrets-file", envFile("FIRECRAWL_API_KEY=rotated\nBRAND_NEW=x\n"), "--overwrite"],
+    v.handler,
+  );
+  expect(r.code).toBe(0);
+  expect(v.writes).toEqual([
+    { method: "POST", path: "/v1/agents/secrets", body: { name: "BRAND_NEW", kind: "secret", value: "x" } },
+    { method: "PATCH", path: "/v1/agents/secrets/FIRECRAWL_API_KEY", body: { value: "rotated" } },
+  ]);
+  expect(r.stdout).toContain("BRAND_NEW\tcreated");
+  expect(r.stdout).toContain("FIRECRAWL_API_KEY\toverwritten");
+});
+
+test("create --kind variable is carried on the create body", async () => {
+  const v = writableVault([]);
+  await runCli(
+    ["secret", "create", "--secrets-file", envFile("REGION=eu\n"), "--kind", "variable"],
+    v.handler,
+  );
+  expect(v.writes[0]?.body).toEqual({ name: "REGION", kind: "variable", value: "eu" });
+});
+
+test("create rejects an unknown --kind before any request", async () => {
+  const v = writableVault([]);
+  const r = await runCli(
+    ["secret", "create", "--secrets-file", envFile("A=1"), "--kind", "nonsense"],
+    v.handler,
+  );
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("Allowed choices are secret, variable");
+  expect(v.writes).toEqual([]);
+});
+
+test("create reports an empty file rather than writing nothing silently", async () => {
+  const r = await runCli(
+    ["secret", "create", "--secrets-file", envFile("# only a comment\n")],
+    vaultServer([]),
+  );
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("no KEY=VALUE entries");
+});
+
+// Piped stdin is the non-interactive path for a single value.
+test("create <name> reads a piped value and never echoes it", async () => {
+  const v = writableVault([]);
+  const server = Bun.serve({ port: 0, fetch: v.handler });
+  try {
+    const proc = Bun.spawn(["bun", "run", "src/index.ts", "secret", "create", "NEW_KEY"], {
+      cwd: CLI_DIR,
+      env: {
+        ...process.env,
+        VOICEAI_AGENTS_BASE_URL: `http://localhost:${server.port}`,
+        VOICEAI_API_KEY: "slng_test_key",
+      },
+      stdin: new Blob([`${SENTINEL}\n`]),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    expect(await proc.exited).toBe(0);
+    expect(v.writes[0]?.body).toEqual({ name: "NEW_KEY", kind: "secret", value: SENTINEL });
+    // The value reaches the API and nowhere else.
+    expect(stdout).not.toContain(SENTINEL);
+    expect(stderr).not.toContain(SENTINEL);
+    expect(stdout).toContain("NEW_KEY\tcreated");
+  } finally {
+    server.stop(true);
+  }
+});
+
+test("a failed write exits 1 and names the entry that failed", async () => {
+  const handler = (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (req.method === "GET" && path === "/v1/agents/secrets") return json([]);
+    return json(
+      { detail: "d", error: { code: "QUOTA_EXCEEDED", message: "vault is full", request_id: "rid-1" } },
+      403,
+    );
+  };
+  const r = await runCli(["secret", "create", "--secrets-file", envFile("A=1")], handler);
+  expect(r.code).toBe(1);
+  expect(r.stdout).toContain("A\tFAILED");
+  expect(r.stdout).toContain("QUOTA_EXCEEDED");
 });
