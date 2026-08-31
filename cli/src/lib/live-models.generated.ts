@@ -180,6 +180,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "zh"
     ],
     "streaming": true,
+    "docs_url": "https://docs.slng.ai/api-reference/stt/fish-audio-asr/fish-audio-asr-http",
     "deployments": {
       "regions": [
         "us"
@@ -391,7 +392,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "hi"
     ],
     "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/stt/deepgram-nova-3/nova-3-hindi-http",
+    "docs_url": "https://docs.slng.ai/models/stt",
     "deployments": {
       "regions": [
         "asia-south1"
@@ -425,6 +426,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "id"
     ],
     "streaming": true,
+    "docs_url": "https://docs.slng.ai/models/stt",
     "deployments": {
       "regions": [
         "asia-southeast2"
@@ -458,7 +460,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "kn"
     ],
     "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/stt/slng-deepgram-nova-3-kn/nova-3-(kannada)-http",
+    "docs_url": "https://docs.slng.ai/models/stt",
     "deployments": {
       "regions": [
         "asia-south1"
@@ -492,7 +494,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "mr"
     ],
     "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/stt/slng-deepgram-nova-3-mr/nova-3-(marathi)-http",
+    "docs_url": "https://docs.slng.ai/models/stt",
     "deployments": {
       "regions": [
         "asia-south1"
@@ -558,7 +560,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "te"
     ],
     "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/stt/slng-deepgram-nova-3-te/nova-3-(telugu)-http",
+    "docs_url": "https://docs.slng.ai/models/stt",
     "deployments": {
       "regions": [
         "asia-south1"
@@ -671,6 +673,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "id"
     ],
     "streaming": true,
+    "docs_url": "https://docs.slng.ai/api-reference/stt/speechmatics-realtime-v2/speechmatics-realtime-v2-ws",
     "deployments": {
       "regions": [
         "asia-southeast2"
@@ -924,6 +927,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "zh"
     ],
     "streaming": true,
+    "docs_url": "https://docs.slng.ai/api-reference/stt/soniox-speech-ai-real-time-v5/speech-ai-real-time-v5-ws",
     "deployments": {
       "regions": [
         "eu",
@@ -1078,6 +1082,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "zh"
     ],
     "streaming": true,
+    "docs_url": "https://docs.slng.ai/api-reference/tts/cartesia-sonic-3-5/cartesia-sonic-3-5-ws",
     "deployments": {
       "regions": [
         "eu",
@@ -1212,7 +1217,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "zh"
     ],
     "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/tts/fish-audio-tts/fish-audio-tts-s2-1-pro-http",
+    "docs_url": "https://docs.slng.ai/api-reference/tts/fish-audio-tts-s2-1-pro/fish-audio-tts-s2-1-pro-http",
     "deployments": {
       "regions": [
         "us"
@@ -1321,6 +1326,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "zh"
     ],
     "streaming": true,
+    "docs_url": "https://docs.slng.ai/api-reference/tts/kugel-2/kugel-2-ws",
     "deployments": {
       "regions": [
         "eu"
@@ -1489,6 +1495,99 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     ],
     "streaming": true,
     "docs_url": "https://docs.slng.ai/api-reference/tts/deepgram-aura-2/aura-2-spanish-http"
+  },
+  {
+    "code": "slng/fish/tts:s2.1-pro",
+    "enabled": true,
+    "internal": false,
+    "service_type": "tts",
+    "name": "Fish TTS S2.1 Pro",
+    "provider_code": "fish",
+    "short_description": "Instant voice cloning from 10 seconds of audio, 60+ emotion tags, sub-300ms streaming latency, and 500,000+ community voices.",
+    "capabilities": [
+      "Natural Voices",
+      "Emotion Control",
+      "Real time",
+      "Multilingual"
+    ],
+    "languages": [
+      "af",
+      "am",
+      "ar",
+      "az",
+      "bg",
+      "bn",
+      "ca",
+      "cs",
+      "cy",
+      "da",
+      "de",
+      "el",
+      "en",
+      "es",
+      "et",
+      "fa",
+      "fi",
+      "fr",
+      "gu",
+      "he",
+      "hi",
+      "hr",
+      "hu",
+      "hy",
+      "id",
+      "is",
+      "it",
+      "ja",
+      "ka",
+      "kk",
+      "kn",
+      "ko",
+      "lt",
+      "lv",
+      "ml",
+      "mr",
+      "ms",
+      "ne",
+      "nl",
+      "no",
+      "pl",
+      "pt",
+      "ro",
+      "ru",
+      "si",
+      "sk",
+      "sq",
+      "sv",
+      "sw",
+      "ta",
+      "te",
+      "th",
+      "tl",
+      "tr",
+      "uk",
+      "ur",
+      "vi",
+      "xh",
+      "zh"
+    ],
+    "streaming": true,
+    "docs_url": "https://docs.slng.ai/api-reference/tts/fish-audio-tts-s2-1-pro/fish-audio-tts-s2-1-pro-http",
+    "deployments": {
+      "regions": [
+        "ap-southeast-2",
+        "nebius-eu-north1"
+      ],
+      "worldParts": [
+        "au",
+        "eu"
+      ],
+      "platforms": [],
+      "protocols": [
+        "https",
+        "wss"
+      ]
+    }
   },
   {
     "code": "slng/inworld/max:1.5",
