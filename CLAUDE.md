@@ -46,9 +46,8 @@ Two patterns in `cli/src/commands/tool.test.ts`, worth copying:
 
 ### Known failures that are not yours
 
-Check these before debugging — both predate any current work:
+Check this before debugging — it predates any current work:
 
-- `streaming/ts/client.test.ts > rejects connect when aborted` fails on a clean checkout.
 - `bun run sync-models:check` reports `live-models.generated.ts is stale`. It drifts against the
   live model registry over time. Refresh it in its own commit (`bun run sync-models`), never
   bundled into an unrelated feature.

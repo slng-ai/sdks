@@ -51,11 +51,16 @@ export class StreamingClient {
       const ws = new WebSocket(`${this.baseUrl}${path}`, {
         headers: { Authorization: `Bearer ${this.apiKey}` },
       });
+      let settled = false;
       const onOpen = () => {
         cleanup();
         resolve(new StreamingSession(ws));
       };
+      // ponytail: this listener stays attached for the socket's lifetime. A
+      // failed handshake emits `error` twice (again on close), and an `error`
+      // with no listener is thrown as an unhandled EventEmitter error.
       const onError = (err: Error) => {
+        if (settled) return;
         cleanup();
         reject(err);
       };
@@ -65,12 +70,12 @@ export class StreamingClient {
         reject(new Error("aborted"));
       };
       const cleanup = () => {
+        settled = true;
         ws.off("open", onOpen);
-        ws.off("error", onError);
         signal?.removeEventListener("abort", onAbort);
       };
       ws.once("open", onOpen);
-      ws.once("error", onError);
+      ws.on("error", onError);
       signal?.addEventListener("abort", onAbort);
     });
   }

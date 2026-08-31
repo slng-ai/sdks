@@ -24,6 +24,26 @@ cd cli && bun run dev  # run the CLI from source
 
 See [`STAINLESS_SETUP.md`](./STAINLESS_SETUP.md) for one-time onboarding.
 
+## CLI commands
+
+Full reference in [`cli/README.md`](./cli/README.md). The command trees:
+
+| Tree | Subcommands |
+|---|---|
+| `tts` / `stt` | synth and transcribe, one-shot or `--stream` |
+| `models` / `voices` / `whoami` / `login` | catalogs and auth |
+| `agents` | `list get create update replace delete duplicate`, `calls {dispatch list get tool-exec}`, `web-sessions create`, `push` |
+| `tool` | `list get` (read-only; tools are written by `agents push`) |
+| `mcp` | `list get tools` (read-only; attach servers in the dashboard) |
+| `secret` | `list get create` (`--secrets-file`, `--kind`, `--overwrite`; values never readable back) |
+| `trunks` | `list get` (`--direction`; read-only) |
+| `config` | `get set profiles use add remove reset` |
+
+Every subcommand takes `--json` and `--profile <name>`. Names are matched exactly and
+case-sensitively. The shared-resource trees (`tool`, `mcp`, `secret`, `trunks`) hit routes that
+are mounted `include_in_schema=False`, so they are absent from `specs/` and from the generated
+SDKs — they go through the raw-fetch helper in `cli/src/lib/agents.ts`.
+
 ## CLI design
 
 The CLI shells out to `ffmpeg` / `sox` / `arecord` for audio I/O — it never opens an audio device directly. Stream audio via pipes:
