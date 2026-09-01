@@ -1,5 +1,14 @@
 import { test, expect, afterEach } from "bun:test";
-import { listAllServers, cell, firstLine, PAGE_SIZE, type McpServerListItem } from "./mcp";
+import {
+  listAllServers,
+  cell,
+  firstLine,
+  isSnapshotStale,
+  diffToolNames,
+  PAGE_SIZE,
+  type McpServerDetail,
+  type McpServerListItem,
+} from "./mcp";
 
 process.env.VOICEAI_API_KEY = "slng_test_key";
 
@@ -60,6 +69,59 @@ test("firstLine clips a long line and marks it", () => {
 test("firstLine renders a missing description as -", () => {
   expect(firstLine(null)).toBe("-");
   expect(firstLine("   \n  ")).toBe("-");
+});
+
+// --- isSnapshotStale -------------------------------------------------------
+
+const NOW = new Date("2026-09-01T10:00:00Z");
+
+function detail(over: Partial<McpServerDetail> = {}): McpServerDetail {
+  return {
+    ...item(),
+    capability_observed_at: "2026-09-01T09:58:00Z",
+    next_refresh_at: "2026-09-01T10:03:00Z",
+    ...over,
+  } as McpServerDetail;
+}
+
+test("a healthy snapshot with a future refresh is fresh", () => {
+  expect(isSnapshotStale(detail(), NOW)).toBe(false);
+});
+
+test("a snapshot whose refresh time has passed is stale", () => {
+  expect(isSnapshotStale(detail({ next_refresh_at: "2026-09-01T09:59:00Z" }), NOW)).toBe(true);
+});
+
+test("an unhealthy server is stale whatever its timestamps say", () => {
+  expect(isSnapshotStale(detail({ capability_status: "unreachable" }), NOW)).toBe(true);
+});
+
+test("a server that has never been probed is stale", () => {
+  expect(isSnapshotStale(detail({ capability_observed_at: null }), NOW)).toBe(true);
+});
+
+// No scheduled refresh is not evidence of staleness — only a past one is.
+test("a healthy server with no scheduled refresh is fresh", () => {
+  expect(isSnapshotStale(detail({ next_refresh_at: null }), NOW)).toBe(false);
+});
+
+// --- diffToolNames ---------------------------------------------------------
+
+test("diffToolNames reports what appeared and what went away", () => {
+  const d = diffToolNames([{ name: "a" }, { name: "b" }], [{ name: "b" }, { name: "c" }]);
+  expect(d).toEqual({ added: ["c"], removed: ["a"], firstProbe: false });
+});
+
+test("diffToolNames reports no change when the set is identical", () => {
+  const d = diffToolNames([{ name: "a" }], [{ name: "a" }]);
+  expect(d).toEqual({ added: [], removed: [], firstProbe: false });
+});
+
+// A server nobody has probed has no previous set. Calling all 26 tools "added"
+// would read as 26 new tools appearing, which is not what happened.
+test("diffToolNames marks a never-probed server as a first probe", () => {
+  const d = diffToolNames(null, [{ name: "a" }, { name: "b" }]);
+  expect(d).toEqual({ added: [], removed: [], firstProbe: true });
 });
 
 // --- pagination ------------------------------------------------------------
@@ -298,6 +360,115 @@ test("tools warns on stderr when the probe was truncated", async () => {
   expect(r.code).toBe(0);
   expect(r.stderr).toContain("truncated");
   expect(r.stdout).toContain("one");
+});
+
+// --- run -------------------------------------------------------------------
+
+/** Stub that answers the list, the detail, and the connect. */
+function runServer(
+  over: {
+    previous?: { name: string }[] | null;
+    current?: { name: string }[];
+    status?: string;
+    observedAt?: string | null;
+    connectStatus?: number;
+  } = {},
+) {
+  const row = item({
+    id: "id-1",
+    name: "s",
+    capability_observed_at: over.observedAt === undefined ? "2026-09-01T09:00:00Z" : over.observedAt,
+  });
+  return (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path === "/v1/agents/mcp-servers") return json([row]);
+    if (path.endsWith("/connect")) {
+      return json(
+        {
+          status: over.status ?? "connected",
+          latency_ms: 42,
+          server_info: { name: "stub-mcp", version: "9.9" },
+          protocol_version: "2025-03-26",
+          capabilities: { tools: over.current ?? [{ name: "one" }] },
+        },
+        over.connectStatus ?? 200,
+      );
+    }
+    return json({ ...row, capabilities: { tools: over.previous ?? [{ name: "one" }] } });
+  };
+}
+
+test("run reports the connection and exits 0", async () => {
+  const r = await runCli(["mcp", "run", "s"], runServer());
+  expect(r.code).toBe(0);
+  expect(r.stdout).toContain("connected in 42 ms");
+  expect(r.stdout).toContain("stub-mcp 9.9");
+  expect(r.stdout).toContain("2025-03-26");
+  expect(r.stderr).toBe("");
+});
+
+test("run names the tools that appeared and went away", async () => {
+  const r = await runCli(
+    ["mcp", "run", "s"],
+    runServer({
+      previous: [{ name: "one" }, { name: "gone" }],
+      current: [{ name: "one" }, { name: "new" }],
+    }),
+  );
+  expect(r.stdout).toContain("+new");
+  expect(r.stdout).toContain("-gone");
+});
+
+test("run says none when nothing changed", async () => {
+  const r = await runCli(["mcp", "run", "s"], runServer());
+  expect(r.stdout).toContain("none");
+});
+
+// 26 tools on a never-probed server is a first probe, not 26 additions.
+test("run marks a never-probed server as a first probe", async () => {
+  const r = await runCli(
+    ["mcp", "run", "s"],
+    runServer({ observedAt: null, previous: null, current: [{ name: "a" }, { name: "b" }] }),
+  );
+  expect(r.stdout).toContain("first probe — 2 tools discovered");
+});
+
+// A 200 that says anything but `connected` is still a server that did not work.
+test("run exits 1 when the server answers with an error state", async () => {
+  const r = await runCli(["mcp", "run", "s"], runServer({ status: "unreachable" }));
+  expect(r.code).toBe(1);
+  expect(r.stdout).toContain("unreachable");
+});
+
+test("run surfaces the platform's own reason when the connect fails", async () => {
+  const r = await runCli(["mcp", "run", "s"], runServer({ connectStatus: 502, status: "x" }));
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("502");
+  expect(r.stdout).toBe("");
+});
+
+test("run reports an unknown name the way get does", async () => {
+  const r = await runCli(["mcp", "run", "NOPE"], () => json([]));
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("not found. names are matched exactly and are case-sensitive.");
+  expect(r.stdout).toBe("");
+});
+
+test("run --json stays one valid document on failure", async () => {
+  const r = await runCli(["mcp", "run", "NOPE", "--json"], () => json([]));
+  expect(r.code).toBe(1);
+  expect(JSON.parse(r.stdout).ok).toBe(false);
+});
+
+test("run --json carries the connect result plus the diff", async () => {
+  const r = await runCli(
+    ["mcp", "run", "s", "--json"],
+    runServer({ previous: [{ name: "gone" }], current: [{ name: "new" }] }),
+  );
+  const doc = JSON.parse(r.stdout);
+  expect(doc.status).toBe("connected");
+  expect(doc.added).toEqual(["new"]);
+  expect(doc.removed).toEqual(["gone"]);
 });
 
 test("tools distinguishes an unprobed server from one with no tools", async () => {

@@ -32,6 +32,30 @@ export interface PackageToolRef {
 }
 
 /**
+ * One mcp_refs entry as unmute writes it: names where identifiers belong, the
+ * same bargain PackageToolRef makes.
+ *
+ * `server_name` is accepted alongside `server` because the only artefact naming
+ * the key is this repository's own fixture — a reference carrying neither is
+ * reported as unresolved rather than crashing on undefined.
+ */
+export interface PackageMcpRef {
+  server?: string;
+  server_name?: string;
+  tool_name: string;
+  // description / invocation / system / execution_policy / argument_overrides
+  // appear on richer packages. Preserved verbatim, so carried in the index
+  // signature rather than typed.
+  [k: string]: unknown;
+}
+
+/** The server this reference names, under either spelling. */
+export function mcpRefServer(ref: PackageMcpRef): string | undefined {
+  const name = ref.server ?? ref.server_name;
+  return typeof name === "string" && name !== "" ? name : undefined;
+}
+
+/**
  * agent.json. Only the fields push reads are named; everything else is carried
  * through untouched — push is a resolver, not a validator of the platform's own
  * schema, and the platform rejects what it dislikes with a better message.
@@ -43,7 +67,7 @@ export interface CompiledAgent {
   greeting?: string;
   tool_mode?: string;
   tool_refs?: PackageToolRef[];
-  mcp_refs?: unknown[];
+  mcp_refs?: PackageMcpRef[];
   [k: string]: unknown;
 }
 

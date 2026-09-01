@@ -279,7 +279,7 @@ the previous push's version.
 | attach a SIP trunk, or check trunks | telephony is out of scope by decision (spec, Out of Scope). `sip_inbound_trunk_id` / `sip_outbound_trunk_id` are omitted from the pushed body entirely. |
 | create vault entries, tools, or numbers | reported and linked, never created (FR-006) |
 | print a vault value | FR-040; only names are shown, and no value is ever fetched |
-| push a package with `mcp_refs` | refused in pre-flight — `observed_schema_hash` requires connecting to the MCP server ([D8](../research.md#d8--mcp-references-cannot-be-resolved-offline-or-by-this-feature)) |
+| push a package with `mcp_refs` | ~~refused in pre-flight~~ — **superseded** by [004](../../004-mcp-push-validation/contracts/cli-commands.md): references now resolve, no connection needed |
 | send `declared_secrets` / `dependencies` on a non-`code` tool | the platform rejects them outright; `toolWriteBody()` strips them, because a compiled package may carry them as empty arrays the operator never wrote ([D17](../research.md#d17--declared_secrets-and-dependencies-are-code-only)) |
 | change a tool's `tool_type` | immutable on update; refused in pre-flight with both types named ([D3](../research.md#d3--what-are-the-tool-lifecycle-contracts)) |
 | roll back a partial push | published tool versions cannot be unpublished; the state is reported instead (FR-021) |

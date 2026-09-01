@@ -221,6 +221,10 @@ upstream compiler change, and the convention above is compatible with one if it 
 
 ## D8 — MCP references cannot be resolved offline *or* by this feature
 
+> **SUPERSEDED (2026-09-01) by [004-mcp-push-validation](../004-mcp-push-validation/research.md#d1--d8-of-spec-003-is-wrong-and-this-is-exactly-how).**
+> The hash does not have to be computed. The platform already probes the server
+> and publishes the result as `capabilities.tools[].schema_hash`; push copies it.
+
 **Decision**: `mcp_refs` are **out of scope**, and a package carrying one must be refused in
 pre-flight with a clear reason.
 

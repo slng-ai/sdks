@@ -23,6 +23,13 @@ export interface ToolListItem {
 // printTool walks it generically. See data-model.md for the full field list.
 export type ToolDetail = ToolListItem & Record<string, unknown>;
 
+/** What `POST /v1/agents/tools/{id}/run` answers with. Shared with push. */
+export interface RunResult {
+  status: "succeeded" | "failed" | "timed_out";
+  error?: string | null;
+  validation?: string;
+}
+
 // --- helpers ---------------------------------------------------------------
 
 export const PAGE_SIZE = 200; // server max
@@ -88,6 +95,57 @@ function summarise(key: string, v: unknown): string {
   return String(v);
 }
 
+/**
+ * The tool's input: `--input <file>`, `--input -`, or stdin when it is not a
+ * TTY. Principle III — a validation command that cannot sit in a pipeline is
+ * half a command.
+ */
+export async function readRunInput(
+  input: string | undefined,
+): Promise<{ value: Record<string, unknown>; source: string } | { error: string }> {
+  let raw: string;
+  let source: string;
+  if (input && input !== "-") {
+    source = input;
+    try {
+      raw = await Bun.file(input).text();
+    } catch (e) {
+      return { error: `could not read ${input}: ${(e as Error).message}` };
+    }
+  } else if (input === "-" || !process.stdin.isTTY) {
+    source = "stdin";
+    raw = await Bun.stdin.text();
+  } else {
+    return { value: {}, source: "none" };
+  }
+  if (!raw.trim()) return { value: {}, source };
+  try {
+    return { value: JSON.parse(raw) as Record<string, unknown>, source };
+  } catch (e) {
+    return { error: `invalid JSON in ${source}: ${(e as Error).message}` };
+  }
+}
+
+/** Keep a multi-line platform error inside its field. */
+function indent(text: string): string {
+  return text.split("\n").join("\n                      ");
+}
+
+/** One catalogue row by exact name, exiting when there is none. */
+async function resolveTool(name: string, json: boolean | undefined): Promise<ToolListItem> {
+  let rows: ToolListItem[];
+  try {
+    rows = await listAllTools([name]);
+  } catch (e) {
+    fail(json, (e as Error).message);
+  }
+  const chosen = rows[0];
+  if (!chosen) {
+    fail(json, `tool "${name}" not found. names are matched exactly and are case-sensitive.`);
+  }
+  return chosen;
+}
+
 export function printTool(tool: ToolDetail): void {
   const first = ["name", "latest_version", "tool_type", "description", "id"];
   const keys = [...first, ...Object.keys(tool).filter((k) => !first.includes(k))];
@@ -107,18 +165,26 @@ export function toolCommand(): Command {
 COMMANDS
   list                     list every tool available to your organisation
   get <tool-name>          show one tool in full
+  run <tool-name>          execute one tool and report what happened
 
 EXAMPLES
   $ voiceai tool list                          every tool your agents can call
   $ voiceai tool list --json | jq '.[].name'   scriptable
   $ voiceai tool get api_request               one tool, all properties
   $ voiceai tool get check_order --json | jq .arg_schema   the input schema
+  $ echo '{"id":7}' | voiceai tool run check_order --confirm-side-effects
+  $ voiceai tool run check_order --input sample.json --confirm-side-effects
 
 NOTES
   Tool names are matched exactly and are case-sensitive.
 
   \`--json\` carries \`arg_schema\` — the JSON Schema of a tool's input, derived from
   the pydantic model for a code tool.
+
+  \`run\` executes the tool against your REAL dependencies — it can charge a card or
+  send an email. Nothing runs without --confirm-side-effects. The input comes from
+  --input <file>, from stdin, or is {} when neither is given, and is never printed
+  back. Exit is 0 only when the run succeeded.
 `,
     );
 
@@ -156,33 +222,71 @@ NOTES
     .option("--json", "Output JSON")
     .action(async (name: string, opts) => {
       const spinner = spin(`loading ${name}`);
-      let rows: ToolListItem[];
+      let chosen: ToolListItem;
       try {
-        rows = await listAllTools([name]);
-      } catch (e) {
+        chosen = await resolveTool(name, opts.json);
+      } finally {
         spinner?.stop();
-        fail(opts.json, (e as Error).message);
-      }
-      const chosen = rows[0];
-      if (!chosen) {
-        spinner?.stop();
-        fail(
-          opts.json,
-          `tool "${name}" not found. names are matched exactly and are case-sensitive.`,
-        );
       }
       // The list row omits config, code_src, secrets and gate status.
       const res = await agentsRequest<ToolDetail>(
         "GET",
         `/v1/agents/tools/${encodeURIComponent(chosen.id)}`,
       );
-      spinner?.stop();
       if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
       if (opts.json) {
         console.log(JSON.stringify(res.data, null, 2));
         return;
       }
       printTool(res.data);
+    });
+
+  cmd
+    .command("run <tool-name>")
+    .description("Execute one tool against your real dependencies")
+    .option("--input <file>", "JSON input document, or - for stdin")
+    .option("--confirm-side-effects", "Consent to executing the tool for real")
+    .option("--json", "Output JSON")
+    .action(async (name: string, opts) => {
+      const input = await readRunInput(opts.input);
+      // Read the input before the consent check: a typo in the file is worth
+      // hearing about without having to consent to a run first.
+      if ("error" in input) fail(opts.json, input.error);
+      if (!opts.confirmSideEffects) {
+        fail(
+          opts.json,
+          `running ${name} executes the tool against your real dependencies. ` +
+            "re-run with --confirm-side-effects to consent to that.",
+        );
+      }
+
+      const spinner = spin(`running ${name}`);
+      let chosen: ToolListItem;
+      try {
+        chosen = await resolveTool(name, opts.json);
+      } finally {
+        spinner?.stop();
+      }
+      const res = await agentsRequest<RunResult>(
+        "POST",
+        `/v1/agents/tools/${encodeURIComponent(chosen.id)}/run`,
+        // Required literal. Supplied only because --confirm-side-effects was
+        // passed: it is the operator's consent to execute their dependencies.
+        { body: { sample_input: input.value, confirm_side_effects: true } },
+      );
+      if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
+      const result = res.data;
+
+      if (opts.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        // The input is never echoed: it may carry a secret and nothing here
+        // needs to show it back.
+        console.log(`status                ${result.status}`);
+        if (result.error) console.log(`error                 ${indent(result.error)}`);
+        if (result.validation) console.log(`validation            ${indent(result.validation)}`);
+      }
+      if (result.status !== "succeeded") process.exit(1);
     });
 
   return cmd;
