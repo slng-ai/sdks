@@ -312,9 +312,23 @@ performs one without `--run-samples`. Write the input as
 `build/slng/samples/<tool>.json`; a tool that needs a run and has no sample is
 reported before anything is created, not discovered halfway through.
 
-Packages carrying `mcp_refs` are refused: an MCP attachment needs a schema hash
-computed from the server's own `tools/list` response, which means connecting to
-it. Attach MCP servers in the dashboard for now.
+Packages carrying `mcp_refs` are resolved like any other reference: the server
+name becomes its id, and each tool's `observed_schema_hash` is copied from the
+platform's own capability snapshot — the same value `voiceai mcp tools <server>
+--json` prints. Nothing connects to the MCP server to compute it.
+
+That snapshot does go stale. When it has, `push` says so and names the fix:
+
+```sh
+voiceai mcp run <server>       # connect now; also refreshes the snapshot
+```
+
+If the platform rejects a write because it has no current record of a server,
+`push` refreshes and retries once on its own.
+
+Updating an agent **replaces** its MCP attachments as well as its tool
+references, so an MCP server attached in the dashboard and not declared by the
+package is detached. `--dry-run` names every attachment that would go.
 
 ### Tools
 
@@ -337,9 +351,22 @@ find `api_request`.
 the pydantic model for a `code` tool. `get --json` is always a single object,
 never an array.
 
+`run` executes a tool for real, so you can prove one works before an agent
+depends on it:
+
+```sh
+echo '{"id":7}' | voiceai tool run check_order --confirm-side-effects
+voiceai tool run check_order --input sample.json --confirm-side-effects
+```
+
+The input comes from `--input <file>`, from stdin, or is `{}` when neither is
+given, and is never printed back — it may hold a secret. **Nothing runs without
+`--confirm-side-effects`**: a run reaches the tool's real dependencies, and a
+webhook really fires. Exit is `0` only when the run succeeded.
+
 ### MCP servers
 
-Read-only view of the MCP servers your agents can call.
+The MCP servers your agents can call.
 
 ```sh
 voiceai mcp list                            # every server your agents can call
@@ -347,6 +374,7 @@ voiceai mcp list --json | jq '.[].name'     # scriptable
 voiceai mcp get firecrawl-mcp               # one server, every property
 voiceai mcp tools firecrawl-mcp             # the tools that server exposes
 voiceai mcp tools firecrawl-mcp --json | jq '.[].input_schema'
+voiceai mcp run firecrawl-mcp               # connect right now, and report
 ```
 
 `list` prints `NAME`, `TRANSPORT`, `STATUS`, and `TOOLS`, tab-separated. Server
@@ -359,6 +387,12 @@ a server can be listed and still be unreachable. `capability_observed_at` on
 `tools` lists what one server exposes — `NAME` and the first line of each
 description, tab-separated. `tools --json` gives the whole array, with every
 tool's `input_schema`, `output_schema`, and `schema_hash`.
+
+`run` is the one command here that actually calls the server. It reports how
+long the server took, what it identifies itself as, and which tools appeared or
+went away since the last probe. A successful run also refreshes the platform's
+snapshot — which is what makes an agent referencing that server publishable
+again once the snapshot has gone stale.
 
 Every subcommand reads the stored probe; none calls the server. If the probe was
 truncated, `tools` says so on stderr rather than presenting a short list as

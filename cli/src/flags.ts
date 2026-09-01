@@ -29,9 +29,11 @@ EXAMPLES
   $ voiceai agents list                                  list your voice agents
   $ voiceai tool list                                    list tools your agents can call
   $ voiceai tool get api_request                         show one tool by name
+  $ voiceai tool run check_order --confirm-side-effects  execute one tool for real
   $ voiceai mcp list                                     list MCP servers your agents can call
   $ voiceai mcp get firecrawl-mcp                        show one MCP server by name
   $ voiceai mcp tools firecrawl-mcp                      list the tools that server exposes
+  $ voiceai mcp run firecrawl-mcp                        connect to that server right now
   $ voiceai secret list                                  list your organisation's vault entries
   $ voiceai secret get STRIPE_KEY                        check one secret by name
   $ voiceai secret create --secrets-file .env.local      create vault entries from a file

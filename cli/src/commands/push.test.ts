@@ -13,6 +13,7 @@ import {
   type PackageToolBody,
 } from "../lib/package";
 import {
+  buildAgentBody,
   buildPlan,
   defaultLabel,
   describeGates,
@@ -26,6 +27,7 @@ import {
   renderPlan,
   type PlanInputs,
 } from "./push";
+import type { McpServerDetail } from "./mcp";
 import type { VaultEntry } from "./secret";
 import type { ToolListItem } from "./tool";
 
@@ -90,6 +92,26 @@ function toolRow(over: Partial<ToolListItem> = {}): ToolListItem {
     ...over,
   };
 }
+
+/** An MCP server detail record with a fresh, healthy capability snapshot. */
+function mcpServer(over: Record<string, unknown> = {}): McpServerDetail {
+  return {
+    id: "srv-1",
+    name: "docs",
+    url_template: "https://mcp.example.com/mcp",
+    transport: "streamable_http",
+    revision: 1,
+    capability_status: "healthy",
+    capability_observed_at: "2026-09-01T09:58:00Z",
+    capability_tool_count: 1,
+    next_refresh_at: "2999-01-01T00:00:00Z",
+    capabilities: { tools: [{ name: "search", schema_hash: "a".repeat(64) }], truncated: false },
+    ...over,
+  } as McpServerDetail;
+}
+
+/** A package that references one MCP tool on the server above. */
+const MCP_PKG = { mcp_refs: [{ server: "docs", tool_name: "search", invocation: "model" }] };
 
 function secret(name: string, kind: "secret" | "variable" = "secret"): VaultEntry {
   return {
@@ -249,7 +271,10 @@ test("a vault entry of kind secret satisfies it", () => {
 // T012 — every problem in one pass (FR-008)
 // ---------------------------------------------------------------------------
 
-test("three independent problems yield three blockers in one pass", () => {
+// Inverted from spec 003 T012. `mcp_refs` used to be a blocker on sight; a
+// reference that RESOLVES is now no problem at all, so the same package yields
+// two blockers where it used to yield three.
+test("independent problems still yield one blocker each in a single pass", () => {
   const plan = planFor({
     pkgDir: writePackage({
       agent: {
@@ -259,9 +284,177 @@ test("three independent problems yield three blockers in one pass", () => {
       },
     }),
     catalogue: [],
+    mcpServers: [mcpServer()],
   });
   const kinds = plan.blockers.map((b) => b.kind).sort();
-  expect(kinds).toEqual(["mcp_unsupported", "tool_unresolved", "vault_missing"]);
+  expect(kinds).toEqual(["tool_unresolved", "vault_missing"]);
+});
+
+// ---------------------------------------------------------------------------
+// MCP references (FR-001..FR-012)
+// ---------------------------------------------------------------------------
+
+test("an mcp reference resolves to the server id and the cached schema hash", () => {
+  const plan = planFor({
+    pkgDir: writePackage({ agent: MCP_PKG }),
+    mcpServers: [mcpServer()],
+  });
+  expect(plan.blockers).toEqual([]);
+  expect(plan.mcpRefs).toEqual([
+    {
+      server: "docs",
+      serverId: "srv-1",
+      toolName: "search",
+      // Copied from capabilities.tools[].schema_hash, never computed.
+      schemaHash: "a".repeat(64),
+      attachmentId: "minted-1",
+      reused: false,
+      carried: { invocation: "model" },
+    },
+  ]);
+});
+
+test("an mcp attachment the live agent already has is reused, not replaced", () => {
+  const plan = planFor({
+    pkgDir: writePackage({ agent: MCP_PKG }),
+    mcpServers: [mcpServer()],
+    liveAgent: {
+      id: "a-1",
+      name: "slng",
+      mcp_refs: [{ attachment_id: "att-live", server_id: "srv-1", tool_name: "search" }],
+    },
+  });
+  expect(plan.mcpRefs[0]?.attachmentId).toBe("att-live");
+  expect(plan.mcpRefs[0]?.reused).toBe(true);
+  expect(plan.mcpRemovals).toEqual([]);
+});
+
+test("an unknown server name is refused and names the reference", () => {
+  const plan = planFor({ pkgDir: writePackage({ agent: MCP_PKG }), mcpServers: [] });
+  const b = plan.blockers.find((b) => b.kind === "mcp_unresolved");
+  expect(b?.items[0]).toContain("docs");
+  expect(plan.mcpRefs).toEqual([]);
+});
+
+// Two servers of one name must not be silently resolved to an arbitrary one.
+test("an ambiguous server name is refused rather than guessed", () => {
+  const plan = planFor({
+    pkgDir: writePackage({ agent: MCP_PKG }),
+    mcpServers: [mcpServer(), mcpServer({ id: "srv-2" })],
+  });
+  expect(plan.blockers.find((b) => b.kind === "mcp_unresolved")?.items[0]).toContain("2 MCP servers");
+});
+
+test("an unknown tool name is refused and lists what the server does expose", () => {
+  const plan = planFor({
+    pkgDir: writePackage({ agent: { mcp_refs: [{ server: "docs", tool_name: "nope" }] } }),
+    mcpServers: [mcpServer()],
+  });
+  expect(plan.blockers.find((b) => b.kind === "mcp_unresolved")?.items[0]).toContain("search");
+});
+
+// A short list because the probe gave up is not the same as a short server.
+test("a missing tool on a truncated snapshot says truncated, not absent", () => {
+  const plan = planFor({
+    pkgDir: writePackage({ agent: { mcp_refs: [{ server: "docs", tool_name: "nope" }] } }),
+    mcpServers: [
+      mcpServer({ capabilities: { tools: [{ name: "search", schema_hash: "a" }], truncated: true } }),
+    ],
+  });
+  const item = plan.blockers.find((b) => b.kind === "mcp_unresolved")?.items[0] ?? "";
+  expect(item).toContain("truncated");
+  expect(item).not.toContain("the server exposes");
+});
+
+test("a reference naming no server at all is refused, not crashed on", () => {
+  const plan = planFor({
+    pkgDir: writePackage({ agent: { mcp_refs: [{ tool_name: "search" }] } }),
+    mcpServers: [mcpServer()],
+  });
+  expect(plan.blockers.find((b) => b.kind === "mcp_unresolved")?.items[0]).toContain("tool_name");
+});
+
+test("server_name is accepted as an alias for server", () => {
+  const plan = planFor({
+    pkgDir: writePackage({ agent: { mcp_refs: [{ server_name: "docs", tool_name: "search" }] } }),
+    mcpServers: [mcpServer()],
+  });
+  expect(plan.blockers).toEqual([]);
+  expect(plan.mcpRefs[0]?.serverId).toBe("srv-1");
+});
+
+test("a stale snapshot blocks and names the command that refreshes it", () => {
+  const plan = planFor({
+    pkgDir: writePackage({ agent: MCP_PKG }),
+    mcpServers: [mcpServer({ next_refresh_at: "2026-09-01T09:00:00Z" })],
+    now: new Date("2026-09-01T10:00:00Z"),
+  });
+  const b = plan.blockers.find((b) => b.kind === "mcp_stale");
+  expect(b?.items[0]).toContain("docs");
+  expect(b?.detail).toContain("voiceai mcp run");
+});
+
+test("a live mcp attachment the package omits is reported as a detachment", () => {
+  const plan = planFor({
+    pkgDir: writePackage(),
+    liveAgent: {
+      id: "a-1",
+      name: "slng",
+      mcp_refs: [{ attachment_id: "att-gone", server_id: "srv-1", tool_name: "search" }],
+    },
+  });
+  expect(plan.mcpRemovals).toEqual([
+    { attachment_id: "att-gone", server_id: "srv-1", tool_name: "search" },
+  ]);
+  expect(renderPlan(plan)).toContain("att-gone".slice(0, 8));
+  expect(renderPlan(plan)).toContain("WILL BE DETACHED");
+});
+
+test("the plan renders resolved mcp references", () => {
+  const plan = planFor({ pkgDir: writePackage({ agent: MCP_PKG }), mcpServers: [mcpServer()] });
+  const out = renderPlan(plan);
+  expect(out).toContain("MCP REFERENCES");
+  expect(out).toContain("docs/search");
+});
+
+test("--json carries mcp references and detachments under their own keys", () => {
+  const plan = planFor({ pkgDir: writePackage({ agent: MCP_PKG }), mcpServers: [mcpServer()] });
+  const doc = planJson(plan) as Record<string, unknown>;
+  expect(doc.mcp_refs).toEqual([
+    {
+      invocation: "model",
+      server: "docs",
+      server_id: "srv-1",
+      tool_name: "search",
+      observed_schema_hash: "a".repeat(64),
+      attachment_id: "minted-1",
+      reused: false,
+    },
+  ]);
+  expect(doc.mcp_removals).toEqual([]);
+});
+
+test("the write body carries the resolved mcp attachments", () => {
+  const dir = writePackage({ agent: MCP_PKG });
+  const plan = planFor({ pkgDir: dir, mcpServers: [mcpServer()] });
+  const body = buildAgentBody(loadPackage(dir), plan);
+  expect(body.mcp_refs).toEqual([
+    {
+      invocation: "model",
+      attachment_id: "minted-1",
+      server_id: "srv-1",
+      tool_name: "search",
+      observed_schema_hash: "a".repeat(64),
+    },
+  ]);
+});
+
+// The regression this feature could most easily have introduced: the body used
+// to hardcode `mcp_refs: []`, which a PUT would apply as a deletion.
+test("the write body still sends an empty list when the package declares none", () => {
+  const dir = writePackage();
+  const body = buildAgentBody(loadPackage(dir), planFor({ pkgDir: dir }));
+  expect(body.mcp_refs).toEqual([]);
 });
 
 test("a vault blocker carries every missing name, not just the first", () => {
@@ -544,6 +737,9 @@ interface StubOpts {
   publish?: { published: boolean; version_number: number | null; checks?: unknown };
   agentWriteStatus?: number;
   agentWriteBody?: unknown;
+  mcpServers?: Record<string, unknown>[];
+  /** Reject the first agent write with this body, then accept the second. */
+  agentWriteFailsOnce?: unknown;
 }
 
 async function runCli(
@@ -554,6 +750,7 @@ async function runCli(
   const calls: Call[] = [];
   const unstubbed: string[] = [];
   let agentWritten = false;
+  let agentWriteAttempts = 0;
 
   const server = Bun.serve({
     port: 0,
@@ -578,8 +775,29 @@ async function runCli(
       if (path === "/v1/agents" && method === "GET") return ok(stub.agents ?? []);
       if (path === "/v1/agents" && method === "POST") {
         if (stub.agentWriteStatus) return ok(stub.agentWriteBody, stub.agentWriteStatus);
+        if (stub.agentWriteFailsOnce && agentWriteAttempts++ === 0) {
+          return ok(stub.agentWriteFailsOnce, 409);
+        }
         agentWritten = true;
         return ok({ id: "agent-new", name: "slng", organisation_id: "org-1" });
+      }
+
+      if (path === "/v1/agents/mcp-servers" && method === "GET") return ok(stub.mcpServers ?? []);
+      const mcpConnect = path.match(/^\/v1\/agents\/mcp-servers\/([^/]+)\/connect$/);
+      if (mcpConnect) {
+        const row = (stub.mcpServers ?? []).find((s) => s.id === mcpConnect[1]);
+        return ok({
+          status: "connected",
+          latency_ms: 12,
+          server_info: { name: "stub", version: "1.0" },
+          protocol_version: "2025-03-26",
+          capabilities: row?.capabilities ?? { tools: [] },
+        });
+      }
+      const mcpDetail = path.match(/^\/v1\/agents\/mcp-servers\/([^/]+)$/);
+      if (mcpDetail) {
+        const row = (stub.mcpServers ?? []).find((s) => s.id === mcpDetail[1]);
+        return row ? ok(row) : ok({ detail: "not found" }, 404);
       }
       if (path === "/v1/agents/tools" && method === "GET") return ok(stub.tools ?? []);
       if (path === "/v1/agents/tools" && method === "POST") return ok({ id: "tool-created" }, 201);
@@ -678,12 +896,78 @@ test("a package that is not a package names both searched paths", async () => {
   expect(mutating(r.calls)).toEqual([]);
 });
 
-test("mcp references are refused before anything is created", async () => {
-  const dir = writePackage({ agent: { mcp_refs: [{ server: "docs", tool_name: "search" }] } });
-  const r = await runCli(["agents", "push", dir], { tools: [orgTool] });
+// Inverted from spec 003 T022. The refusal, and the reason it gave, were both
+// wrong: nothing connects to the MCP server, the hash is read from the
+// platform's own snapshot.
+test("mcp references are resolved and pushed, not refused", async () => {
+  const dir = writePackage({ agent: MCP_PKG });
+  const r = await runCli(["agents", "push", dir, "--json"], {
+    tools: [orgTool],
+    mcpServers: [mcpServer()],
+    versionsAfter: 1,
+  });
+  expect(r.code).toBe(0);
+  const put = r.calls.find((c) => c.path === "/v1/agents" && c.method === "POST");
+  expect((put?.body as Record<string, unknown>)?.mcp_refs).toEqual([
+    {
+      invocation: "model",
+      attachment_id: expect.any(String),
+      server_id: "srv-1",
+      tool_name: "search",
+      observed_schema_hash: "a".repeat(64),
+    },
+  ]);
+  // The CLI never speaks MCP: no connect is issued on a healthy snapshot.
+  expect(r.calls.filter((c) => c.path.endsWith("/connect"))).toEqual([]);
+});
+
+test("an unresolved mcp reference stops the push before anything is created", async () => {
+  const dir = writePackage({ agent: MCP_PKG });
+  const r = await runCli(["agents", "push", dir], { tools: [orgTool], mcpServers: [] });
   expect(r.code).toBe(1);
   expect(mutating(r.calls)).toEqual([]);
-  expect(r.stderr).toContain("observed_schema_hash");
+  expect(r.stderr).toContain("unresolved MCP reference");
+});
+
+// FR-011: the rejection is flagged retryable and a connect is exactly what
+// heals it, so the CLI clears it rather than handing the operator an error it
+// could have fixed itself.
+test("a stale-capability rejection is refreshed and retried once", async () => {
+  const dir = writePackage({ agent: MCP_PKG });
+  const r = await runCli(["agents", "push", dir], {
+    tools: [orgTool],
+    mcpServers: [mcpServer()],
+    versionsAfter: 1,
+    agentWriteFailsOnce: {
+      detail: "capabilities unavailable",
+      error: { code: "MCP_CAPABILITY_UNAVAILABLE", message: "capabilities unavailable" },
+    },
+  });
+  expect(r.code).toBe(0);
+  expect(r.calls.filter((c) => c.path === "/v1/agents/mcp-servers/srv-1/connect")).toHaveLength(1);
+  expect(r.calls.filter((c) => c.path === "/v1/agents" && c.method === "POST")).toHaveLength(2);
+  expect(r.stderr).toContain("refreshing and retrying");
+  expect(r.stdout).not.toContain("refreshing");
+});
+
+test("a non-capability failure is not retried", async () => {
+  const dir = writePackage({ agent: MCP_PKG });
+  const r = await runCli(["agents", "push", dir], {
+    tools: [orgTool],
+    mcpServers: [mcpServer()],
+    agentWriteFailsOnce: { detail: "nope", error: { code: "VALIDATION_ERROR", message: "nope" } },
+  });
+  expect(r.code).toBe(1);
+  expect(r.calls.filter((c) => c.path.endsWith("/connect"))).toEqual([]);
+  expect(r.calls.filter((c) => c.path === "/v1/agents" && c.method === "POST")).toHaveLength(1);
+});
+
+// FR-013 / SC-010: the overwhelmingly common package must cost what it costs
+// today, so the server lookup is guarded on the package actually having one.
+test("a package with no mcp references issues no mcp request", async () => {
+  const r = await runCli(["agents", "push", writePackage(), "--dry-run"], { tools: [orgTool] });
+  expect(r.code).toBe(0);
+  expect(r.calls.filter((c) => c.path.includes("mcp-servers"))).toEqual([]);
 });
 
 // --- T014: --json parseable on failure (FR-037) ----------------------------
@@ -1190,7 +1474,9 @@ test("planJson publishes snake_case keys, not the internal plan shape", () => {
     "agent",
     "tools",
     "refs",
+    "mcp_refs",
     "removals",
+    "mcp_removals",
     "overwrites",
     "blockers",
   ]);

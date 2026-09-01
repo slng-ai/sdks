@@ -44,6 +44,16 @@ export interface McpCapabilities {
   pages_fetched?: number | null;
 }
 
+/** What `POST /v1/agents/mcp-servers/{id}/connect` answers with. */
+export interface McpConnectResult {
+  /** `connected`, or an error state. */
+  status: string;
+  latency_ms?: number | null;
+  server_info?: { name?: string; version?: string } | null;
+  protocol_version?: string | null;
+  capabilities?: McpCapabilities | null;
+}
+
 // --- helpers ---------------------------------------------------------------
 
 export const PAGE_SIZE = 200; // server max
@@ -81,6 +91,76 @@ export async function listAllServers(names?: string[]): Promise<McpServerListIte
     `warning: stopped at the API's ${MAX_OFFSET}-row pagination ceiling; more servers may exist.\n`,
   );
   return out;
+}
+
+/**
+ * Resolve exact server names to their detail records. Two round trips per name,
+ * because the routes are id-addressed: the list filters by name, the detail
+ * carries the capability probe — and `capabilities[].schema_hash` is the whole
+ * reason push can attach an MCP tool without speaking MCP itself.
+ *
+ * Returns what it found. A caller that must have every name decides what a
+ * short result means; `resolveServer` exits, `push` turns it into a blocker.
+ */
+export async function loadServers(names: string[]): Promise<McpServerDetail[]> {
+  if (!names.length) return [];
+  const rows = await listAllServers(names);
+  const out: McpServerDetail[] = [];
+  for (const row of rows) {
+    const res = await agentsRequest<McpServerDetail>(
+      "GET",
+      `/v1/agents/mcp-servers/${encodeURIComponent(row.id)}`,
+    );
+    if (!res.ok || !res.data) throw new Error(formatAgentsError(res));
+    out.push(res.data);
+  }
+  return out;
+}
+
+/** Connect to one server now. Refreshes the platform's capability snapshot as it goes. */
+export function connectServer(id: string) {
+  return agentsRequest<McpConnectResult>(
+    "POST",
+    `/v1/agents/mcp-servers/${encodeURIComponent(id)}/connect`,
+  );
+}
+
+/**
+ * Is the platform's capability snapshot too old to attach against?
+ *
+ * ponytail: `next_refresh_at` is when the platform intends to look again, which
+ * is a proxy for — not a definition of — when a snapshot stops being accepted.
+ * It is read from the server rather than hard-coded so a changed window cannot
+ * silently break the CLI, and it only ever raises a warning: the authoritative
+ * answer is the platform's response to the write, which push retries.
+ */
+export function isSnapshotStale(server: McpServerDetail, now: Date = new Date()): boolean {
+  if (server.capability_status !== "healthy") return true;
+  if (!server.capability_observed_at) return true;
+  const next = server.next_refresh_at;
+  if (typeof next !== "string") return false;
+  const due = Date.parse(next);
+  return Number.isFinite(due) && due < now.getTime();
+}
+
+/**
+ * What changed between the stored snapshot and what the server just answered.
+ *
+ * A server nobody has probed has no previous set at all — reporting its whole
+ * catalogue as "added" would read as tools appearing, so that case is named.
+ */
+export function diffToolNames(
+  previous: McpTool[] | null | undefined,
+  current: McpTool[],
+): { added: string[]; removed: string[]; firstProbe: boolean } {
+  if (!previous) return { added: [], removed: [], firstProbe: true };
+  const before = new Set(previous.map((t) => t.name));
+  const after = new Set(current.map((t) => t.name));
+  return {
+    added: [...after].filter((n) => !before.has(n)),
+    removed: [...before].filter((n) => !after.has(n)),
+    firstProbe: false,
+  };
 }
 
 /** Exit non-zero, keeping stdout valid JSON under --json. */
@@ -144,36 +224,26 @@ export function printServer(server: McpServerDetail): void {
   }
 }
 
-/**
- * Resolve an exact server name to its detail record. Two requests, because the
- * routes are id-addressed: the list filters by name, the detail carries auth,
- * headers and the capability probe that the list row omits.
- */
+/** `loadServers` for one name, exiting rather than returning short. */
 async function resolveServer(
   name: string,
   json: boolean | undefined,
   label: string,
 ): Promise<McpServerDetail> {
   const spinner = spin(label);
-  let rows: McpServerListItem[];
+  let found: McpServerDetail[];
   try {
-    rows = await listAllServers([name]);
+    found = await loadServers([name]);
   } catch (e) {
     spinner?.stop();
     fail(json, (e as Error).message);
   }
-  const chosen = rows[0];
+  spinner?.stop();
+  const chosen = found[0];
   if (!chosen) {
-    spinner?.stop();
     fail(json, `mcp server "${name}" not found. names are matched exactly and are case-sensitive.`);
   }
-  const res = await agentsRequest<McpServerDetail>(
-    "GET",
-    `/v1/agents/mcp-servers/${encodeURIComponent(chosen.id)}`,
-  );
-  spinner?.stop();
-  if (!res.ok || !res.data) fail(json, formatAgentsError(res));
-  return res.data;
+  return chosen;
 }
 
 // --- command tree ----------------------------------------------------------
@@ -188,6 +258,7 @@ COMMANDS
   list                     list every MCP server available to your organisation
   get <server-name>        show one server in full
   tools <server-name>      list the tools one server exposes
+  run <server-name>        connect to one server now and report what it exposes
 
 EXAMPLES
   $ voiceai mcp list                             every server your agents can call
@@ -195,6 +266,7 @@ EXAMPLES
   $ voiceai mcp get firecrawl-mcp                one server, all properties
   $ voiceai mcp tools firecrawl-mcp              the tools that server exposes
   $ voiceai mcp tools firecrawl-mcp --json       each tool's full input schema
+  $ voiceai mcp run firecrawl-mcp                check the server is up right now
 
 NOTES
   Server names are matched exactly and are case-sensitive.
@@ -202,6 +274,10 @@ NOTES
   \`capability_status\` and \`capability_tool_count\` come from the last capability
   probe, not from a live call: a server can be listed and still be unreachable.
   \`tools\` reads that same probe — it does not call the server.
+
+  \`run\` is the one that does call the server. A successful run also refreshes the
+  platform's record of what the server exposes, which is what makes an agent
+  referencing it publishable again after that record has gone stale.
 
   Auth is reported as the vault secret's NAME, never its value.
 `,
@@ -248,6 +324,47 @@ NOTES
         return;
       }
       printServer(server);
+    });
+
+  cmd
+    .command("run <server-name>")
+    .description("Connect to one MCP server now and report what it exposes")
+    .option("--json", "Output JSON")
+    .action(async (name: string, opts) => {
+      const server = await resolveServer(name, opts.json, `connecting to ${name}`);
+      const previous = ((server.capabilities ?? {}) as McpCapabilities).tools ?? null;
+      const spinner = spin(`connecting to ${name}`);
+      const res = await connectServer(server.id);
+      spinner?.stop();
+      if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
+      const result = res.data;
+      const tools = result.capabilities?.tools ?? [];
+      const diff = diffToolNames(server.capability_observed_at ? previous : null, tools);
+
+      if (opts.json) {
+        console.log(JSON.stringify({ ...result, added: diff.added, removed: diff.removed }, null, 2));
+      } else {
+        const changes = diff.firstProbe
+          ? `first probe — ${tools.length} tool${tools.length === 1 ? "" : "s"} discovered`
+          : [...diff.added.map((n) => `+${n}`), ...diff.removed.map((n) => `-${n}`)].join(", ") ||
+            "none";
+        const info = [result.server_info?.name, result.server_info?.version].filter(Boolean).join(" ");
+        const fields: [string, string][] = [
+          ["server", `${server.name} (${server.id})`],
+          [
+            "status",
+            result.status === "connected" ? `connected in ${result.latency_ms} ms` : result.status,
+          ],
+          ["serving", info || "-"],
+          ["protocol", cell(result.protocol_version)],
+          ["tools", String(tools.length)],
+          ["changes", changes],
+        ];
+        for (const [k, v] of fields) console.log(`${k.padEnd(26)}${v}`);
+      }
+      // The status is the server's answer, not the transport's: a 200 that says
+      // anything but `connected` is still a server that did not work.
+      if (result.status !== "connected") process.exit(1);
     });
 
   cmd

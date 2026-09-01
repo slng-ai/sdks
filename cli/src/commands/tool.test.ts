@@ -86,9 +86,17 @@ const CLI_DIR = `${import.meta.dir}/../..`;
 
 async function runCli(
   args: string[],
-  handler: (req: Request) => Response,
-): Promise<{ stdout: string; stderr: string; code: number }> {
-  const server = Bun.serve({ port: 0, fetch: handler });
+  handler: (req: Request) => Response | Promise<Response>,
+  opts: { stdin?: string } = {},
+): Promise<{ stdout: string; stderr: string; code: number; calls: string[] }> {
+  const calls: string[] = [];
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      calls.push(`${req.method} ${new URL(req.url).pathname}`);
+      return handler(req);
+    },
+  });
   try {
     const proc = Bun.spawn(["bun", "run", "src/index.ts", ...args], {
       cwd: CLI_DIR,
@@ -97,6 +105,7 @@ async function runCli(
         VOICEAI_AGENTS_BASE_URL: `http://localhost:${server.port}`,
         VOICEAI_API_KEY: "slng_test_key",
       },
+      stdin: opts.stdin === undefined ? "ignore" : new TextEncoder().encode(opts.stdin),
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -104,7 +113,7 @@ async function runCli(
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
     ]);
-    return { stdout, stderr, code: await proc.exited };
+    return { stdout, stderr, code: await proc.exited, calls };
   } finally {
     server.stop(true);
   }
@@ -205,4 +214,93 @@ test("no output contains the API key", async () => {
   const r = await runCli(["tool", "list"], () => json({ detail: "bad key", error: { code: "UNAUTHORIZED", message: "bad key", request_id: "r" } }, 401));
   expect(r.code).toBe(1);
   expect(r.stdout + r.stderr).not.toContain("slng_test_key");
+});
+
+// --- run -------------------------------------------------------------------
+
+/** Stub answering the name lookup and the run, with a settable outcome. */
+function runStub(result: Record<string, unknown> = { status: "succeeded" }, status = 200) {
+  return (req: Request) =>
+    new URL(req.url).pathname === "/v1/agents/tools" ? json(single) : json(result, status);
+}
+
+// push sets the precedent: executing real dependencies is opted into. A softer
+// rule for the lower-ceremony command is how someone's webhook fires in a demo.
+test("run refuses without consent, and executes nothing", async () => {
+  const r = await runCli(["tool", "run", "end_call"], runStub());
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("--confirm-side-effects");
+  expect(r.calls).toEqual([]);
+  expect(r.stdout).toBe("");
+});
+
+test("run executes with consent and exits 0 on success", async () => {
+  const r = await runCli(["tool", "run", "end_call", "--confirm-side-effects"], runStub());
+  expect(r.code).toBe(0);
+  expect(r.stdout).toContain("status                succeeded");
+  expect(r.calls).toContain("POST /v1/agents/tools/id-org/run");
+});
+
+test("run takes its input from stdin", async () => {
+  let seen: unknown;
+  const r = await runCli(
+    ["tool", "run", "end_call", "--confirm-side-effects"],
+    async (req) => {
+      if (new URL(req.url).pathname === "/v1/agents/tools") return json(single);
+      seen = await req.json();
+      return json({ status: "succeeded" });
+    },
+    { stdin: '{"reason":"done"}' },
+  );
+  expect(r.code).toBe(0);
+  expect(seen).toEqual({ sample_input: { reason: "done" }, confirm_side_effects: true });
+});
+
+test("run rejects malformed input before executing anything", async () => {
+  const r = await runCli(["tool", "run", "end_call", "--confirm-side-effects"], runStub(), {
+    stdin: "{not json",
+  });
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("invalid JSON in stdin");
+  expect(r.calls).toEqual([]);
+});
+
+// A run that COMPLETED and failed is data, not a transport error: --json
+// returns the run result itself, and the exit code still says it failed.
+test("run exits 1 on a failed run and reports the platform's error", async () => {
+  const r = await runCli(
+    ["tool", "run", "end_call", "--confirm-side-effects", "--json"],
+    runStub({ status: "failed", error: "HTTPError: 404" }),
+  );
+  expect(r.code).toBe(1);
+  expect(JSON.parse(r.stdout)).toEqual({ status: "failed", error: "HTTPError: 404" });
+});
+
+test("run names the offending fields when the input fails the schema", async () => {
+  const r = await runCli(
+    ["tool", "run", "end_call", "--confirm-side-effects"],
+    runStub({ status: "failed", validation: "reason: field required" }),
+  );
+  expect(r.code).toBe(1);
+  expect(r.stdout).toContain("reason: field required");
+});
+
+test("run reports an unknown name the way get does", async () => {
+  const r = await runCli(["tool", "run", "NOPE", "--confirm-side-effects"], () => json([]));
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("not found. names are matched exactly and are case-sensitive.");
+});
+
+test("run --json stays one valid document on failure", async () => {
+  const r = await runCli(["tool", "run", "NOPE", "--confirm-side-effects", "--json"], () => json([]));
+  expect(r.code).toBe(1);
+  expect(JSON.parse(r.stdout).ok).toBe(false);
+});
+
+// The input may carry a secret and nothing here needs to show it back.
+test("run never echoes the input document", async () => {
+  const r = await runCli(["tool", "run", "end_call", "--confirm-side-effects"], runStub(), {
+    stdin: '{"token":"sk-super-secret"}',
+  });
+  expect(r.stdout + r.stderr).not.toContain("sk-super-secret");
 });

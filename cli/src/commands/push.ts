@@ -6,6 +6,7 @@ import { agentsRequest, formatAgentsError, type AgentsResult } from "../lib/agen
 import {
   isManagedSingleton,
   loadPackage,
+  mcpRefServer,
   needsGreenRun,
   PackageError,
   requiredSecretNames,
@@ -14,8 +15,15 @@ import {
   type PackageToolRef,
 } from "../lib/package";
 import { verifyApiKey } from "../lib/verify";
+import {
+  connectServer,
+  isSnapshotStale,
+  loadServers,
+  type McpCapabilities,
+  type McpServerDetail,
+} from "./mcp";
 import { listSecrets, redact, type VaultEntry } from "./secret";
-import { listAllTools, type ToolListItem } from "./tool";
+import { listAllTools, type RunResult, type ToolListItem } from "./tool";
 
 // --- dashboard ------------------------------------------------------------
 // Every blocker points at the page that fixes it. Nothing here is created by
@@ -23,6 +31,7 @@ import { listAllTools, type ToolListItem } from "./tool";
 
 const VAULT_URL = "https://app.slng.ai/vault/secrets";
 const TOOLS_URL = "https://app.slng.ai/tools";
+const MCP_URL = "https://app.slng.ai/tools/mcp";
 
 // --- types ----------------------------------------------------------------
 
@@ -33,7 +42,8 @@ export type BlockerKind =
   | "sample_missing"
   | "samples_not_enabled"
   | "singleton_exists"
-  | "mcp_unsupported"
+  | "mcp_unresolved"
+  | "mcp_stale"
   | "agent_ambiguous";
 
 export interface Blocker {
@@ -65,13 +75,33 @@ export interface PlannedRef {
   carried: Record<string, unknown>;
 }
 
+export interface PlannedMcpRef {
+  /** Server name, for display and for every message that names the reference. */
+  server: string;
+  serverId: string;
+  toolName: string;
+  /** Copied from the platform's own snapshot; refreshed in place by the retry. */
+  schemaHash: string;
+  attachmentId: string;
+  reused: boolean;
+  /** Everything unmute wrote alongside the names, preserved verbatim. */
+  carried: Record<string, unknown>;
+}
+
 export interface PushPlan {
   organisation: { id: string; name?: string };
   packagePath: string;
   agent: { name: string; action: "create" | "update"; existingId?: string };
   tools: PlannedTool[];
   refs: PlannedRef[];
+  mcpRefs: PlannedMcpRef[];
   removals: { attachment_id: string; tool_id: string; name?: string }[];
+  /**
+   * MCP attachments this push would detach. Separate from `removals`, which is
+   * typed around `tool_id`: widening that would change a `--json` shape scripts
+   * already pin.
+   */
+  mcpRemovals: { attachment_id: string; server_id: string; tool_name: string }[];
   /** Scalar fields a replace would overwrite on an existing agent. */
   overwrites: string[];
   blockers: Blocker[];
@@ -99,6 +129,7 @@ interface AgentRow {
   name: string;
   organisation_id?: string;
   tool_refs?: { attachment_id: string; tool_id: string }[];
+  mcp_refs?: { attachment_id: string; server_id: string; tool_name: string }[];
   [k: string]: unknown;
 }
 
@@ -111,12 +142,6 @@ interface PublishResult {
   published: boolean;
   version_number: number | null;
   checks?: Record<string, unknown>;
-}
-
-interface RunResult {
-  status: "succeeded" | "failed" | "timed_out";
-  error?: string | null;
-  validation?: string;
 }
 
 // --- small helpers --------------------------------------------------------
@@ -209,12 +234,16 @@ export interface PlanInputs {
    * (matched on tool_type), and what a tool being detached is actually called.
    */
   orgTools?: ToolListItem[];
+  /** Detail records for every MCP server the package references. */
+  mcpServers?: McpServerDetail[];
   /** The live agent, when updating — source of attachment reuse and removals. */
   liveAgent?: AgentRow;
   runSamples: boolean;
   organisation: { id: string; name?: string };
   agentIdOverride?: string;
   mintId?: () => string;
+  /** Injected so the staleness test is deterministic under test. */
+  now?: Date;
 }
 
 /**
@@ -226,6 +255,7 @@ export function buildPlan(input: PlanInputs): PushPlan {
   const { pkg, secrets, catalogue, liveAgent, runSamples } = input;
   const blockers: Blocker[] = [];
   const mint = input.mintId ?? randomUUID;
+  const now = input.now ?? new Date();
 
   // --- agent identity ---
   const named = input.pkg.agent.name;
@@ -247,16 +277,93 @@ export function buildPlan(input: PlanInputs): PushPlan {
   const action: "create" | "update" = existingId ? "update" : "create";
 
   // --- mcp ---
-  if ((pkg.agent.mcp_refs?.length ?? 0) > 0) {
-    blockers.push({
-      kind: "mcp_unsupported",
-      items: [`${pkg.agent.mcp_refs?.length} MCP reference(s)`],
-      detail:
-        "MCP references need an observed_schema_hash computed from the server's own " +
-        "tools/list response, which means connecting to it. push cannot do that yet — " +
-        "attach MCP servers in the dashboard instead.",
+  // No MCP session is opened, here or anywhere: `observed_schema_hash` is the
+  // platform's own cached `schema_hash` for that tool, which the server detail
+  // already carries. Spec 003 D8 assumed it had to be computed; it has to be
+  // copied.
+  const mcpRefs: PlannedMcpRef[] = [];
+  const mcpUnresolved: string[] = [];
+  const mcpStale: string[] = [];
+  const mcpReuse = new Map(
+    (liveAgent?.mcp_refs ?? []).map((r) => [`${r.server_id} ${r.tool_name}`, r.attachment_id]),
+  );
+  const staleReported = new Set<string>();
+
+  for (const ref of pkg.agent.mcp_refs ?? []) {
+    const { server: _s, server_name: _sn, tool_name: toolName, ...carried } = ref;
+    const named = mcpRefServer(ref);
+    if (!named) {
+      mcpUnresolved.push(
+        `a reference names no server — expected "server", found {${Object.keys(ref).join(", ")}}`,
+      );
+      continue;
+    }
+    const matches = (input.mcpServers ?? []).filter((s) => s.name === named);
+    if (!matches.length) {
+      mcpUnresolved.push(`${named} — no MCP server of that name is visible to this organisation`);
+      continue;
+    }
+    if (matches.length > 1) {
+      mcpUnresolved.push(`${named} — ${matches.length} MCP servers share this name`);
+      continue;
+    }
+    const server = matches[0]!;
+    const caps = (server.capabilities ?? {}) as McpCapabilities;
+    const tool = (caps.tools ?? []).find((t) => t.name === toolName);
+    if (!tool?.schema_hash) {
+      // A short list because the probe gave up is not the same as a short
+      // server. Saying "this server has no such tool" would be a lie.
+      const known = (caps.tools ?? []).map((t) => t.name);
+      mcpUnresolved.push(
+        caps.truncated
+          ? `${named}/${toolName} — not in the last capability snapshot, which was truncated; ` +
+            "the server may still expose it"
+          : `${named}/${toolName} — the server exposes ${known.length ? known.join(", ") : "no tools"}`,
+      );
+      continue;
+    }
+    if (isSnapshotStale(server, now) && !staleReported.has(named)) {
+      staleReported.add(named);
+      mcpStale.push(
+        `${named} — ${server.capability_status ?? "never probed"}, last observed ` +
+          `${server.capability_observed_at ?? "never"}`,
+      );
+    }
+    const key = `${server.id} ${toolName}`;
+    const existing = mcpReuse.get(key);
+    mcpRefs.push({
+      server: named,
+      serverId: server.id,
+      toolName,
+      schemaHash: tool.schema_hash,
+      attachmentId: existing ?? mint(),
+      reused: Boolean(existing),
+      carried,
     });
   }
+
+  if (mcpUnresolved.length) {
+    blockers.push({
+      kind: "mcp_unresolved",
+      items: mcpUnresolved,
+      detail: "rename the reference, or create the MCP server.",
+      url: MCP_URL,
+    });
+  }
+  if (mcpStale.length) {
+    blockers.push({
+      kind: "mcp_stale",
+      items: mcpStale,
+      detail:
+        "the platform's record of what this server exposes is out of date, and it will refuse " +
+        "the attachment. refresh it with `voiceai mcp run <server>`, then push again.",
+    });
+  }
+
+  // MCP attachments this push would detach. Named, for the same reason tool
+  // detachments are: a replace is lossy and this is the only warning.
+  const keptMcp = new Set(mcpRefs.map((r) => r.attachmentId));
+  const mcpRemovals = (liveAgent?.mcp_refs ?? []).filter((r) => !keptMcp.has(r.attachment_id));
 
   // --- vault ---
   const bySecretName = new Map(secrets.map((s) => [s.name, s]));
@@ -421,7 +528,9 @@ export function buildPlan(input: PlanInputs): PushPlan {
     agent: { name: named, action, existingId },
     tools,
     refs,
+    mcpRefs,
     removals,
+    mcpRemovals,
     overwrites,
     blockers,
   };
@@ -461,6 +570,15 @@ export async function planPush(
     pkg.tools.some(isManagedSingleton) || Boolean(liveAgent?.tool_refs?.length);
   const orgTools = needsFullCatalogue ? await listAllTools() : [];
 
+  // Only when the package actually references one. The overwhelmingly common
+  // package has no mcp_refs and must cost exactly what it costs today.
+  const mcpNames = new Set<string>();
+  for (const r of pkg.agent.mcp_refs ?? []) {
+    const name = mcpRefServer(r);
+    if (name) mcpNames.add(name);
+  }
+  const mcpServers = mcpNames.size ? await loadServers([...mcpNames]) : [];
+
   const organisation = await resolveOrganisation(agents, secrets, liveAgent);
 
   const plan = buildPlan({
@@ -469,6 +587,7 @@ export async function planPush(
     secrets,
     catalogue,
     orgTools,
+    mcpServers,
     liveAgent,
     runSamples: opts.runSamples,
     organisation,
@@ -542,15 +661,29 @@ export async function applyPush(
   }
 
   // 2. agent — PUT, not PATCH: replace is what the spec chose, and PATCH merges.
-  const body = buildAgentBody(pkg, plan);
   const before = plan.agent.existingId ? await newestVersion(plan.agent.existingId) : null;
-  let agentId: string;
-  try {
-    const written = plan.agent.existingId
-      ? await must<AgentRow>(
+  const writeAgent = () => {
+    const body = buildAgentBody(pkg, plan);
+    return plan.agent.existingId
+      ? must<AgentRow>(
           agentsRequest("PUT", `/v1/agents/${encodeURIComponent(plan.agent.existingId)}`, { body }),
         )
-      : await must<AgentRow>(agentsRequest("POST", "/v1/agents", { body }));
+      : must<AgentRow>(agentsRequest("POST", "/v1/agents", { body }));
+  };
+  let agentId: string;
+  try {
+    let written: AgentRow;
+    try {
+      written = await writeAgent();
+    } catch (e) {
+      // The platform flags this one retryable, and it self-heals: a connect
+      // refreshes the snapshot the write was rejected against. Once, not a
+      // loop — if one refresh does not fix it, the problem is not staleness.
+      if (!plan.mcpRefs.length || !isCapabilityUnavailable((e as Error).message)) throw e;
+      note("mcp capabilities were stale; refreshing and retrying");
+      await refreshMcpCapabilities(plan);
+      written = await writeAgent();
+    }
     agentId = written.id;
     outcome.agent = { id: agentId, action: plan.agent.action };
   } catch (e) {
@@ -574,6 +707,38 @@ export async function applyPush(
     outcome.version = "unchanged";
   }
   return outcome;
+}
+
+/**
+ * Did the platform reject the write because it has no current record of what an
+ * MCP server exposes?
+ *
+ * ponytail: matches the message because `must()` throws `formatAgentsError`'s
+ * string, which already appends the machine-readable code — so this reads the
+ * code without restructuring the call path. The second alternative is the
+ * safety net for a renamed code. Thread the raw AgentsResult through if a
+ * second capability error code ever appears.
+ */
+export function isCapabilityUnavailable(message: string): boolean {
+  return /MCP_CAPABILITY_UNAVAILABLE/i.test(message) || /capabilit\w*\s+unavailable/i.test(message);
+}
+
+/**
+ * Connect to every server the plan references and take the schema hash the
+ * server answers with now. Connecting is what makes the platform's snapshot
+ * current again; re-reading the hash is what makes the retry describe reality.
+ */
+async function refreshMcpCapabilities(plan: PushPlan): Promise<void> {
+  for (const serverId of new Set(plan.mcpRefs.map((r) => r.serverId))) {
+    const res = await connectServer(serverId);
+    if (!res.ok || !res.data) continue; // the retry will fail with the platform's own reason
+    const tools = (res.data.capabilities?.tools ?? []) as { name: string; schema_hash?: string | null }[];
+    for (const ref of plan.mcpRefs) {
+      if (ref.serverId !== serverId) continue;
+      const hash = tools.find((t) => t.name === ref.toolName)?.schema_hash;
+      if (hash) ref.schemaHash = hash;
+    }
+  }
 }
 
 /**
@@ -679,7 +844,17 @@ export function buildAgentBody(pkg: LoadedPackage, plan: PushPlan): Record<strin
   const { tool_refs: _refs, mcp_refs: _mcp, ...rest } = pkg.agent;
   return {
     ...rest,
-    mcp_refs: [],
+    // This used to be a hardcoded `[]`, harmless only because the blocker made
+    // the path unreachable. The write is a PUT — replace, not merge — so with
+    // the blocker gone that literal would have silently deleted every MCP
+    // attachment made in the dashboard, on the first update push.
+    mcp_refs: plan.mcpRefs.map((r) => ({
+      ...r.carried,
+      attachment_id: r.attachmentId,
+      server_id: r.serverId,
+      tool_name: r.toolName,
+      observed_schema_hash: r.schemaHash,
+    })),
     tool_refs: plan.refs.map((r) => ({
       ...r.carried,
       attachment_id: r.attachmentId,
@@ -707,7 +882,8 @@ const KIND_TITLE: Record<BlockerKind, string> = {
   sample_missing: "tool needs a verified run before it can publish",
   singleton_exists: "this organisation already has a tool of this type",
   samples_not_enabled: "tool sample not enabled",
-  mcp_unsupported: "MCP references are not supported",
+  mcp_unresolved: "unresolved MCP reference",
+  mcp_stale: "MCP capability snapshot is stale",
   agent_ambiguous: "more than one agent has this name",
 };
 
@@ -737,7 +913,17 @@ export function planJson(plan: PushPlan): Record<string, unknown> {
       reused: r.reused,
       ...r.carried,
     })),
+    mcp_refs: plan.mcpRefs.map((r) => ({
+      ...r.carried,
+      server: r.server,
+      server_id: r.serverId,
+      tool_name: r.toolName,
+      observed_schema_hash: r.schemaHash,
+      attachment_id: r.attachmentId,
+      reused: r.reused,
+    })),
     removals: plan.removals,
+    mcp_removals: plan.mcpRemovals,
     overwrites: plan.overwrites,
     blockers: plan.blockers,
   };
@@ -787,11 +973,26 @@ export function renderPlan(plan: PushPlan): string {
         `attachment ${r.attachmentId.slice(0, 8)}  ${r.reused ? "reused" : "new"}`,
     );
   }
-  if (plan.removals.length) {
+  if (plan.mcpRefs.length) {
+    out.push("", "MCP REFERENCES");
+    for (const r of plan.mcpRefs) {
+      out.push(
+        `  ${col(`${r.server}/${r.toolName}`, 34)}attachment ${r.attachmentId.slice(0, 8)}  ` +
+          `${r.reused ? "reused" : "new"}`,
+      );
+    }
+  }
+  if (plan.removals.length || plan.mcpRemovals.length) {
     out.push("", "WILL BE DETACHED");
     for (const r of plan.removals) {
       out.push(
         `  ${col(r.name ?? r.tool_id)}attachment ${r.attachment_id.slice(0, 8)} — not declared by this package`,
+      );
+    }
+    for (const r of plan.mcpRemovals) {
+      out.push(
+        `  ${col(`${r.server_id.slice(0, 8)}/${r.tool_name}`, 34)}attachment ` +
+          `${r.attachment_id.slice(0, 8)} — not declared by this package`,
       );
     }
   }
@@ -950,11 +1151,15 @@ NOTES
   Nothing is created until every check passes. Missing vault entries and unresolved
   tool names are reported together, with the dashboard page that fixes each.
 
-  Updating REPLACES the agent with what the package declares: a reference the package
-  no longer names is detached. Use --dry-run to see what would be removed first.
+  Updating REPLACES the agent with what the package declares: a tool or MCP reference
+  the package no longer names is detached. Use --dry-run to see what would be removed.
 
   --run-samples executes each tool's sample against your real dependencies. A code or
   api_request tool cannot be published without one successful run.
+
+  MCP references resolve by server name; each tool's observed_schema_hash is copied
+  from the platform's own capability snapshot, so nothing connects to the server. If
+  that snapshot has gone stale, refresh it with \`voiceai mcp run <server>\`.
 `,
     )
     .action(async (dir: string, opts) => {
