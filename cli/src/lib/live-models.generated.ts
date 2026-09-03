@@ -1397,25 +1397,6 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     }
   },
   {
-    "code": "slng/deepgram/aura:2-es",
-    "enabled": true,
-    "internal": false,
-    "service_type": "tts",
-    "name": "Aura 2 Spanish",
-    "provider_code": "deepgram",
-    "short_description": "Deepgram's TTS model designed to generate realistic, human-like speech in real time, especially for AI voice agents and applications.",
-    "capabilities": [
-      "Streaming",
-      "Multiple voices",
-      "Production ready"
-    ],
-    "languages": [
-      "es"
-    ],
-    "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/tts/deepgram-aura-2/aura-2-spanish-http"
-  },
-  {
     "code": "slng/fish/tts:s2.1-pro",
     "enabled": true,
     "internal": false,
