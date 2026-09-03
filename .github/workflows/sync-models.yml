@@ -59,3 +59,7 @@ jobs:
             this same PR rather than opening new ones.
           author: voiceai-release-bot <noreply@slng.ai>
           committer: voiceai-release-bot <noreply@slng.ai>
+          # Surface the PR so it doesn't sit unmerged (see #36): assign an owner
+          # and request review. Without this the bot opens the PR and stops.
+          assignees: picsoung
+          reviewers: picsoung
