@@ -100,12 +100,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "regions": [
         "au",
         "eu",
-        "us"
+        "us-east"
       ],
       "worldParts": [
         "au",
         "eu",
-        "us"
+        "us-east"
       ],
       "platforms": [],
       "protocols": [
@@ -138,59 +138,16 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "deployments": {
       "regions": [
         "eu",
-        "us"
+        "us-east"
       ],
       "worldParts": [
         "eu",
-        "us"
+        "us-east"
       ],
       "platforms": [],
       "protocols": [
         "https",
         "wss"
-      ]
-    }
-  },
-  {
-    "code": "fish/asr:default",
-    "enabled": true,
-    "internal": false,
-    "service_type": "stt",
-    "name": "Fish STT",
-    "provider_code": "fish",
-    "short_description": "ASR model created for batch transcription processes by Fish Audio.",
-    "capabilities": [
-      "HTTP",
-      "Batch",
-      "Long processing"
-    ],
-    "languages": [
-      "ar",
-      "de",
-      "en",
-      "es",
-      "fr",
-      "it",
-      "ja",
-      "ko",
-      "nl",
-      "pl",
-      "pt",
-      "ru",
-      "zh"
-    ],
-    "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/stt/fish-audio-asr/fish-audio-asr-http",
-    "deployments": {
-      "regions": [
-        "us"
-      ],
-      "worldParts": [
-        "us"
-      ],
-      "platforms": [],
-      "protocols": [
-        "https"
       ]
     }
   },
@@ -340,7 +297,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "worldParts": [
         "au",
         "in",
-        "us"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
@@ -752,12 +709,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "regions": [
         "eu",
         "jp",
-        "us"
+        "us-central"
       ],
       "worldParts": [
         "eu",
         "jp",
-        "us"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
@@ -842,12 +799,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "regions": [
         "eu",
         "jp",
-        "us"
+        "us-central"
       ],
       "worldParts": [
         "eu",
         "jp",
-        "us"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
@@ -932,12 +889,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "regions": [
         "eu",
         "jp",
-        "us"
+        "us-central"
       ],
       "worldParts": [
         "eu",
         "jp",
-        "us"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
@@ -1009,12 +966,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "regions": [
         "eu",
         "in",
-        "us"
+        "us-central"
       ],
       "worldParts": [
         "eu",
         "in",
-        "us"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
@@ -1087,12 +1044,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "regions": [
         "eu",
         "in",
-        "us"
+        "us-central"
       ],
       "worldParts": [
         "eu",
         "in",
-        "us"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
@@ -1128,12 +1085,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "regions": [
         "au",
         "eu",
-        "us"
+        "us-east"
       ],
       "worldParts": [
         "au",
         "eu",
-        "us"
+        "us-east"
       ],
       "platforms": [],
       "protocols": [
@@ -1175,10 +1132,10 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/tts/fish-audio-tts-s2-pro/fish-audio-tts-s2-pro-http",
     "deployments": {
       "regions": [
-        "us"
+        "us-central"
       ],
       "worldParts": [
-        "us"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
@@ -1220,48 +1177,10 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/tts/fish-audio-tts-s2-1-pro/fish-audio-tts-s2-1-pro-http",
     "deployments": {
       "regions": [
-        "us"
+        "us-central"
       ],
       "worldParts": [
-        "us"
-      ],
-      "platforms": [],
-      "protocols": [
-        "https",
-        "wss"
-      ]
-    }
-  },
-  {
-    "code": "gradium/tts:default",
-    "enabled": true,
-    "internal": false,
-    "service_type": "tts",
-    "name": "Gradium TTS",
-    "provider_code": "gradium",
-    "short_description": "Seamless real-time streaming with natural, expressive speech that masters complex pronunciations. Perfect text-audio synchronization through high-precision word-level timestamps.",
-    "capabilities": [
-      "Streaming",
-      "Expressive voice",
-      "Customizable"
-    ],
-    "languages": [
-      "de",
-      "en",
-      "es",
-      "fr",
-      "ja",
-      "ko",
-      "pt"
-    ],
-    "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/tts/gradium-tts/gradium-tts-default-http",
-    "deployments": {
-      "regions": [
-        "eu"
-      ],
-      "worldParts": [
-        "eu"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
@@ -1386,7 +1305,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
         "in",
         "jp",
         "kr",
-        "us"
+        "us-west"
       ],
       "worldParts": [
         "ae",
@@ -1396,7 +1315,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
         "in",
         "jp",
         "kr",
-        "us"
+        "us-west"
       ],
       "platforms": [],
       "protocols": [
@@ -1468,7 +1387,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
         "us-central1"
       ],
       "worldParts": [
-        "us"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
@@ -1478,30 +1397,11 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     }
   },
   {
-    "code": "slng/deepgram/aura:2-es",
-    "enabled": true,
-    "internal": false,
-    "service_type": "tts",
-    "name": "Aura 2 Spanish",
-    "provider_code": "deepgram",
-    "short_description": "Deepgram's TTS model designed to generate realistic, human-like speech in real time, especially for AI voice agents and applications.",
-    "capabilities": [
-      "Streaming",
-      "Multiple voices",
-      "Production ready"
-    ],
-    "languages": [
-      "es"
-    ],
-    "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/tts/deepgram-aura-2/aura-2-spanish-http"
-  },
-  {
     "code": "slng/fish/tts:s2.1-pro",
     "enabled": true,
     "internal": false,
     "service_type": "tts",
-    "name": "Fish TTS S2.1 Pro",
+    "name": "Fish TTS S2.1 Pro (SLNG)",
     "provider_code": "fish",
     "short_description": "Instant voice cloning from 10 seconds of audio, 60+ emotion tags, sub-300ms streaming latency, and 500,000+ community voices.",
     "capabilities": [
@@ -1760,12 +1660,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "regions": [
         "eu",
         "jp",
-        "us"
+        "us-central"
       ],
       "worldParts": [
         "eu",
         "jp",
-        "us"
+        "us-central"
       ],
       "platforms": [],
       "protocols": [
