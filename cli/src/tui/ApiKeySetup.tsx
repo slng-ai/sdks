@@ -8,13 +8,15 @@ import { BrandSpinner } from "./BrandSpinner";
 
 interface Props {
   onDone: () => void;
+  // The saved key failed verification at launch — greet as a re-login, not first run.
+  reauth?: boolean;
 }
 
 const KEYS_URL = "https://app.slng.ai/api-keys";
 
 /** First-run / no-key state. Paste a Slng API key, masked, and persist it
  *  to ~/.config/slng/config.json before continuing into the app. */
-export function ApiKeySetup({ onDone }: Props): React.ReactElement {
+export function ApiKeySetup({ onDone, reauth = false }: Props): React.ReactElement {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string>("");
   const [checking, setChecking] = useState(false);
@@ -58,11 +60,18 @@ export function ApiKeySetup({ onDone }: Props): React.ReactElement {
 
   return (
     <Box flexDirection="column" marginTop={1} paddingX={1}>
-      <Text bold>Hey 👋  You'll need an API key to start playing.</Text>
+      {reauth ? (
+        <Box flexDirection="column">
+          <Text bold color="yellow">⚠ Your saved API key didn't work — let's sign you back in.</Text>
+          <Text dimColor>It may have been revoked, or it belongs to a different organisation.</Text>
+        </Box>
+      ) : (
+        <Text bold>Hey 👋  You'll need an API key to start playing.</Text>
+      )}
 
       <Box marginTop={1}>
         <Text>
-          Don't have one yet? Create your API key at{" "}
+          {reauth ? "Grab a fresh key at " : "Don't have one yet? Create your API key at "}
           <Link url={KEYS_URL}>
             <Text color="cyan" underline>app.slng.ai/api-keys</Text>
           </Link>

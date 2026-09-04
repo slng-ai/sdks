@@ -13,6 +13,7 @@ export function MainMenu({ onPick, onQuit }: Props): React.ReactElement {
     { label: "🗣  Text → Speech - Synthesize", value: "tts" as const },
     { label: "👂  Speech → Text - Transcribe", value: "stt" as const },
     { label: "🤖  Agents - Browse & dispatch", value: "agents" as const },
+    { label: "🧰  Platform resources - Tools, MCP, secrets, trunks", value: "resources" as const },
     { label: "⚙️   Settings", value: "settings" as const },
     { label: "❌   Quit", value: "quit" as const },
   ];
