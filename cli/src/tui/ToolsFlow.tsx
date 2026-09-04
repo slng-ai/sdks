@@ -243,9 +243,9 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
         </Box>
         <Box marginTop={1} flexDirection="column">
           <Text dimColor>
-            esc back{url ? " · e edit in browser" : ""} · `voiceai tool get {String(tool.name)} --json` for full detail
+            esc back{url ? " · e edit in browser" : ""} · `voiceai tool get {String(tool.id)} --json` for full detail
           </Text>
-          <Text dimColor>run with `voiceai tool run {String(tool.name)} --confirm-side-effects`</Text>
+          <Text dimColor>run with `voiceai tool run {String(tool.id)} --confirm-side-effects`</Text>
         </Box>
       </Box>
     );

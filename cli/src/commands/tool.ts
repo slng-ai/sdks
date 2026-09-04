@@ -146,6 +146,19 @@ async function resolveTool(name: string, json: boolean | undefined): Promise<Too
   return chosen;
 }
 
+/** A tool id is a UUID; anything else is treated as an exact, case-sensitive name. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Resolve a name-or-id argument to a tool id. A UUID is used directly — no name
+ * lookup — so a caller who already has the id (e.g. from `tool list`/the TUI)
+ * can address it exactly; any other value is resolved as a name.
+ */
+async function resolveToolId(nameOrId: string, json: boolean | undefined): Promise<string> {
+  if (UUID_RE.test(nameOrId)) return nameOrId;
+  return (await resolveTool(nameOrId, json)).id;
+}
+
 export function printTool(tool: ToolDetail): void {
   const first = ["name", "latest_version", "tool_type", "description", "id"];
   const keys = [...first, ...Object.keys(tool).filter((k) => !first.includes(k))];
@@ -164,8 +177,8 @@ export function toolCommand(): Command {
       `
 COMMANDS
   list                     list every tool available to your organisation
-  get <tool-name>          show one tool in full
-  run <tool-name>          execute one tool and report what happened
+  get <tool>               show one tool in full (by name or id)
+  run <tool>               execute one tool and report what happened (by name or id)
 
 EXAMPLES
   $ voiceai tool list                          every tool your agents can call
@@ -176,7 +189,8 @@ EXAMPLES
   $ voiceai tool run check_order --input sample.json --confirm-side-effects
 
 NOTES
-  Tool names are matched exactly and are case-sensitive.
+  Tool names are matched exactly and are case-sensitive. A tool id (UUID) is
+  also accepted and addresses the tool directly, without a name lookup.
 
   \`--json\` carries \`arg_schema\` — the JSON Schema of a tool's input, derived from
   the pydantic model for a code tool.
@@ -217,21 +231,21 @@ NOTES
     });
 
   cmd
-    .command("get <tool-name>")
-    .description("Show one tool by its exact name")
+    .command("get <tool>")
+    .description("Show one tool by its exact name or id")
     .option("--json", "Output JSON")
-    .action(async (name: string, opts) => {
-      const spinner = spin(`loading ${name}`);
-      let chosen: ToolListItem;
+    .action(async (tool: string, opts) => {
+      const spinner = spin(`loading ${tool}`);
+      let id: string;
       try {
-        chosen = await resolveTool(name, opts.json);
+        id = await resolveToolId(tool, opts.json);
       } finally {
         spinner?.stop();
       }
       // The list row omits config, code_src, secrets and gate status.
       const res = await agentsRequest<ToolDetail>(
         "GET",
-        `/v1/agents/tools/${encodeURIComponent(chosen.id)}`,
+        `/v1/agents/tools/${encodeURIComponent(id)}`,
       );
       if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
       if (opts.json) {
@@ -242,12 +256,12 @@ NOTES
     });
 
   cmd
-    .command("run <tool-name>")
+    .command("run <tool>")
     .description("Execute one tool against your real dependencies")
     .option("--input <file>", "JSON input document, or - for stdin")
     .option("--confirm-side-effects", "Consent to executing the tool for real")
     .option("--json", "Output JSON")
-    .action(async (name: string, opts) => {
+    .action(async (tool: string, opts) => {
       const input = await readRunInput(opts.input);
       // Read the input before the consent check: a typo in the file is worth
       // hearing about without having to consent to a run first.
@@ -255,21 +269,21 @@ NOTES
       if (!opts.confirmSideEffects) {
         fail(
           opts.json,
-          `running ${name} executes the tool against your real dependencies. ` +
+          `running ${tool} executes the tool against your real dependencies. ` +
             "re-run with --confirm-side-effects to consent to that.",
         );
       }
 
-      const spinner = spin(`running ${name}`);
-      let chosen: ToolListItem;
+      const spinner = spin(`running ${tool}`);
+      let id: string;
       try {
-        chosen = await resolveTool(name, opts.json);
+        id = await resolveToolId(tool, opts.json);
       } finally {
         spinner?.stop();
       }
       const res = await agentsRequest<RunResult>(
         "POST",
-        `/v1/agents/tools/${encodeURIComponent(chosen.id)}/run`,
+        `/v1/agents/tools/${encodeURIComponent(id)}/run`,
         // Required literal. Supplied only because --confirm-side-effects was
         // passed: it is the operator's consent to execute their dependencies.
         { body: { sample_input: input.value, confirm_side_effects: true } },
