@@ -112,34 +112,34 @@ function toolStatus(tool: ToolDetail): { text: string; color: string } | null {
 /** Curated, empty-skipping field list — the noise stays in `tool get --json`. */
 function toolFields(tool: ToolDetail): Field[] {
   const entries: Field[] = [];
-  entries.push(["type", `${tool.tool_type} · ${ownershipLabel(tool)}`]);
+  entries.push(["Type", `${tool.tool_type} · ${ownershipLabel(tool)}`]);
   if (typeof tool.description === "string" && tool.description.trim()) {
-    entries.push(["description", tool.description.trim()]);
+    entries.push(["Description", tool.description.trim()]);
   }
-  entries.push(["version", versionState(tool)]);
+  entries.push(["Version", versionState(tool)]);
 
   if (tool.tool_type === "api_request") {
     const config = (tool.config ?? {}) as Record<string, unknown>;
     const method = typeof config.http_method === "string" ? config.http_method : "POST";
     const url = typeof config.url === "string" ? config.url : "";
-    if (url) entries.push(["request", `${method} ${url}`]);
+    if (url) entries.push(["Request", `${method} ${url}`]);
   } else if (tool.tool_type === "code") {
     const src = tool.code_src;
-    if (typeof src === "string" && src) entries.push(["code", `${src.split("\n").length} lines`]);
+    if (typeof src === "string" && src) entries.push(["Code", `${src.split("\n").length} lines`]);
     const deps = tool.dependencies;
-    if (Array.isArray(deps) && deps.length) entries.push(["dependencies", deps.map(String).join(", ")]);
+    if (Array.isArray(deps) && deps.length) entries.push(["Dependencies", deps.map(String).join(", ")]);
     const secrets = tool.declared_secrets;
-    if (Array.isArray(secrets) && secrets.length) entries.push(["secrets", secrets.map(String).join(", ")]);
+    if (Array.isArray(secrets) && secrets.length) entries.push(["Secrets", secrets.map(String).join(", ")]);
   }
 
-  entries.push(["arguments", argLine(tool.arg_schema)]);
+  entries.push(["Arguments", argLine(tool.arg_schema)]);
 
   const status = toolStatus(tool);
-  if (status) entries.push(["status", status.text, status.color]);
+  if (status) entries.push(["Status", status.text, status.color]);
 
   // For a custom tool the id links to the dashboard editor; built-ins are plain.
   const url = editUrl(tool);
-  entries.push(url ? ["id", String(tool.id), undefined, url] : ["id", String(tool.id)]);
+  entries.push(url ? ["ID", String(tool.id), undefined, url] : ["ID", String(tool.id)]);
   return entries;
 }
 

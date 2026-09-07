@@ -13,7 +13,17 @@ import {
   type McpServerDetail,
   type McpServerListItem,
 } from "../commands/mcp";
-import { ErrorView, FieldList, Loading, ResultView, genericSummary, pad } from "./resourceKit";
+import {
+  ErrorView,
+  FieldList,
+  Loading,
+  ResultView,
+  formatDate,
+  genericSummary,
+  humanizeKey,
+  isIsoDate,
+  pad,
+} from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -33,6 +43,7 @@ function rowLabel(s: McpServerListItem): string {
 /** Detail field summary — mirrors mcp.ts's private `summarise`. */
 function summariseServer(key: string, v: unknown): string {
   if (v === null || v === undefined || v === "") return "-";
+  if (isIsoDate(v)) return formatDate(v);
   if (key === "capabilities" && typeof v === "object") {
     const tools = (v as { tools?: unknown[] }).tools;
     const n = Array.isArray(tools) ? tools.length : 0;
@@ -52,7 +63,7 @@ function serverFields(server: McpServerDetail): [string, string][] {
     "id",
   ];
   const keys = [...first, ...Object.keys(server).filter((k) => !first.includes(k))];
-  return keys.map((k) => [k, summariseServer(k, server[k])] as [string, string]);
+  return keys.map((k) => [humanizeKey(k), summariseServer(k, server[k])] as [string, string]);
 }
 
 type Mode =

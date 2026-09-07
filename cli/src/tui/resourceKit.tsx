@@ -89,6 +89,38 @@ export function FieldList({ entries }: { entries: readonly Field[] }): React.Rea
   );
 }
 
+// Words rendered upper-case in a humanised label rather than title-cased.
+const ACRONYMS = new Set(["id", "url", "api", "mcp", "sip", "uuid", "ttl", "http", "https", "wss"]);
+
+/** A snake_case field key as a readable label: "capability_observed_at" →
+ *  "Capability observed at", "url_template" → "URL template", "id" → "ID". */
+export function humanizeKey(key: string): string {
+  const words = key
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.toLowerCase()));
+  if (!words.length) return key;
+  const s = words.join(" ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}T/;
+
+/** True for an ISO-8601 timestamp string (what the platform returns for *_at). */
+export function isIsoDate(v: unknown): v is string {
+  return typeof v === "string" && ISO_DATE.test(v) && Number.isFinite(Date.parse(v));
+}
+
+/** An ISO timestamp as local "YYYY-MM-DD HH:MM"; anything else passes through. */
+export function formatDate(value: unknown): string {
+  if (typeof value !== "string") return String(value);
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return value;
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** Reserve a 2-col gutter so adjacent columns never touch (from AgentsFlow). */
 export function pad(s: string, w: number): string {
   const max = w - 2;
