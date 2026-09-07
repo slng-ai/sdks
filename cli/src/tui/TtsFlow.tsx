@@ -393,11 +393,11 @@ function VoicePicker({ model, language, onPick }: VoicePickerProps): React.React
         )}
         :{" "}
         <Text>
-          <Text dimColor>(</Text>
+          <Text dimColor>[</Text>
           <Text bold color="yellow">p</Text>
-          <Text dimColor> preview · </Text>
+          <Text dimColor>] preview · [</Text>
           <Text bold color="cyan">enter</Text>
-          <Text dimColor> pick)</Text>
+          <Text dimColor>] pick</Text>
         </Text>
       </Text>
       <SelectInput

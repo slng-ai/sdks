@@ -47,9 +47,11 @@ export function KeyHints({
         {hints.map((h, i) => (
           <Text key={i}>
             {i > 0 ? <Text dimColor>{"   "}</Text> : null}
+            <Text dimColor>[</Text>
             <Text bold color={h.nav ? "cyan" : "yellow"}>
               {h.key}
             </Text>
+            <Text dimColor>]</Text>
             <Text>{` ${h.label}`}</Text>
           </Text>
         ))}
