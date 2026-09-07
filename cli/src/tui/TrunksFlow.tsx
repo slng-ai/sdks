@@ -14,7 +14,7 @@ import {
   type Report,
   type Trunk,
 } from "../commands/trunks";
-import { ErrorView, FieldList, Loading, humanizeKey, pad } from "./resourceKit";
+import { DetailPanel, ErrorView, Loading, pad, type Badge } from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -33,18 +33,11 @@ function rowLabel(t: Trunk): string {
   );
 }
 
-function trunkFields(trunk: Trunk): [string, string][] {
-  const raw: [string, string][] = [
-    ["name", trunk.name],
-    ["direction", trunk.direction],
-    ["numbers", cell(trunk.numbers.join(", "))],
-    ["status", cell(trunk.status)],
-    ["usable", usableCell(trunk)],
-    ["in use by", cell(trunk.in_use_by)],
-    ["id", trunk.id],
-    ["livekit_trunk_id", cell(trunk.livekit_trunk_id)],
+function trunkBadges(trunk: Trunk): Badge[] {
+  return [
+    { text: trunk.direction },
+    { text: trunk.usable ? "usable" : "unusable", color: trunk.usable ? "green" : "red" },
   ];
-  return raw.map(([k, v]) => [humanizeKey(k), v]);
 }
 
 type Mode =
@@ -166,10 +159,33 @@ export function TrunksFlow({ onExit }: Props): React.ReactElement {
 
   // detail
   if (mode.kind === "detail") {
-    const views = agentViews(reports, mode.trunk.direction, mode.trunk.id);
+    const t = mode.trunk;
+    const views = agentViews(reports, t.direction, t.id);
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
-        <FieldList entries={trunkFields(mode.trunk)} />
+        <DetailPanel
+          icon="☎️"
+          title={t.name}
+          badges={trunkBadges(t)}
+          sections={[
+            {
+              fields: [
+                ["Numbers", cell(t.numbers.join(", "))],
+                ["Status", cell(t.status)],
+                ["In use by", cell(t.in_use_by)],
+                ["Usable", usableCell(t)],
+              ],
+            },
+            {
+              title: "Reference",
+              dim: true,
+              fields: [
+                ["ID", t.id],
+                ["Livekit trunk ID", cell(t.livekit_trunk_id)],
+              ],
+            },
+          ]}
+        />
         <Box marginTop={1} flexDirection="column">
           <Text dimColor>{"  " + pad("AGENT", 24) + pad("SELECTABLE", 12) + pad("CURRENT", 10) + "REASON"}</Text>
           {views.map((v, i) => (

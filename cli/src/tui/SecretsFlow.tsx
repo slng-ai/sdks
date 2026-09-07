@@ -15,16 +15,7 @@ import {
   type Kind,
   type VaultEntry,
 } from "../commands/secret";
-import {
-  ErrorView,
-  FieldList,
-  Loading,
-  ResultView,
-  formatDate,
-  humanizeKey,
-  isIsoDate,
-  pad,
-} from "./resourceKit";
+import { DetailPanel, ErrorView, Loading, ResultView, dateWithAge, pad } from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -42,23 +33,6 @@ function rowLabel(s: VaultEntry): string {
   );
 }
 
-/** Field dump for an already-redacted entry (booleans as yes/no, dates formatted). */
-function secretFields(entry: Record<string, unknown>): [string, string][] {
-  const first = ["name", "kind", "has_value", "description", "revision", "is_managed"];
-  const keys = [...first, ...Object.keys(entry).filter((k) => !first.includes(k))];
-  return keys.map((k) => {
-    const v = entry[k];
-    const shown =
-      typeof v === "boolean"
-        ? valueCell(v)
-        : isIsoDate(v)
-          ? formatDate(v)
-          : v === null || v === undefined || v === ""
-            ? "-"
-            : String(v);
-    return [humanizeKey(k), shown] as [string, string];
-  });
-}
 
 type Mode =
   | { kind: "loading" }
@@ -180,9 +154,47 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
   }
 
   if (mode.kind === "detail") {
+    const e = mode.entry;
+    const kind = String(e.kind ?? "secret");
+    const managed = e.is_managed === true;
+    const created = e.created_at;
+    const updated = e.updated_at;
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
-        <FieldList entries={secretFields(mode.entry)} />
+        <DetailPanel
+          icon="🔑"
+          title={String(e.name ?? "")}
+          badges={[
+            { text: kind, color: kind === "secret" ? "yellow" : "cyan" },
+            { text: managed ? "managed" : "unmanaged", color: managed ? "yellow" : undefined },
+          ]}
+          sections={[
+            {
+              fields: [
+                ["Has value", e.has_value ? "yes" : "no", e.has_value ? "green" : undefined],
+                ["Revision", String(e.revision ?? "-")],
+                ["Description", e.description ? String(e.description) : "—"],
+              ],
+            },
+            {
+              title: "Timestamps",
+              fields: [
+                ["Created", dateWithAge(created)],
+                ["Updated", updated && updated !== created ? dateWithAge(updated) : "unchanged"],
+                ["Rotated", e.last_rotated_at ? dateWithAge(e.last_rotated_at) : "never"],
+              ],
+            },
+            {
+              title: "Reference",
+              dim: true,
+              fields: [
+                ["ID", String(e.id ?? "—")],
+                ["Org", String(e.organisation_id ?? "—")],
+                ["Created by", String(e.created_by ?? "—")],
+              ],
+            },
+          ]}
+        />
         <Box marginTop={1}>
           <Text dimColor>esc back · c change value · the value is never displayed</Text>
         </Box>

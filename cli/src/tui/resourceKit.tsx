@@ -66,24 +66,103 @@ export type Field =
   | readonly [string, string, string | undefined]
   | readonly [string, string, string | undefined, string];
 
+/** One aligned key/value line. `dim` recedes the whole row (reference blocks). */
+function FieldRow({
+  label,
+  value,
+  width,
+  color,
+  url,
+  dim,
+}: {
+  label: string;
+  value: string;
+  width: number;
+  color?: string;
+  url?: string;
+  dim?: boolean;
+}): React.ReactElement {
+  return (
+    <Text>
+      <Text dimColor>{label.padEnd(width)}</Text>
+      {url ? (
+        <Link url={url}>
+          <Text color={color ?? "cyan"} underline>
+            {value}
+          </Text>
+        </Link>
+      ) : (
+        <Text color={dim ? undefined : color} dimColor={dim}>
+          {value}
+        </Text>
+      )}
+    </Text>
+  );
+}
+
 /** A key/value record, one field per line, keys dim and padded to align. */
 export function FieldList({ entries }: { entries: readonly Field[] }): React.ReactElement {
   const width = entries.reduce((w, [k]) => Math.max(w, k.length), 0) + 2;
   return (
     <Box flexDirection="column">
       {entries.map(([k, v, color, url], i) => (
-        <Text key={i}>
-          <Text dimColor>{k.padEnd(width)}</Text>
-          {url ? (
-            <Link url={url}>
-              <Text color={color ?? "cyan"} underline>
-                {v}
-              </Text>
-            </Link>
-          ) : (
-            <Text color={color}>{v}</Text>
-          )}
+        <FieldRow key={i} label={k} value={v} width={width} color={color} url={url} />
+      ))}
+    </Box>
+  );
+}
+
+export interface Badge {
+  text: string;
+  color?: string;
+}
+
+export interface DetailSection {
+  title?: string;
+  fields: readonly Field[];
+  /** Recede the section (used for the low-signal reference block). */
+  dim?: boolean;
+}
+
+/**
+ * A bordered detail panel: an icon + bold title with colored badges, then
+ * grouped sections of aligned fields. Field labels align across every section
+ * so the columns line up down the whole panel.
+ */
+export function DetailPanel({
+  icon,
+  title,
+  badges = [],
+  sections,
+}: {
+  icon?: string;
+  title: string;
+  badges?: readonly Badge[];
+  sections: readonly DetailSection[];
+}): React.ReactElement {
+  const width =
+    sections.reduce((w, s) => s.fields.reduce((m, [k]) => Math.max(m, k.length), w), 0) + 2;
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box>
+        <Text bold>
+          {icon ? `${icon}  ` : ""}
+          {title}
         </Text>
+        {badges.map((b, i) => (
+          <Text key={i} color={b.color} dimColor={!b.color}>
+            {i === 0 ? "   " : " · "}
+            {b.text}
+          </Text>
+        ))}
+      </Box>
+      {sections.map((section, si) => (
+        <Box key={si} flexDirection="column" marginTop={1}>
+          {section.title ? <Text dimColor>{section.title}</Text> : null}
+          {section.fields.map(([k, v, color, url], i) => (
+            <FieldRow key={i} label={k} value={v} width={width} color={color} url={url} dim={section.dim} />
+          ))}
+        </Box>
       ))}
     </Box>
   );
@@ -140,4 +219,47 @@ export function genericSummary(v: unknown): string {
     return keys.length ? `{${keys.join(", ")}} (use --json)` : "-";
   }
   return String(v);
+}
+
+/** A compact "2h ago" / "3d ago" age for an ISO timestamp; "" if unparseable. */
+export function relativeAge(iso?: unknown): string {
+  if (typeof iso !== "string") return "";
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const secs = Math.max(0, (Date.now() - t) / 1000);
+  const mins = secs / 60;
+  const hours = mins / 60;
+  const days = hours / 24;
+  if (secs < 60) return `${Math.floor(secs)}s ago`;
+  if (mins < 60) return `${Math.floor(mins)}m ago`;
+  if (hours < 24) return `${Math.floor(hours)}h ago`;
+  if (days < 30) return `${Math.floor(days)}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}
+
+/** An ISO timestamp as "YYYY-MM-DD HH:MM  (2h ago)". */
+export function dateWithAge(iso: unknown): string {
+  if (!isIsoDate(iso)) return genericSummary(iso);
+  const age = relativeAge(iso);
+  return age ? `${formatDate(iso)}  (${age})` : formatDate(iso);
+}
+
+/** One-line display of an arbitrary value: booleans → yes/no, ISO → date, else summary. */
+export function formatFieldValue(v: unknown): string {
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (isIsoDate(v)) return formatDate(v);
+  return genericSummary(v);
+}
+
+/**
+ * The record's remaining keys (those not already shown) as humanised, formatted
+ * fields — for a dim "reference" section that keeps everything discoverable
+ * without cluttering the primary view.
+ */
+export function remainingFields(record: Record<string, unknown>, shown: readonly string[]): Field[] {
+  const skip = new Set(shown);
+  return Object.keys(record)
+    .filter((k) => !skip.has(k))
+    .map((k) => [humanizeKey(k), formatFieldValue(record[k])] as Field);
 }

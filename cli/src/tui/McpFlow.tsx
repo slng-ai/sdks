@@ -14,15 +14,15 @@ import {
   type McpServerListItem,
 } from "../commands/mcp";
 import {
+  DetailPanel,
   ErrorView,
-  FieldList,
   Loading,
   ResultView,
-  formatDate,
-  genericSummary,
-  humanizeKey,
-  isIsoDate,
+  dateWithAge,
   pad,
+  remainingFields,
+  type Badge,
+  type Field,
 } from "./resourceKit";
 
 interface Props {
@@ -40,30 +40,29 @@ function rowLabel(s: McpServerListItem): string {
   );
 }
 
-/** Detail field summary — mirrors mcp.ts's private `summarise`. */
-function summariseServer(key: string, v: unknown): string {
-  if (v === null || v === undefined || v === "") return "-";
-  if (isIsoDate(v)) return formatDate(v);
-  if (key === "capabilities" && typeof v === "object") {
-    const tools = (v as { tools?: unknown[] }).tools;
-    const n = Array.isArray(tools) ? tools.length : 0;
-    return `${n} tool${n === 1 ? "" : "s"} (use --json for the schemas)`;
-  }
-  return genericSummary(v);
-}
+// Shown in the primary sections; everything else falls into the dim reference block.
+const SHOWN_KEYS = [
+  "name",
+  "transport",
+  "url_template",
+  "capability_status",
+  "capability_tool_count",
+  "description",
+  "capability_observed_at",
+  "next_refresh_at",
+  "capabilities",
+  "id",
+];
 
-function serverFields(server: McpServerDetail): [string, string][] {
-  const first = [
-    "name",
-    "transport",
-    "url_template",
-    "capability_status",
-    "capability_tool_count",
-    "description",
-    "id",
+function serverBadges(server: McpServerDetail): Badge[] {
+  const status = server.capability_status;
+  return [
+    { text: cell(server.transport) },
+    {
+      text: status ? String(status) : "unprobed",
+      color: status === "healthy" ? "green" : status ? "yellow" : undefined,
+    },
   ];
-  const keys = [...first, ...Object.keys(server).filter((k) => !first.includes(k))];
-  return keys.map((k) => [humanizeKey(k), summariseServer(k, server[k])] as [string, string]);
 }
 
 type Mode =
@@ -168,9 +167,30 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
       { label: "🔌  Connect & refresh", value: "connect" },
       { label: "←   Back to list", value: "back" },
     ];
+    const overview: Field[] = [
+      ["URL template", cell(server.url_template)],
+      ["Tools", cell(server.capability_tool_count)],
+    ];
+    if (typeof server.description === "string" && server.description.trim()) {
+      overview.push(["Description", server.description.trim()]);
+    }
+    const health: Field[] = [
+      ["Last probed", server.capability_observed_at ? dateWithAge(server.capability_observed_at) : "never"],
+    ];
+    if (server.next_refresh_at) health.push(["Next refresh", dateWithAge(server.next_refresh_at)]);
+    const reference: Field[] = [["ID", String(server.id)], ...remainingFields(server, SHOWN_KEYS)];
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
-        <FieldList entries={serverFields(server)} />
+        <DetailPanel
+          icon="🧩"
+          title={server.name}
+          badges={serverBadges(server)}
+          sections={[
+            { fields: overview },
+            { title: "Health", fields: health },
+            { title: "Reference", dim: true, fields: reference },
+          ]}
+        />
         <Box marginTop={1}>
           <SelectInput
             items={actions}

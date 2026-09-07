@@ -4,7 +4,7 @@ import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import { agentsRequest, formatAgentsError } from "../lib/agents";
 import { listAllTools, versionCell, type ToolListItem, type ToolDetail } from "../commands/tool";
-import { ErrorView, FieldList, Loading, pad, type Field } from "./resourceKit";
+import { DetailPanel, ErrorView, Loading, pad, type Badge, type Field } from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -109,10 +109,9 @@ function toolStatus(tool: ToolDetail): { text: string; color: string } | null {
   return tool.is_current_version === true ? { text: "✓ healthy", color: "green" } : null;
 }
 
-/** Curated, empty-skipping field list — the noise stays in `tool get --json`. */
-function toolFields(tool: ToolDetail): Field[] {
+/** The curated overview rows — the noise stays in `tool get --json`. */
+function toolOverview(tool: ToolDetail): Field[] {
   const entries: Field[] = [];
-  entries.push(["Type", `${tool.tool_type} · ${ownershipLabel(tool)}`]);
   if (typeof tool.description === "string" && tool.description.trim()) {
     entries.push(["Description", tool.description.trim()]);
   }
@@ -133,14 +132,18 @@ function toolFields(tool: ToolDetail): Field[] {
   }
 
   entries.push(["Arguments", argLine(tool.arg_schema)]);
-
-  const status = toolStatus(tool);
-  if (status) entries.push(["Status", status.text, status.color]);
-
-  // For a custom tool the id links to the dashboard editor; built-ins are plain.
-  const url = editUrl(tool);
-  entries.push(url ? ["ID", String(tool.id), undefined, url] : ["ID", String(tool.id)]);
   return entries;
+}
+
+function toolBadges(tool: ToolDetail): Badge[] {
+  const ownership = ownershipLabel(tool);
+  const badges: Badge[] = [
+    { text: String(tool.tool_type) },
+    { text: ownership, color: ownership === "custom" ? "cyan" : undefined },
+  ];
+  const status = toolStatus(tool);
+  if (status) badges.push({ text: status.text, color: status.color });
+  return badges;
 }
 
 type Mode =
@@ -235,12 +238,18 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
   if (mode.kind === "detail") {
     const tool = mode.tool;
     const url = editUrl(tool);
+    const idField: Field = url ? ["ID", String(tool.id), undefined, url] : ["ID", String(tool.id)];
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
-        <Text bold>{String(tool.name)}</Text>
-        <Box marginTop={1}>
-          <FieldList entries={toolFields(tool)} />
-        </Box>
+        <DetailPanel
+          icon="🔧"
+          title={String(tool.name)}
+          badges={toolBadges(tool)}
+          sections={[
+            { fields: toolOverview(tool) },
+            { title: "Reference", dim: true, fields: [idField] },
+          ]}
+        />
         <Box marginTop={1} flexDirection="column">
           <Text dimColor>
             esc back{url ? " · e edit in browser" : ""} · `voiceai tool get {String(tool.id)} --json` for full detail
