@@ -14,7 +14,16 @@ import {
   type Kind,
   type VaultEntry,
 } from "../commands/secret";
-import { ErrorView, FieldList, Loading, ResultView, pad } from "./resourceKit";
+import {
+  ErrorView,
+  FieldList,
+  Loading,
+  ResultView,
+  formatDate,
+  humanizeKey,
+  isIsoDate,
+  pad,
+} from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -32,7 +41,7 @@ function rowLabel(s: VaultEntry): string {
   );
 }
 
-/** Field dump for an already-redacted entry (booleans shown as yes/no). */
+/** Field dump for an already-redacted entry (booleans as yes/no, dates formatted). */
 function secretFields(entry: Record<string, unknown>): [string, string][] {
   const first = ["name", "kind", "has_value", "description", "revision", "is_managed"];
   const keys = [...first, ...Object.keys(entry).filter((k) => !first.includes(k))];
@@ -41,10 +50,12 @@ function secretFields(entry: Record<string, unknown>): [string, string][] {
     const shown =
       typeof v === "boolean"
         ? valueCell(v)
-        : v === null || v === undefined || v === ""
-          ? "-"
-          : String(v);
-    return [k, shown] as [string, string];
+        : isIsoDate(v)
+          ? formatDate(v)
+          : v === null || v === undefined || v === ""
+            ? "-"
+            : String(v);
+    return [humanizeKey(k), shown] as [string, string];
   });
 }
 
@@ -53,6 +64,7 @@ type Mode =
   | { kind: "list" }
   | { kind: "detail-loading"; name: string }
   | { kind: "detail"; entry: Record<string, unknown> }
+  | { kind: "change-value"; entry: Record<string, unknown> }
   | { kind: "create-name" }
   | { kind: "create-kind" }
   | { kind: "create-value"; entryKind: Kind }
@@ -87,7 +99,13 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
     setDraftValue("");
   };
 
-  useInput((_input, key) => {
+  useInput((input, key) => {
+    // `c` changes the value of the entry being viewed.
+    if (mode.kind === "detail" && (input === "c" || input === "C")) {
+      setDraftValue("");
+      setMode({ kind: "change-value", entry: mode.entry });
+      return;
+    }
     if (!key.escape) return;
     switch (mode.kind) {
       case "list":
@@ -95,6 +113,9 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
         break;
       case "detail":
         setMode({ kind: "list" });
+        break;
+      case "change-value":
+        setMode({ kind: "detail", entry: mode.entry });
         break;
       case "create-name":
         resetDraft();
@@ -160,7 +181,38 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <FieldList entries={secretFields(mode.entry)} />
         <Box marginTop={1}>
-          <Text dimColor>esc to go back · the value is never displayed</Text>
+          <Text dimColor>esc back · c change value · the value is never displayed</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (mode.kind === "change-value") {
+    const name = String(mode.entry.name ?? "");
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Change value · {name}</Text>
+        <Box marginTop={1}>
+          <Text color="yellow">New value </Text>
+          <TextInput
+            value={draftValue}
+            onChange={setDraftValue}
+            mask="*"
+            onSubmit={(raw) => {
+              if (!raw) {
+                setMode({
+                  kind: "error",
+                  message: "aborted: no value provided.",
+                  back: { kind: "detail", entry: mode.entry },
+                });
+                return;
+              }
+              void write(name, (mode.entry.kind as Kind) || "secret", raw, true);
+            }}
+          />
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>input is masked · enter to save · esc back</Text>
         </Box>
       </Box>
     );

@@ -14,7 +14,7 @@ import {
   type Report,
   type Trunk,
 } from "../commands/trunks";
-import { ErrorView, FieldList, Loading, pad } from "./resourceKit";
+import { ErrorView, FieldList, Loading, humanizeKey, pad } from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -34,7 +34,7 @@ function rowLabel(t: Trunk): string {
 }
 
 function trunkFields(trunk: Trunk): [string, string][] {
-  return [
+  const raw: [string, string][] = [
     ["name", trunk.name],
     ["direction", trunk.direction],
     ["numbers", cell(trunk.numbers.join(", "))],
@@ -44,6 +44,7 @@ function trunkFields(trunk: Trunk): [string, string][] {
     ["id", trunk.id],
     ["livekit_trunk_id", cell(trunk.livekit_trunk_id)],
   ];
+  return raw.map(([k, v]) => [humanizeKey(k), v]);
 }
 
 type Mode =
