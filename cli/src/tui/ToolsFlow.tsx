@@ -2,8 +2,15 @@ import React, { useEffect, useState } from "react";
 import { spawn } from "node:child_process";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
+import TextInput from "ink-text-input";
 import { agentsRequest, formatAgentsError } from "../lib/agents";
-import { listAllTools, versionCell, type ToolListItem, type ToolDetail } from "../commands/tool";
+import {
+  listAllTools,
+  versionCell,
+  type RunResult,
+  type ToolListItem,
+  type ToolDetail,
+} from "../commands/tool";
 import { DetailPanel, ErrorView, KeyHints, Loading, pad, type Badge, type Field } from "./resourceKit";
 
 interface Props {
@@ -91,6 +98,13 @@ function argLine(argSchema: unknown): string {
   return props.map((p) => (required.has(p) ? `${p} (required)` : p)).join(", ");
 }
 
+/** Does the tool take any arguments? (whether to prompt for input before a run.) */
+function hasArgs(argSchema: unknown): boolean {
+  if (!argSchema || typeof argSchema !== "object") return false;
+  const props = (argSchema as { properties?: unknown }).properties;
+  return Boolean(props && typeof props === "object" && Object.keys(props).length > 0);
+}
+
 /**
  * Compact health signal: red when the config is invalid (a hard problem), yellow
  * for softer warnings, green when published & clean. `null` = nothing to say.
@@ -151,11 +165,16 @@ type Mode =
   | { kind: "list" }
   | { kind: "detail-loading"; item: ToolListItem }
   | { kind: "detail"; tool: ToolDetail }
+  | { kind: "run-input"; tool: ToolDetail; error?: string }
+  | { kind: "run-confirm"; tool: ToolDetail; input: Record<string, unknown> }
+  | { kind: "run-busy"; tool: ToolDetail }
+  | { kind: "run-result"; tool: ToolDetail; status: string; lines: string[] }
   | { kind: "error"; message: string; back: Mode };
 
 export function ToolsFlow({ onExit }: Props): React.ReactElement {
   const [tools, setTools] = useState<ToolListItem[]>([]);
   const [mode, setMode] = useState<Mode>({ kind: "loading" });
+  const [runInput, setRunInput] = useState("{}");
 
   const loadTools = async (): Promise<void> => {
     setMode({ kind: "loading" });
@@ -173,11 +192,23 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
   }, []);
 
   useInput((input, key) => {
-    // `e` opens the dashboard editor for a custom tool on its detail screen.
-    if (mode.kind === "detail" && (input === "e" || input === "E")) {
-      const url = editUrl(mode.tool);
-      if (url) openExternal(url);
-      return;
+    if (mode.kind === "detail") {
+      // `e` opens the dashboard editor for a custom tool.
+      if (input === "e" || input === "E") {
+        const url = editUrl(mode.tool);
+        if (url) openExternal(url);
+        return;
+      }
+      // `r` starts a run: prompt for input if the tool takes arguments, else confirm.
+      if (input === "r" || input === "R") {
+        if (hasArgs(mode.tool.arg_schema)) {
+          setRunInput("{}");
+          setMode({ kind: "run-input", tool: mode.tool });
+        } else {
+          setMode({ kind: "run-confirm", tool: mode.tool, input: {} });
+        }
+        return;
+      }
     }
     if (!key.escape) return;
     switch (mode.kind) {
@@ -187,15 +218,21 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
       case "detail":
         setMode({ kind: "list" });
         break;
+      case "run-input":
+      case "run-confirm":
+      case "run-result":
+        setMode({ kind: "detail", tool: mode.tool });
+        break;
       case "error":
         setMode(mode.back);
         break;
-      // loading / detail-loading: ignore esc
+      // loading / detail-loading / run-busy: ignore esc
     }
   });
 
   if (mode.kind === "loading") return <Loading label="Loading tools…" />;
   if (mode.kind === "detail-loading") return <Loading label={`Loading ${mode.item.name}…`} />;
+  if (mode.kind === "run-busy") return <Loading label={`Running ${String(mode.tool.name)}…`} />;
   if (mode.kind === "error") return <ErrorView message={mode.message} />;
 
   if (mode.kind === "list") {
@@ -254,19 +291,118 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
         />
         <KeyHints
           hints={[
+            { key: "r", label: "run" },
             ...(url ? [{ key: "e", label: "edit in browser" }] : []),
             { key: "esc", label: "back", nav: true },
           ]}
-          note={
-            `voiceai tool get ${String(tool.id)} --json  ·  full detail\n` +
-            `voiceai tool run ${String(tool.id)} --confirm-side-effects  ·  execute`
-          }
+          note={`voiceai tool get ${String(tool.id)} --json  ·  full detail`}
         />
       </Box>
     );
   }
 
+  // run: collect JSON input for a tool that takes arguments
+  if (mode.kind === "run-input") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Run {String(mode.tool.name)}</Text>
+        <Text dimColor>arguments: {argLine(mode.tool.arg_schema)}</Text>
+        <Box marginTop={1}>
+          <Text color="yellow">input </Text>
+          <TextInput
+            value={runInput}
+            onChange={setRunInput}
+            onSubmit={(raw) => {
+              let parsed: Record<string, unknown>;
+              try {
+                parsed = raw.trim() ? (JSON.parse(raw) as Record<string, unknown>) : {};
+              } catch (e) {
+                setMode({ kind: "run-input", tool: mode.tool, error: `invalid JSON: ${(e as Error).message}` });
+                return;
+              }
+              setMode({ kind: "run-confirm", tool: mode.tool, input: parsed });
+            }}
+          />
+        </Box>
+        {mode.error ? (
+          <Box marginTop={1}>
+            <Text color="red">✗ {mode.error}</Text>
+          </Box>
+        ) : null}
+        <KeyHints
+          hints={[
+            { key: "enter", label: "continue", nav: true },
+            { key: "esc", label: "back", nav: true },
+          ]}
+          note="a JSON object matching the tool's arg schema"
+        />
+      </Box>
+    );
+  }
+
+  // run: consent — a run executes the tool against real dependencies
+  if (mode.kind === "run-confirm") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text color="yellow">
+          ⚠ Running {String(mode.tool.name)} executes it against your real dependencies — it can
+          charge a card or send an email.
+        </Text>
+        <Box marginTop={1}>
+          <SelectInput
+            items={[
+              { label: "No, cancel", value: "no" },
+              { label: "Yes, run it", value: "yes" },
+            ]}
+            onSelect={(item) => {
+              if (item.value === "yes") void doRun(mode.tool, mode.input);
+              else setMode({ kind: "detail", tool: mode.tool });
+            }}
+          />
+        </Box>
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
+      </Box>
+    );
+  }
+
+  // run: result
+  if (mode.kind === "run-result") {
+    const ok = mode.status === "succeeded";
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text color={ok ? "green" : "red"}>
+          {ok ? "✓" : "✗"} run {mode.status}
+        </Text>
+        {mode.lines.map((l, i) => (
+          <Text key={i}>{l}</Text>
+        ))}
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
+      </Box>
+    );
+  }
+
   return <Text />;
+
+  async function doRun(tool: ToolDetail, input: Record<string, unknown>): Promise<void> {
+    setMode({ kind: "run-busy", tool });
+    // Same contract as `voiceai tool run`: the literal consent flag is only sent
+    // because the operator confirmed the side-effect warning.
+    const res = await agentsRequest<RunResult>(
+      "POST",
+      `/v1/agents/tools/${encodeURIComponent(tool.id)}/run`,
+      { body: { sample_input: input, confirm_side_effects: true } },
+    );
+    if (!res.ok || !res.data) {
+      setMode({ kind: "error", message: formatAgentsError(res), back: { kind: "detail", tool } });
+      return;
+    }
+    const result = res.data;
+    const lines: string[] = [];
+    if (result.error) lines.push(`error: ${result.error}`);
+    if (result.validation) lines.push(`validation: ${result.validation}`);
+    // The input is never echoed back — it may carry a secret.
+    setMode({ kind: "run-result", tool, status: result.status, lines });
+  }
 
   async function openTool(item: ToolListItem): Promise<void> {
     setMode({ kind: "detail-loading", item });
