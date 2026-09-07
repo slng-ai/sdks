@@ -16,6 +16,7 @@ import {
 import {
   DetailPanel,
   ErrorView,
+  KeyHints,
   Loading,
   ResultView,
   dateWithAge,
@@ -126,9 +127,7 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
         <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Text bold>MCP servers</Text>
           <Text dimColor>No MCP servers found for your organisation.</Text>
-          <Box marginTop={1}>
-            <Text dimColor>esc to go back</Text>
-          </Box>
+          <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
         </Box>
       );
     }
@@ -153,9 +152,13 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>↑↓ choose · enter open · esc back</Text>
-        </Box>
+        <KeyHints
+          hints={[
+            { key: "↑↓", label: "move", nav: true },
+            { key: "enter", label: "open", nav: true },
+            { key: "esc", label: "back", nav: true },
+          ]}
+        />
       </Box>
     );
   }
@@ -209,9 +212,10 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>esc back · connect refreshes the platform's capability snapshot</Text>
-        </Box>
+        <KeyHints
+          hints={[{ key: "esc", label: "back", nav: true }]}
+          note="connect refreshes the platform's capability snapshot"
+        />
       </Box>
     );
   }
@@ -245,9 +249,7 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
             </Text>
           </Box>
         )}
-        <Box marginTop={1}>
-          <Text dimColor>esc to go back</Text>
-        </Box>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }

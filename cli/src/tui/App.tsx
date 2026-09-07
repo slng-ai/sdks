@@ -9,6 +9,7 @@ import { AgentsFlow } from "./AgentsFlow";
 import { ResourcesMenu } from "./ResourcesMenu";
 import { ApiKeySetup } from "./ApiKeySetup";
 import { BrandSpinner } from "./BrandSpinner";
+import { KeyHints } from "./resourceKit";
 import { load } from "../lib/config";
 import { verifyApiKey } from "../lib/verify";
 import pkg from "../../package.json" with { type: "json" };
@@ -106,9 +107,7 @@ export function App(): React.ReactElement {
       {screen === "resources" && <ResourcesMenu onExit={() => setScreen("menu")} />}
       {screen === "settings" && <Settings onExit={() => setScreen("menu")} />}
 
-      <Box marginTop={1}>
-        <Text dimColor>ctrl+c quit</Text>
-      </Box>
+      <KeyHints hints={[{ key: "ctrl+c", label: "quit", nav: true }]} />
     </Box>
   );
 }

@@ -5,6 +5,7 @@ import { ToolsFlow } from "./ToolsFlow";
 import { McpFlow } from "./McpFlow";
 import { SecretsFlow } from "./SecretsFlow";
 import { TrunksFlow } from "./TrunksFlow";
+import { KeyHints } from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -47,9 +48,13 @@ export function ResourcesMenu({ onExit }: Props): React.ReactElement {
           }}
         />
       </Box>
-      <Box marginTop={1}>
-        <Text dimColor>↑↓ choose · enter open · esc back</Text>
-      </Box>
+      <KeyHints
+        hints={[
+          { key: "↑↓", label: "move", nav: true },
+          { key: "enter", label: "open", nav: true },
+          { key: "esc", label: "back", nav: true },
+        ]}
+      />
     </Box>
   );
 }

@@ -14,7 +14,7 @@ import {
   type Report,
   type Trunk,
 } from "../commands/trunks";
-import { DetailPanel, ErrorView, Loading, pad, type Badge } from "./resourceKit";
+import { DetailPanel, ErrorView, KeyHints, Loading, pad, type Badge } from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -102,9 +102,7 @@ export function TrunksFlow({ onExit }: Props): React.ReactElement {
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>Trunks</Text>
         <Text dimColor>{NO_AGENTS_ERROR}</Text>
-        <Box marginTop={1}>
-          <Text dimColor>esc to go back</Text>
-        </Box>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }
@@ -125,9 +123,12 @@ export function TrunksFlow({ onExit }: Props): React.ReactElement {
         <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Text bold>Trunks</Text>
           <Text dimColor>No trunks found{filter ? ` on the ${filter} side` : ""}.</Text>
-          <Box marginTop={1}>
-            <Text dimColor>{filter ? "d cycle direction · " : ""}esc to go back</Text>
-          </Box>
+          <KeyHints
+            hints={[
+              ...(filter ? [{ key: "d", label: "cycle direction" }] : []),
+              { key: "esc", label: "back", nav: true },
+            ]}
+          />
         </Box>
       );
     }
@@ -149,10 +150,15 @@ export function TrunksFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>↑↓ choose · enter open · d cycle direction · esc back</Text>
-        </Box>
-        <Text dimColor>{COMPLETENESS_NOTE}</Text>
+        <KeyHints
+          hints={[
+            { key: "↑↓", label: "move", nav: true },
+            { key: "enter", label: "open", nav: true },
+            { key: "d", label: "cycle direction" },
+            { key: "esc", label: "back", nav: true },
+          ]}
+          note={COMPLETENESS_NOTE}
+        />
       </Box>
     );
   }
@@ -198,9 +204,7 @@ export function TrunksFlow({ onExit }: Props): React.ReactElement {
             </Text>
           ))}
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>esc to go back</Text>
-        </Box>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }

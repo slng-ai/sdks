@@ -20,6 +20,47 @@ export function Loading({ label }: { label: string }): React.ReactElement {
   );
 }
 
+// A pressable key + what it does. `nav` keys (esc, ↑↓, enter, ^C) render in a
+// quieter accent than screen-specific actions, which get the brand yellow.
+export interface Hint {
+  key: string;
+  label: string;
+  nav?: boolean;
+}
+
+/**
+ * A consistent keyboard-hint bar. Keys are the loud part — bold, coloured
+ * (actions yellow, navigation cyan) — with labels in normal weight and an
+ * optional dim `note` beneath for non-key captions. Replaces the ad-hoc dim
+ * footers so the keys are actually visible.
+ */
+export function KeyHints({
+  hints,
+  note,
+}: {
+  hints: readonly Hint[];
+  note?: string;
+}): React.ReactElement {
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text>
+        {hints.map((h, i) => (
+          <Text key={i}>
+            {i > 0 ? <Text dimColor>{"   "}</Text> : null}
+            <Text bold color={h.nav ? "cyan" : "yellow"}>
+              {h.key}
+            </Text>
+            <Text>{` ${h.label}`}</Text>
+          </Text>
+        ))}
+      </Text>
+      {note ? <Text dimColor>{note}</Text> : null}
+    </Box>
+  );
+}
+
+const BACK: Hint = { key: "esc", label: "back", nav: true };
+
 // A key can pass /v1/me and still be wrong-org on the agents host, so resource
 // screens re-check the error text and guide the user when it looks like auth.
 const AUTH_ERROR = /HTTP 40[13]\b|PERMISSION_DENIED|UNAUTHENTICATED|Organisation not found|unauthori[sz]ed/i;
@@ -34,7 +75,7 @@ export function ErrorView({ message }: { message: string }): React.ReactElement 
           VOICEAI_API_KEY.
         </Text>
       )}
-      <Text dimColor>esc to go back</Text>
+      <KeyHints hints={[BACK]} />
     </Box>
   );
 }
@@ -52,9 +93,7 @@ export function ResultView({
       {lines.map((l, i) => (
         <Text key={i}>{l}</Text>
       ))}
-      <Box marginTop={1}>
-        <Text dimColor>esc to go back</Text>
-      </Box>
+      <KeyHints hints={[BACK]} />
     </Box>
   );
 }

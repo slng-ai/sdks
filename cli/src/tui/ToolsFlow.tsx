@@ -4,7 +4,7 @@ import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import { agentsRequest, formatAgentsError } from "../lib/agents";
 import { listAllTools, versionCell, type ToolListItem, type ToolDetail } from "../commands/tool";
-import { DetailPanel, ErrorView, Loading, pad, type Badge, type Field } from "./resourceKit";
+import { DetailPanel, ErrorView, KeyHints, Loading, pad, type Badge, type Field } from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -204,9 +204,7 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
         <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Text bold>Tools</Text>
           <Text dimColor>No tools found for your organisation.</Text>
-          <Box marginTop={1}>
-            <Text dimColor>esc to go back</Text>
-          </Box>
+          <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
         </Box>
       );
     }
@@ -227,9 +225,13 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>↑↓ choose · enter open · esc back</Text>
-        </Box>
+        <KeyHints
+          hints={[
+            { key: "↑↓", label: "move", nav: true },
+            { key: "enter", label: "open", nav: true },
+            { key: "esc", label: "back", nav: true },
+          ]}
+        />
       </Box>
     );
   }
@@ -250,12 +252,16 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
             { title: "Reference", dim: true, fields: [idField] },
           ]}
         />
-        <Box marginTop={1} flexDirection="column">
-          <Text dimColor>
-            esc back{url ? " · e edit in browser" : ""} · `voiceai tool get {String(tool.id)} --json` for full detail
-          </Text>
-          <Text dimColor>run with `voiceai tool run {String(tool.id)} --confirm-side-effects`</Text>
-        </Box>
+        <KeyHints
+          hints={[
+            ...(url ? [{ key: "e", label: "edit in browser" }] : []),
+            { key: "esc", label: "back", nav: true },
+          ]}
+          note={
+            `voiceai tool get ${String(tool.id)} --json  ·  full detail\n` +
+            `voiceai tool run ${String(tool.id)} --confirm-side-effects  ·  execute`
+          }
+        />
       </Box>
     );
   }

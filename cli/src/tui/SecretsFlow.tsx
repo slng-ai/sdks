@@ -15,7 +15,7 @@ import {
   type Kind,
   type VaultEntry,
 } from "../commands/secret";
-import { DetailPanel, ErrorView, Loading, ResultView, dateWithAge, pad } from "./resourceKit";
+import { DetailPanel, ErrorView, KeyHints, Loading, ResultView, dateWithAge, pad } from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -146,9 +146,13 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>↑↓ choose · enter open · esc back</Text>
-        </Box>
+        <KeyHints
+          hints={[
+            { key: "↑↓", label: "move", nav: true },
+            { key: "enter", label: "open", nav: true },
+            { key: "esc", label: "back", nav: true },
+          ]}
+        />
       </Box>
     );
   }
@@ -195,9 +199,13 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
             },
           ]}
         />
-        <Box marginTop={1}>
-          <Text dimColor>esc back · c change value · the value is never displayed</Text>
-        </Box>
+        <KeyHints
+          hints={[
+            { key: "c", label: "change value" },
+            { key: "esc", label: "back", nav: true },
+          ]}
+          note="the value is never displayed"
+        />
       </Box>
     );
   }
@@ -226,9 +234,13 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>input is masked · enter to save · esc back</Text>
-        </Box>
+        <KeyHints
+          hints={[
+            { key: "enter", label: "save", nav: true },
+            { key: "esc", label: "back", nav: true },
+          ]}
+          note="input is masked"
+        />
       </Box>
     );
   }
@@ -265,9 +277,13 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
             <Text color="red">✗ {nameError}</Text>
           </Box>
         ) : (
-          <Box marginTop={1}>
-            <Text dimColor>SCREAMING_SNAKE_CASE · enter to continue · esc to cancel</Text>
-          </Box>
+          <KeyHints
+            hints={[
+              { key: "enter", label: "continue", nav: true },
+              { key: "esc", label: "cancel", nav: true },
+            ]}
+            note="SCREAMING_SNAKE_CASE"
+          />
         )}
       </Box>
     );
@@ -283,9 +299,10 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
             onSelect={(item) => setMode({ kind: "create-value", entryKind: item.value as Kind })}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>secret = sensitive · variable = non-sensitive config · esc back</Text>
-        </Box>
+        <KeyHints
+          hints={[{ key: "esc", label: "back", nav: true }]}
+          note="secret = sensitive · variable = non-sensitive config"
+        />
       </Box>
     );
   }
@@ -315,9 +332,13 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>input is masked · enter to save · esc back</Text>
-        </Box>
+        <KeyHints
+          hints={[
+            { key: "enter", label: "save", nav: true },
+            { key: "esc", label: "back", nav: true },
+          ]}
+          note="input is masked"
+        />
       </Box>
     );
   }
@@ -339,9 +360,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>esc to go back</Text>
-        </Box>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }
