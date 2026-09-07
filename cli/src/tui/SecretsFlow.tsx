@@ -9,6 +9,7 @@ import {
   getSecret,
   listSecrets,
   redact,
+  secretNameError,
   updateSecret,
   valueCell,
   type Kind,
@@ -78,6 +79,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
   const [mode, setMode] = useState<Mode>({ kind: "loading" });
   const [draftName, setDraftName] = useState("");
   const [draftValue, setDraftValue] = useState("");
+  const [nameError, setNameError] = useState("");
 
   const loadList = async (): Promise<void> => {
     setMode({ kind: "loading" });
@@ -97,6 +99,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
   const resetDraft = (): void => {
     setDraftName("");
     setDraftValue("");
+    setNameError("");
   };
 
   useInput((input, key) => {
@@ -226,16 +229,34 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
           <Text color="yellow">Name </Text>
           <TextInput
             value={draftName}
-            onChange={setDraftName}
-            placeholder="STRIPE_KEY"
+            onChange={(v) => {
+              setDraftName(v);
+              if (nameError) setNameError("");
+            }}
+            placeholder="STRIPE_API_KEY"
             onSubmit={(raw) => {
-              if (raw.trim()) setMode({ kind: "create-kind" });
+              const name = raw.trim();
+              if (!name) return;
+              // Mirror the server's SCREAMING_SNAKE_CASE rule before advancing.
+              const err = secretNameError(name);
+              if (err) {
+                setNameError(err);
+                return;
+              }
+              setDraftName(name);
+              setMode({ kind: "create-kind" });
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>enter to continue · esc to cancel</Text>
-        </Box>
+        {nameError ? (
+          <Box marginTop={1}>
+            <Text color="red">✗ {nameError}</Text>
+          </Box>
+        ) : (
+          <Box marginTop={1}>
+            <Text dimColor>SCREAMING_SNAKE_CASE · enter to continue · esc to cancel</Text>
+          </Box>
+        )}
       </Box>
     );
   }
