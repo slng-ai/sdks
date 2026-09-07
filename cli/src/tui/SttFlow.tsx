@@ -8,6 +8,7 @@ import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { STT_MODELS, isSlngHosted } from "../lib/models";
 import { SlngFirstItem } from "./SlngFirstItem";
+import { KeyHints } from "./resourceKit";
 import { makeClients } from "../lib/sdk";
 import { recordPcm, listInputs, sniffExt } from "../lib/audio";
 import { load, type SttMode } from "../lib/config";
@@ -269,7 +270,7 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
           {step !== "recording" ? " · esc to go back" : ""}
         </Text>
       ) : (
-        step !== "recording" && <Text dimColor>esc to go back</Text>
+        step !== "recording" && <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       )}
 
       {step === "pick-model" && (
@@ -321,7 +322,7 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
               void startMic(model, item.value);
             }}
           />
-          <Text dimColor>enter to record · esc to go back</Text>
+          <KeyHints hints={[{ key: "enter", label: "record", nav: true }, { key: "esc", label: "back", nav: true }]} />
         </Box>
       )}
 
@@ -334,7 +335,7 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
             onSubmit={(v) => transcribeFile(v.trim())}
           />
           {fileError && <Text color="red">✗ {fileError}</Text>}
-          <Text dimColor>enter to transcribe · esc to go back</Text>
+          <KeyHints hints={[{ key: "enter", label: "transcribe", nav: true }, { key: "esc", label: "back", nav: true }]} />
         </Box>
       )}
 
@@ -371,9 +372,7 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
               </Text>
             )}
           </Box>
-          <Box marginTop={1}>
-            <Text dimColor>space to {paused ? "resume" : "pause"} · esc to stop</Text>
-          </Box>
+          <KeyHints hints={[{ key: "space", label: paused ? "resume" : "pause" }, { key: "esc", label: "stop", nav: true }]} />
         </Box>
       )}
 
@@ -388,7 +387,7 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
       {step === "error" && (
         <Box flexDirection="column" marginTop={1}>
           <Text color="red">✗ {error}</Text>
-          <Text dimColor>esc to go back</Text>
+          <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
         </Box>
       )}
     </Box>
@@ -453,16 +452,20 @@ function SttDonePane({ model, transcript, interactiveRef }: SttDonePaneProps): R
       <Box marginTop={1}>
         <Text>{transcript || "(empty)"}</Text>
       </Box>
-      <Box marginTop={1}>
-        <Text dimColor>s save to file · c copy clipboard · esc back</Text>
-      </Box>
+      <KeyHints
+        hints={[
+          { key: "s", label: "save to file" },
+          { key: "c", label: "copy clipboard" },
+          { key: "esc", label: "back", nav: true },
+        ]}
+      />
 
       {savingPath !== null && (
         <Box flexDirection="column" marginTop={1}>
           <Text>Save to: </Text>
           <TextInput value={savingPath} onChange={setSavingPath} onSubmit={commitSave} />
           {saveError && <Text color="red">✗ {saveError}</Text>}
-          <Text dimColor>enter to save · esc to cancel</Text>
+          <KeyHints hints={[{ key: "enter", label: "save", nav: true }, { key: "esc", label: "cancel", nav: true }]} />
           <CancelSaveListener onCancel={() => setSavingPath(null)} />
         </Box>
       )}

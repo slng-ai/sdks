@@ -5,6 +5,7 @@ import Link from "ink-link";
 import { save } from "../lib/config";
 import { verifyApiKey } from "../lib/verify";
 import { BrandSpinner } from "./BrandSpinner";
+import { KeyHints } from "./resourceKit";
 
 interface Props {
   onDone: () => void;
@@ -98,10 +99,13 @@ export function ApiKeySetup({ onDone, reauth = false }: Props): React.ReactEleme
         </Box>
       )}
 
-      <Box marginTop={1} flexDirection="column">
-        <Text dimColor>Saved to ~/.config/voiceai/config.json. You can also set VOICEAI_API_KEY in your env.</Text>
-        <Text dimColor>enter to save · esc to quit</Text>
-      </Box>
+      <KeyHints
+        hints={[
+          { key: "enter", label: "save", nav: true },
+          { key: "esc", label: "quit", nav: true },
+        ]}
+        note="Saved to ~/.config/voiceai/config.json. You can also set VOICEAI_API_KEY in your env."
+      />
     </Box>
   );
 }

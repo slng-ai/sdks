@@ -11,6 +11,7 @@ import {
 } from "../lib/config";
 import { verifyApiKey } from "../lib/verify";
 import { BrandSpinner } from "./BrandSpinner";
+import { KeyHints } from "./resourceKit";
 
 type Mode =
   | { kind: "list" }
@@ -85,7 +86,7 @@ export function Profiles({ onExit }: Props): React.ReactElement {
             <Text color="red">✗ {error}</Text>
           </Box>
         )}
-        <Text dimColor>enter to continue · esc to cancel</Text>
+        <KeyHints hints={[{ key: "enter", label: "continue", nav: true }, { key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -155,7 +156,7 @@ export function Profiles({ onExit }: Props): React.ReactElement {
             <Text color="red">✗ {error}</Text>
           </Box>
         )}
-        <Text dimColor>enter to save · esc to cancel</Text>
+        <KeyHints hints={[{ key: "enter", label: "save", nav: true }, { key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -187,7 +188,7 @@ export function Profiles({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Text dimColor>enter to confirm · esc to cancel</Text>
+        <KeyHints hints={[{ key: "enter", label: "confirm", nav: true }, { key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -216,7 +217,7 @@ export function Profiles({ onExit }: Props): React.ReactElement {
   return (
     <Box flexDirection="column" marginTop={1} paddingX={1}>
       <Text bold>Profiles</Text>
-      <Text dimColor>★ marks the current profile · esc to go back</Text>
+      <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} note="★ marks the current profile" />
       <Box marginTop={1}>
         <SelectInput
           items={items}
