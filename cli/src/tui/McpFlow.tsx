@@ -321,7 +321,6 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
     const actions = [
       { label: "🔧  View tools", value: "tools" },
       { label: "🔌  Connect & refresh", value: "connect" },
-      { label: "←   Back to list", value: "back" },
     ];
     const overview: Field[] = [
       ["URL template", cell(server.url_template)],
@@ -351,17 +350,8 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
           <SelectInput
             items={actions}
             onSelect={(item) => {
-              switch (item.value) {
-                case "tools":
-                  setMode({ kind: "tools", server });
-                  break;
-                case "connect":
-                  void connect(server);
-                  break;
-                case "back":
-                  setMode({ kind: "list" });
-                  break;
-              }
+              if (item.value === "tools") setMode({ kind: "tools", server });
+              else if (item.value === "connect") void connect(server);
             }}
           />
         </Box>

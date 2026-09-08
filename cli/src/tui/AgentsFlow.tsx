@@ -309,7 +309,6 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
       { label: "🌐  Test in browser (dashboard)", value: "test" },
       { label: "📑  Duplicate", value: "duplicate" },
       { label: "🗑   Delete", value: "delete" },
-      { label: "←   Back to list", value: "back" },
     ];
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
@@ -342,9 +341,6 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
                   break;
                 case "delete":
                   setMode({ kind: "confirm-delete", agent: a });
-                  break;
-                case "back":
-                  setMode({ kind: "list" });
                   break;
               }
             }}
