@@ -304,7 +304,7 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
             ...(url ? [{ key: "e", label: "edit in browser" }] : []),
             { key: "esc", label: "back", nav: true },
           ]}
-          note={`voiceai tool get ${String(tool.id)} --json  ·  full detail`}
+          note={`voiceai tool get ${String(tool.id)} --id --json  ·  full detail`}
         />
       </Box>
     );

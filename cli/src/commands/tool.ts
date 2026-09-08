@@ -161,19 +161,6 @@ async function resolveTool(name: string, json: boolean | undefined): Promise<Too
   return chosen;
 }
 
-/** A tool id is a UUID; anything else is treated as an exact, case-sensitive name. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Resolve a name-or-id argument to a tool id. A UUID is used directly — no name
- * lookup — so a caller who already has the id (e.g. from `tool list`/the TUI)
- * can address it exactly; any other value is resolved as a name.
- */
-async function resolveToolId(nameOrId: string, json: boolean | undefined): Promise<string> {
-  if (UUID_RE.test(nameOrId)) return nameOrId;
-  return (await resolveTool(nameOrId, json)).id;
-}
-
 /**
  * Identity/detail record for one tool, addressed directly by id. No name
  * lookup: a rename or a name reuse cannot redirect this to a different tool.
@@ -234,9 +221,9 @@ export function toolCommand(): Command {
       `
 COMMANDS
   list                     list every tool available to your organisation
-  get <tool>               show one tool in full (by name or id)
-  build <tool>             build a code tool (introspect its code) so it can run
-  run <tool>               execute one tool and report what happened (by name or id)
+  get <tool>               show one tool in full (by name, or by id with --id)
+  build <tool>             build a code tool so it can run (by name, or id with --id)
+  run <tool>               execute one tool (by name, or id with --id)
 
 EXAMPLES
   $ voiceai tool list                          every tool your agents can call
@@ -250,8 +237,8 @@ EXAMPLES
   $ voiceai tool run check_order --input sample.json --confirm-side-effects
 
 NOTES
-  Tool names are matched exactly and are case-sensitive. A tool id (UUID) is
-  also accepted and addresses the tool directly, without a name lookup.
+  Tool names are matched exactly and are case-sensitive. Pass \`--id\` on \`get\`,
+  \`build\`, or \`run\` to address the tool by id directly, skipping the name lookup.
 
   A \`code\` tool must be built before its first run (and after its code changes) —
   \`build\` runs that step. Other tool types do not need it.
@@ -302,7 +289,7 @@ NOTES
 
   cmd
     .command("get <tool>")
-    .description("Show one tool by its exact name or id (or --id / --version)")
+    .description("Show one tool by its exact name, or by id with --id / --version")
     .option("--json", "Output JSON")
     .option("--id", "Treat the argument as a tool ID, skipping the name lookup")
     .option("--version <n>", "Fetch one immutable published version by number (implies --id)")
@@ -341,16 +328,15 @@ NOTES
         return;
       }
 
-      // A bare positional also accepts an id (UUID auto-detected), else a name.
       const spinner = spin(`loading ${nameOrId}`);
-      let id: string;
+      let chosen: ToolListItem;
       try {
-        id = await resolveToolId(nameOrId, opts.json);
+        chosen = await resolveTool(nameOrId, opts.json);
       } finally {
         spinner?.stop();
       }
       // The list row omits config, code_src, secrets and gate status.
-      const res = await fetchToolDetail(id);
+      const res = await fetchToolDetail(chosen.id);
       if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
       if (opts.json) {
         printJson(res.data);
@@ -362,12 +348,13 @@ NOTES
   cmd
     .command("build <tool>")
     .description("Build a code tool (introspect its code) so it can run and publish")
+    .option("--id", "Treat the argument as a tool ID, skipping the name lookup")
     .option("--json", "Output JSON")
     .action(async (tool: string, opts) => {
       const spinner = spin(`building ${tool}`);
       let id: string;
       try {
-        id = await resolveToolId(tool, opts.json);
+        id = opts.id ? tool : (await resolveTool(tool, opts.json)).id;
       } finally {
         spinner?.stop();
       }
@@ -391,6 +378,7 @@ NOTES
     .description("Execute one tool against your real dependencies")
     .option("--input <file>", "JSON input document, or - for stdin")
     .option("--confirm-side-effects", "Consent to executing the tool for real")
+    .option("--id", "Treat the argument as a tool ID, skipping the name lookup")
     .option("--json", "Output JSON")
     .action(async (tool: string, opts) => {
       const input = await readRunInput(opts.input);
@@ -408,7 +396,7 @@ NOTES
       const spinner = spin(`running ${tool}`);
       let id: string;
       try {
-        id = await resolveToolId(tool, opts.json);
+        id = opts.id ? tool : (await resolveTool(tool, opts.json)).id;
       } finally {
         spinner?.stop();
       }
