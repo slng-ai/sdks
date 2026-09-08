@@ -34,7 +34,6 @@ export function ResourcesMenu({ onExit }: Props): React.ReactElement {
     { label: "🧩\tMCP servers - Browse & connect", value: "mcp" as const },
     { label: "🔐\tSecrets - Browse & create", value: "secrets" as const },
     { label: "☎️\tTrunks - Browse SIP trunks", value: "trunks" as const },
-    { label: "←\tBack", value: "back" as const },
   ];
 
   return (
@@ -44,10 +43,7 @@ export function ResourcesMenu({ onExit }: Props): React.ReactElement {
         <SelectInput
           items={items}
           itemComponent={MenuItem}
-          onSelect={(item) => {
-            if (item.value === "back") onExit();
-            else setMode(item.value);
-          }}
+          onSelect={(item) => setMode(item.value)}
         />
       </Box>
       <KeyHints
