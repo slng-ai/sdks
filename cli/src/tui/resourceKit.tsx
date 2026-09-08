@@ -243,8 +243,11 @@ export function formatDate(value: unknown): string {
 
 /** Reserve a 2-col gutter so adjacent columns never touch (from AgentsFlow). */
 export function pad(s: string, w: number): string {
+  // Tolerate a non-string at runtime: the API sometimes omits a field the type
+  // says is present, and a row renderer must never crash the whole TUI.
+  const str = s == null ? "" : String(s);
   const max = w - 2;
-  return (s.length > max ? `${s.slice(0, max - 1)}…` : s).padEnd(w);
+  return (str.length > max ? `${str.slice(0, max - 1)}…` : str).padEnd(w);
 }
 
 /**

@@ -26,9 +26,9 @@ const CREATE_VALUE = "__create__";
 
 function rowLabel(s: VaultEntry): string {
   return (
-    pad(s.name, COLS.name) +
-    pad(s.kind, COLS.kind) +
-    pad(valueCell(s.has_value), COLS.value) +
+    pad(s.name ?? "(unnamed)", COLS.name) +
+    pad(s.kind ?? "-", COLS.kind) +
+    pad(valueCell(Boolean(s.has_value)), COLS.value) +
     (s.description ?? "-")
   );
 }
@@ -124,7 +124,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
   if (mode.kind === "list") {
     const items = [
       { label: "＋  Create entry", value: CREATE_VALUE },
-      ...secrets.map((s) => ({ label: rowLabel(s), value: s.name })),
+      ...secrets.map((s) => ({ label: rowLabel(s), value: s.name ?? "" })),
     ];
     const header = "  " + pad("NAME", COLS.name) + pad("KIND", COLS.kind) + pad("VALUE", COLS.value) + "DESCRIPTION";
     return (
