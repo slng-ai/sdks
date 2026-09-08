@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import ora from "ora";
-import { agentsRequest, formatAgentsError } from "../lib/agents";
+import { agentsRequest, formatAgentsError, type AgentsResult } from "../lib/agents";
+import { printJson } from "../lib/output";
 
 // --- types -----------------------------------------------------------------
 // Mirrors the ToolListItem / ToolDetail schemas of the public shared-resource
@@ -22,6 +23,20 @@ export interface ToolListItem {
 // The detail record is the list row plus fields nothing here type-checks —
 // printTool walks it generically. See data-model.md for the full field list.
 export type ToolDetail = ToolListItem & Record<string, unknown>;
+
+/**
+ * The immutable version envelope from `GET /v1/agents/tools/{id}/versions/{n}`.
+ * Distinct from ToolDetail's mutable `arg_schema`: a version's published
+ * parameters live at `snapshot_json.argument_schema` — a different field on a
+ * different, content-addressed record, never conflated with the draft.
+ */
+export interface ToolVersion {
+  tool_id: string;
+  version_number: number;
+  snapshot_json: Record<string, unknown>;
+  content_hash: string;
+  published_at: string;
+}
 
 /** What `POST /v1/agents/tools/{id}/run` answers with. Shared with push. */
 export interface RunResult {
@@ -71,7 +86,7 @@ export async function listAllTools(names?: string[]): Promise<ToolListItem[]> {
 
 /** Exit non-zero, keeping stdout valid JSON under --json. */
 function fail(json: boolean | undefined, message: string): never {
-  if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
+  if (json) printJson({ ok: false, error: message });
   else process.stderr.write(`${message}\n`);
   process.exit(1);
 }
@@ -159,6 +174,48 @@ async function resolveToolId(nameOrId: string, json: boolean | undefined): Promi
   return (await resolveTool(nameOrId, json)).id;
 }
 
+/**
+ * Identity/detail record for one tool, addressed directly by id. No name
+ * lookup: a rename or a name reuse cannot redirect this to a different tool.
+ * `get <name>` and `get --id` both end up here, once each has its id.
+ */
+export async function fetchToolDetail(id: string): Promise<AgentsResult<ToolDetail>> {
+  return agentsRequest<ToolDetail>("GET", `/v1/agents/tools/${encodeURIComponent(id)}`);
+}
+
+/**
+ * The immutable published snapshot for one exact (id, version) pair. Never
+ * falls back to the draft, `latest_version`, or a name lookup — a missing
+ * version is the caller's problem to report, not a gap to paper over.
+ */
+export async function fetchToolVersion(id: string, version: number): Promise<AgentsResult<ToolVersion>> {
+  return agentsRequest<ToolVersion>("GET", `/v1/agents/tools/${encodeURIComponent(id)}/versions/${version}`);
+}
+
+/**
+ * `--version`'s argument. Commander hands every option value through as a
+ * string; nothing in this repo coerces a numeric flag, so this is the one
+ * parse. A positive integer only — no sign, no fraction, no leading garbage.
+ */
+export function parsePositiveInt(raw: string): number | null {
+  if (!/^[0-9]+$/.test(raw)) return null;
+  const n = Number(raw);
+  return n > 0 ? n : null;
+}
+
+function printToolVersion(v: ToolVersion): void {
+  const order: (keyof ToolVersion)[] = [
+    "tool_id",
+    "version_number",
+    "content_hash",
+    "published_at",
+    "snapshot_json",
+  ];
+  for (const k of order) {
+    console.log(`${k.padEnd(22)}${summarise(k, v[k])}`);
+  }
+}
+
 export function printTool(tool: ToolDetail): void {
   const first = ["name", "latest_version", "tool_type", "description", "id"];
   const keys = [...first, ...Object.keys(tool).filter((k) => !first.includes(k))];
@@ -186,6 +243,8 @@ EXAMPLES
   $ voiceai tool list --json | jq '.[].name'   scriptable
   $ voiceai tool get api_request               one tool, all properties
   $ voiceai tool get check_order --json | jq .arg_schema   the input schema
+  $ voiceai tool get 3f2c... --id --json       by id, skipping the name lookup
+  $ voiceai tool get 3f2c... --version 7 --json   one immutable published version
   $ voiceai tool build check_order             build it before the first run
   $ echo '{"id":7}' | voiceai tool run check_order --confirm-side-effects
   $ voiceai tool run check_order --input sample.json --confirm-side-effects
@@ -199,6 +258,12 @@ NOTES
 
   \`--json\` carries \`arg_schema\` — the JSON Schema of a tool's input, derived from
   the pydantic model for a code tool.
+
+  \`get --id\` reads a tool directly by id, skipping the name lookup. \`get --version
+  <n>\` reads one immutable published version — its parameters live at
+  \`snapshot_json.argument_schema\`, a different field than \`arg_schema\` on the
+  mutable draft. Neither falls back to a name, the draft, or the latest version: a
+  missing version is an error.
 
   \`run\` executes the tool against your REAL dependencies — it can charge a card or
   send an email. Nothing runs without --confirm-side-effects. The input comes from
@@ -222,7 +287,7 @@ NOTES
       }
       spinner?.stop();
       if (opts.json) {
-        console.log(JSON.stringify(rows, null, 2));
+        printJson(rows);
         return;
       }
       if (!rows.length) {
@@ -237,24 +302,58 @@ NOTES
 
   cmd
     .command("get <tool>")
-    .description("Show one tool by its exact name or id")
+    .description("Show one tool by its exact name or id (or --id / --version)")
     .option("--json", "Output JSON")
-    .action(async (tool: string, opts) => {
-      const spinner = spin(`loading ${tool}`);
+    .option("--id", "Treat the argument as a tool ID, skipping the name lookup")
+    .option("--version <n>", "Fetch one immutable published version by number (implies --id)")
+    .action(async (nameOrId: string, opts) => {
+      // Version mode is id-addressed and never falls back to a name lookup, the
+      // draft, or latest_version: a missing version is an error, not a gap to
+      // paper over. It reads a different endpoint than --id/name, so it branches
+      // first regardless of whether --id was also passed.
+      if (opts.version !== undefined) {
+        const version = parsePositiveInt(opts.version);
+        if (version === null) {
+          fail(opts.json, `--version must be a positive integer, got "${opts.version}".`);
+        }
+        const spinner = spin(`loading ${nameOrId} v${opts.version}`);
+        const res = await fetchToolVersion(nameOrId, version);
+        spinner?.stop();
+        if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
+        if (opts.json) {
+          printJson(res.data);
+          return;
+        }
+        printToolVersion(res.data);
+        return;
+      }
+
+      if (opts.id) {
+        const spinner = spin(`loading ${nameOrId}`);
+        const res = await fetchToolDetail(nameOrId);
+        spinner?.stop();
+        if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
+        if (opts.json) {
+          printJson(res.data);
+          return;
+        }
+        printTool(res.data);
+        return;
+      }
+
+      // A bare positional also accepts an id (UUID auto-detected), else a name.
+      const spinner = spin(`loading ${nameOrId}`);
       let id: string;
       try {
-        id = await resolveToolId(tool, opts.json);
+        id = await resolveToolId(nameOrId, opts.json);
       } finally {
         spinner?.stop();
       }
       // The list row omits config, code_src, secrets and gate status.
-      const res = await agentsRequest<ToolDetail>(
-        "GET",
-        `/v1/agents/tools/${encodeURIComponent(id)}`,
-      );
+      const res = await fetchToolDetail(id);
       if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
       if (opts.json) {
-        console.log(JSON.stringify(res.data, null, 2));
+        printJson(res.data);
         return;
       }
       printTool(res.data);
@@ -281,7 +380,7 @@ NOTES
       );
       if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
       if (opts.json) {
-        console.log(JSON.stringify(res.data, null, 2));
+        printJson(res.data);
         return;
       }
       printTool(res.data);
@@ -324,7 +423,7 @@ NOTES
       const result = res.data;
 
       if (opts.json) {
-        console.log(JSON.stringify(result, null, 2));
+        printJson(result);
       } else {
         // The input is never echoed: it may carry a secret and nothing here
         // needs to show it back.

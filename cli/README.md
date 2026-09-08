@@ -330,6 +330,37 @@ Updating an agent **replaces** its MCP attachments as well as its tool
 references, so an MCP server attached in the dashboard and not declared by the
 package is detached. `--dry-run` names every attachment that would go.
 
+#### Guarded resolved push
+
+`--require-resolved` is a stricter mode for a caller that has already resolved
+every reference to an exact checked identity — a `tool_id`/`version`, or an MCP
+`server_id`/`observed_schema_hash` — and wants those honoured **exactly**, never
+re-resolved by name and never refreshed:
+
+```sh
+voiceai agents push staged/ --require-resolved --expect-org org_abc --dry-run --json
+voiceai agents push staged/ --require-resolved --expect-org org_abc --json
+```
+
+`--expect-org` is confirmed against the credential's real account before any
+write, discovery, sample run, or tool operation — a mismatch, or an
+organisation that cannot be confirmed at all, aborts having changed nothing.
+Authored tool bodies are refused outright: this mode attaches checked published
+versions only, never a body it would create or update itself. Every
+reference's id, organisation scope, and (when a name is also given) name are
+checked directly against the platform — never resolved to the first same-name
+record — and an unavailable version or a changed MCP schema hash is refused
+rather than silently replaced. An MCP snapshot the platform would itself refuse
+to attach against — not healthy, probed at an older server revision, or past
+its refresh — is refused too, even when it still carries the checked hash. This
+mode never runs a sample and never refreshes a stale MCP capability snapshot on
+its own.
+
+The JSON document carries the explicit marker `resolution_contract: 1`, in both
+the dry-run and the success document, so a caller can tell a supporting release
+apart from an older CLI that would otherwise reject the flag or, worse, ignore
+it and push unchecked.
+
 ### Tools
 
 Read-only view of the tools your agents can call.
@@ -350,6 +381,19 @@ find `api_request`.
 `--json` carries `arg_schema`, the JSON Schema of the tool's input — derived from
 the pydantic model for a `code` tool. `get --json` is always a single object,
 never an array.
+
+`get` also addresses a tool directly by id, and reads one exact **immutable**
+published version rather than the mutable draft:
+
+```sh
+voiceai tool get <tool_id> --id --json         # by id, skipping the name lookup
+voiceai tool get <tool_id> --version 7 --json  # one immutable published version
+```
+
+Neither falls back to a name, the draft, or the latest version — a missing
+version is an error. A version's parameters live at
+`snapshot_json.argument_schema`, a different field than the mutable draft's
+`arg_schema`.
 
 `run` executes a tool for real, so you can prove one works before an agent
 depends on it:
@@ -397,6 +441,15 @@ again once the snapshot has gone stale.
 Every subcommand reads the stored probe; none calls the server. If the probe was
 truncated, `tools` says so on stderr rather than presenting a short list as
 complete.
+
+`get` and `run` also address a server directly by id, skipping the name
+lookup — so a rename, or a different server reusing an old name, cannot
+redirect either one:
+
+```sh
+voiceai mcp get <server_id> --id --json
+voiceai mcp run <server_id> --id     # connects, then re-reads the same id once to confirm it
+```
 
 Auth is reported as the vault secret's **name**, never its value.
 

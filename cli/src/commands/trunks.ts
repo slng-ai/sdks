@@ -1,6 +1,7 @@
 import { Command, Option } from "commander";
 import ora from "ora";
 import { agentsRequest, formatAgentsError } from "../lib/agents";
+import { printJson } from "../lib/output";
 
 // --- types -----------------------------------------------------------------
 // Mirrors SipTrunkAssignmentOptionsOut. There is no organisation-level trunk
@@ -95,7 +96,7 @@ export function usableCell(t: Trunk): string {
 
 /** Exit non-zero, keeping stdout valid JSON under --json. */
 function fail(json: boolean | undefined, message: string): never {
-  if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
+  if (json) printJson({ ok: false, error: message });
   else process.stderr.write(`${message}\n`);
   process.exit(1);
 }
@@ -285,7 +286,7 @@ NOTES
       const trunks = direction ? all.filter((t) => t.direction === direction) : all;
 
       if (opts.json) {
-        console.log(JSON.stringify(trunks, null, 2));
+        printJson(trunks);
         return;
       }
       if (!trunks.length) {
@@ -351,7 +352,7 @@ NOTES
       const views = agentViews(reports, trunk.direction, trunk.id);
 
       if (opts.json) {
-        console.log(JSON.stringify({ ...trunk, agents: views }, null, 2));
+        printJson({ ...trunk, agents: views });
         process.stderr.write(`${COMPLETENESS_NOTE}\n`);
         return;
       }

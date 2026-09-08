@@ -461,6 +461,183 @@ test("run --json stays one valid document on failure", async () => {
   expect(JSON.parse(r.stdout).ok).toBe(false);
 });
 
+// --- --id: id-addressed get/run, no name lookup, no redirect on reuse ------
+
+const ID_SERVER = "srv-abc-1";
+const OTHER_SERVER = "srv-other-2";
+
+/** Stub answering the by-id detail, the connect, and (optionally) a re-read. */
+function idServer(opts: {
+  detail?: Record<string, unknown>;
+  connectStatus?: number;
+  connectBody?: Record<string, unknown>;
+  // What the post-connect re-read of ID_SERVER answers with. Defaults to the
+  // same detail record, i.e. the happy path.
+  reread?: Record<string, unknown> | "not_found";
+}) {
+  let connectCalls = 0;
+  return (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path === "/v1/agents/mcp-servers") {
+      // --id must never hit the list-by-name endpoint. Any request here is a bug.
+      return json(
+        { detail: "should not be called in --id mode", error: { code: "X", message: "x", request_id: "r" } },
+        500,
+      );
+    }
+    if (path.endsWith("/connect")) {
+      connectCalls++;
+      return json(
+        opts.connectBody ?? {
+          status: "connected",
+          latency_ms: 9,
+          server_info: { name: "stub", version: "1.0" },
+          protocol_version: "2025-03-26",
+          capabilities: { tools: [{ name: "one" }] },
+        },
+        opts.connectStatus ?? 200,
+      );
+    }
+    const dMatch = path.match(/^\/v1\/agents\/mcp-servers\/([^/]+)$/);
+    if (dMatch) {
+      const id = dMatch[1];
+      // The re-read happens after the connect; distinguish it so a test can
+      // answer the first (pre-connect) read and the re-read differently.
+      const isReread = connectCalls > 0;
+      if (isReread && opts.reread !== undefined) {
+        return opts.reread === "not_found"
+          ? json({ detail: "not found" }, 404)
+          : json(opts.reread);
+      }
+      if (id === ID_SERVER && opts.detail) return json(opts.detail);
+      return json({ detail: "MCP server not found" }, 404);
+    }
+    return json({ detail: "unstubbed" }, 500);
+  };
+}
+
+function serverDetail(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    ...item({ id: ID_SERVER, name: "docs" }),
+    organisation_id: "org-1",
+    description: "docs",
+    auth: { type: "none" },
+    headers: [],
+    capabilities: { tools: [{ name: "one" }], truncated: false },
+    capabilities_hash: "h",
+    capability_error_code: null,
+    capability_error_message: null,
+    ...over,
+  };
+}
+
+test("get --id reads the server directly, skipping the name lookup entirely", async () => {
+  const r = await runCli(["mcp", "get", ID_SERVER, "--id", "--json"], idServer({ detail: serverDetail() }));
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.stdout).id).toBe(ID_SERVER);
+});
+
+test("get --id on an unknown id exits 1 without ever listing by name", async () => {
+  const r = await runCli(["mcp", "get", "nope-id", "--id", "--json"], idServer({}));
+  expect(r.code).toBe(1);
+});
+
+// The whole point of --id: even if another server now holds the name this one
+// used to have (or ever had), addressing by id cannot be redirected to it.
+test("a same-named different server cannot redirect an --id probe", async () => {
+  const decoy = (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path === `/v1/agents/mcp-servers/${ID_SERVER}`) return json(serverDetail({ name: "docs" }));
+    // Any other server, sharing the name "docs" — must never be reached.
+    if (path === `/v1/agents/mcp-servers/${OTHER_SERVER}`) {
+      return json(serverDetail({ id: OTHER_SERVER, name: "docs" }));
+    }
+    if (path === "/v1/agents/mcp-servers") {
+      return json({ detail: "list must not be called in --id mode" }, 500);
+    }
+    return json({ detail: "unstubbed" }, 500);
+  };
+  const r = await runCli(["mcp", "get", ID_SERVER, "--id", "--json"], decoy);
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.stdout).id).toBe(ID_SERVER);
+});
+
+// --- pipe truncation regression ---------------------------------------------
+//
+// Bun-compiled binaries have repeatedly truncated a large stdout write at a
+// power-of-two boundary (most often 64KB) when the output is captured
+// through a real OS pipe rather than a TTY or a file redirect — see
+// oven-sh/bun#25432, oven-sh/bun#28145, oven-sh/bun#20562. That is invisible
+// to any test that only exercises the in-process formatter or writes to a
+// file: it only shows up over a genuine pipe, which is what Bun.spawn's
+// stdout: "pipe" gives runCli — the same transport a Go/Node parent reading
+// this CLI through exec.Command/child_process actually uses.
+test("get --json delivers a document past the 64KB pipe boundary whole", async () => {
+  const manyTools = Array.from({ length: 90 }, (_, i) => ({
+    name: `tool_${i}`,
+    description: `Tool number ${i}. `.repeat(20),
+    input_schema: {
+      type: "object",
+      properties: { arg: { type: "string", description: "x".repeat(80) } },
+      required: ["arg"],
+    },
+    output_schema: { type: "object", properties: { ok: { type: "boolean" } } },
+    schema_hash: `hash_${i}_${"a".repeat(40)}`,
+  }));
+  const big = serverDetail({ capabilities: { tools: manyTools, truncated: false } });
+  const expected = `${JSON.stringify(big, null, 2)}\n`;
+  // Confirms the fixture actually clears the boundary this test exists to
+  // guard — Linux's default pipe buffer is 64KiB (65536 bytes).
+  expect(Buffer.byteLength(expected, "utf8")).toBeGreaterThan(65536);
+
+  const r = await runCli(["mcp", "get", ID_SERVER, "--id", "--json"], idServer({ detail: big }));
+
+  expect(r.code).toBe(0);
+  expect(Buffer.byteLength(r.stdout, "utf8")).toBe(Buffer.byteLength(expected, "utf8"));
+  expect(r.stdout).toBe(expected);
+  expect(JSON.parse(r.stdout).capabilities.tools.length).toBe(90);
+});
+
+test("run --id connects by id, skipping the name lookup", async () => {
+  const r = await runCli(["mcp", "run", ID_SERVER, "--id"], idServer({ detail: serverDetail() }));
+  expect(r.code).toBe(0);
+  expect(r.stdout).toContain("connected in 9 ms");
+});
+
+test("run --id re-reads the same id after connecting and succeeds when identity holds", async () => {
+  const r = await runCli(
+    ["mcp", "run", ID_SERVER, "--id", "--json"],
+    idServer({ detail: serverDetail(), reread: serverDetail() }),
+  );
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.stdout).status).toBe("connected");
+});
+
+test("run --id fails when the post-connect re-read cannot find the server any more", async () => {
+  const r = await runCli(
+    ["mcp", "run", ID_SERVER, "--id", "--json"],
+    idServer({ detail: serverDetail(), reread: "not_found" }),
+  );
+  expect(r.code).toBe(1);
+  expect(JSON.parse(r.stdout).ok).toBe(false);
+});
+
+test("run --id fails when the post-connect re-read reports a different identity", async () => {
+  const r = await runCli(
+    ["mcp", "run", ID_SERVER, "--id"],
+    idServer({ detail: serverDetail(), reread: serverDetail({ id: OTHER_SERVER }) }),
+  );
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("changed identity");
+});
+
+// Name mode is untouched: no re-read happens, and a failed connect still exits
+// 1 exactly as it did before --id existed.
+test("run without --id issues no post-connect re-read", async () => {
+  const r = await runCli(["mcp", "run", "s"], runServer());
+  expect(r.code).toBe(0);
+});
+
 test("run --json carries the connect result plus the diff", async () => {
   const r = await runCli(
     ["mcp", "run", "s", "--json"],
