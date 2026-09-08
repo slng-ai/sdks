@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import ora from "ora";
 import { agentsRequest, formatAgentsError } from "../lib/agents";
 
@@ -123,6 +123,38 @@ export function connectServer(id: string) {
     "POST",
     `/v1/agents/mcp-servers/${encodeURIComponent(id)}/connect`,
   );
+}
+
+// --- create ----------------------------------------------------------------
+
+export const TRANSPORTS = ["streamable_http", "sse"] as const;
+export type Transport = (typeof TRANSPORTS)[number];
+
+/** Register a new MCP server. `POST /v1/agents/mcp-servers`. */
+export function createServer(body: Record<string, unknown>) {
+  return agentsRequest<McpServerDetail>("POST", "/v1/agents/mcp-servers", { body });
+}
+
+/**
+ * Build the create body from the common-case flags. Full-fidelity bodies
+ * (header auth, literal/vault headers, inline credentials) come through
+ * `--file` instead — this covers name + URL + transport + optional bearer auth.
+ */
+export function buildServerBody(opts: {
+  name: string;
+  url: string;
+  transport?: Transport;
+  description?: string;
+  bearerSecret?: string;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    name: opts.name,
+    url_template: opts.url,
+    transport: opts.transport ?? "streamable_http",
+    auth: opts.bearerSecret ? { type: "bearer", secret_name: opts.bearerSecret } : { type: "none" },
+  };
+  if (opts.description) body.description = opts.description;
+  return body;
 }
 
 /**
@@ -257,6 +289,7 @@ export function mcpCommand(): Command {
 COMMANDS
   list                     list every MCP server available to your organisation
   get <server-name>        show one server in full
+  create <server-name>     register a new MCP server
   tools <server-name>      list the tools one server exposes
   run <server-name>        connect to one server now and report what it exposes
 
@@ -264,12 +297,20 @@ EXAMPLES
   $ voiceai mcp list                             every server your agents can call
   $ voiceai mcp list --json | jq '.[].name'      scriptable
   $ voiceai mcp get firecrawl-mcp                one server, all properties
+  $ voiceai mcp create firecrawl-mcp --url https://mcp.firecrawl.dev/{{$FIRECRAWL_KEY}}/mcp
+  $ voiceai mcp create acme --url https://acme.example/mcp --bearer-secret ACME_TOKEN
+  $ voiceai mcp create --file server.json         header auth / custom headers
   $ voiceai mcp tools firecrawl-mcp              the tools that server exposes
   $ voiceai mcp tools firecrawl-mcp --json       each tool's full input schema
   $ voiceai mcp run firecrawl-mcp                check the server is up right now
 
 NOTES
   Server names are matched exactly and are case-sensitive.
+
+  \`create\` takes the common case as flags (name + --url, optional --transport,
+  --description, --bearer-secret). Embed vault secrets in the URL as {{$NAME}}.
+  For header auth, literal/vault headers or inline credentials, pass a full JSON
+  body with --file. Run \`mcp run <name>\` after creating to probe it.
 
   \`capability_status\` and \`capability_tool_count\` come from the last capability
   probe, not from a live call: a server can be listed and still be unreachable.
@@ -324,6 +365,56 @@ NOTES
         return;
       }
       printServer(server);
+    });
+
+  cmd
+    .command("create [server-name]")
+    .description("Register an MCP server (by flags, or a full JSON body with --file)")
+    .option("--url <template>", "URL template; embed vault secrets as {{$NAME}}")
+    .addOption(new Option("--transport <transport>", "Transport").choices(TRANSPORTS).default("streamable_http"))
+    .option("--description <text>", "Optional description")
+    .option("--bearer-secret <name>", "Send Authorization: Bearer from this vault secret")
+    .option("--file <path>", "Create from a full JSON body (or - for stdin) instead of flags")
+    .option("--json", "Output JSON")
+    .action(async (name: string | undefined, opts) => {
+      let body: Record<string, unknown>;
+      if (opts.file) {
+        // A full body is mutually exclusive with the convenience flags.
+        if (name || opts.url) {
+          fail(opts.json, "give either --file or a name plus flags, not both.");
+        }
+        let raw: string;
+        try {
+          raw = opts.file === "-" ? await Bun.stdin.text() : await Bun.file(opts.file).text();
+        } catch (e) {
+          fail(opts.json, `could not read ${opts.file}: ${(e as Error).message}`);
+        }
+        try {
+          body = JSON.parse(raw) as Record<string, unknown>;
+        } catch (e) {
+          fail(opts.json, `invalid JSON in ${opts.file}: ${(e as Error).message}`);
+        }
+      } else {
+        if (!name) fail(opts.json, "a server name is required (or use --file).");
+        if (!opts.url) fail(opts.json, "--url is required (or use --file).");
+        body = buildServerBody({
+          name,
+          url: opts.url,
+          transport: opts.transport,
+          description: opts.description,
+          bearerSecret: opts.bearerSecret,
+        });
+      }
+
+      const spinner = spin(`creating ${name ?? "mcp server"}`);
+      const res = await createServer(body);
+      spinner?.stop();
+      if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
+      if (opts.json) {
+        console.log(JSON.stringify(res.data, null, 2));
+        return;
+      }
+      printServer(res.data);
     });
 
   cmd
