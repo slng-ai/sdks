@@ -36,6 +36,7 @@ interface Props {
 }
 
 const COLS = { name: 28, transport: 12, status: 14 };
+const CREATE_VALUE = "__create__";
 
 function rowLabel(s: McpServerListItem): string {
   return (
@@ -117,12 +118,7 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useInput((input, key) => {
-    // `c` starts registering a new server from the list.
-    if (mode.kind === "list" && (input === "c" || input === "C")) {
-      startCreate();
-      return;
-    }
+  useInput((_input, key) => {
     if (!key.escape) return;
     switch (mode.kind) {
       case "list":
@@ -164,16 +160,10 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
   if (mode.kind === "result") return <ResultView title={mode.title} lines={mode.lines} />;
 
   if (mode.kind === "list") {
-    if (!servers.length) {
-      return (
-        <Box flexDirection="column" marginTop={1} paddingX={1}>
-          <Text bold>MCP servers</Text>
-          <Text dimColor>No MCP servers found for your organisation.</Text>
-          <KeyHints hints={[{ key: "c", label: "create" }, { key: "esc", label: "back", nav: true }]} />
-        </Box>
-      );
-    }
-    const items = servers.map((s) => ({ label: rowLabel(s), value: s.id }));
+    const items = [
+      { label: "＋  Create server", value: CREATE_VALUE },
+      ...servers.map((s) => ({ label: rowLabel(s), value: s.id })),
+    ];
     const header =
       "  " +
       pad("NAME", COLS.name) +
@@ -183,12 +173,17 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>MCP servers ({servers.length})</Text>
+        {servers.length === 0 ? <Text dimColor>No MCP servers yet.</Text> : null}
         <Box marginTop={1} flexDirection="column">
-          <Text dimColor>{header}</Text>
+          {servers.length > 0 ? <Text dimColor>{header}</Text> : null}
           <SelectInput
             items={items}
             limit={10}
             onSelect={(item) => {
+              if (item.value === CREATE_VALUE) {
+                startCreate();
+                return;
+              }
               const server = servers.find((s) => s.id === item.value);
               if (server) void openServer(server);
             }}
@@ -198,7 +193,6 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
           hints={[
             { key: "↑↓", label: "move", nav: true },
             { key: "enter", label: "open", nav: true },
-            { key: "c", label: "create" },
             { key: "esc", label: "back", nav: true },
           ]}
         />

@@ -131,7 +131,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
         <Text bold>Secrets ({secrets.length})</Text>
         <Text dimColor>values are never shown</Text>
         <Box marginTop={1} flexDirection="column">
-          <Text dimColor>{header}</Text>
+          {secrets.length > 0 ? <Text dimColor>{header}</Text> : null}
           <SelectInput
             items={items}
             limit={10}
