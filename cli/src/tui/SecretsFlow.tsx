@@ -21,13 +21,12 @@ interface Props {
   onExit: () => void;
 }
 
-const COLS = { name: 28, kind: 10, value: 7 };
+const COLS = { name: 32, value: 8 };
 const CREATE_VALUE = "__create__";
 
 function rowLabel(s: VaultEntry): string {
   return (
     pad(s.name ?? "(unnamed)", COLS.name) +
-    pad(s.kind ?? "-", COLS.kind) +
     pad(valueCell(Boolean(s.has_value)), COLS.value) +
     (s.description ?? "-")
   );
@@ -126,7 +125,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
       { label: "＋  Create entry", value: CREATE_VALUE },
       ...secrets.map((s) => ({ label: rowLabel(s), value: s.name ?? "" })),
     ];
-    const header = "  " + pad("NAME", COLS.name) + pad("KIND", COLS.kind) + pad("VALUE", COLS.value) + "DESCRIPTION";
+    const header = "  " + pad("NAME", COLS.name) + pad("VALUE", COLS.value) + "DESCRIPTION";
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>Secrets ({secrets.length})</Text>

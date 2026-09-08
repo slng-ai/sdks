@@ -320,9 +320,9 @@ NOTES
         console.log("no secrets found.");
         return;
       }
-      console.log(row(["NAME", "KIND", "VALUE", "DESCRIPTION"]));
+      console.log(row(["NAME", "VALUE", "DESCRIPTION"]));
       for (const s of rows) {
-        console.log(row([s.name, s.kind, valueCell(s.has_value), cell(s.description)]));
+        console.log(row([s.name, valueCell(s.has_value), cell(s.description)]));
       }
     });
 

@@ -196,9 +196,9 @@ test("create rejects a bad name locally, before any request", async () => {
 test("list prints a header and one row per entry, with nothing on stderr", async () => {
   const r = await runCli(["secret", "list"], vaultServer(vault));
   expect(r.code).toBe(0);
-  expect(r.stdout.split("\n")[0]).toBe("NAME\tKIND\tVALUE\tDESCRIPTION");
-  expect(r.stdout).toContain("FIRECRAWL_API_KEY\tsecret\tyes\tscraper");
-  expect(r.stdout).toContain("REGION\tvariable\tyes\t-");
+  expect(r.stdout.split("\n")[0]).toBe("NAME\tVALUE\tDESCRIPTION");
+  expect(r.stdout).toContain("FIRECRAWL_API_KEY\tyes\tscraper");
+  expect(r.stdout).toContain("REGION\tyes\t-");
   expect(r.stderr).toBe("");
 });
 
