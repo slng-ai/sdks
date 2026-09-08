@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
+import TextInput from "ink-text-input";
 import { formatAgentsError } from "../lib/agents";
 import {
+  TRANSPORTS,
+  buildServerBody,
   cell,
   connectServer,
+  createServer,
   diffToolNames,
   firstLine,
   listAllServers,
@@ -12,6 +16,7 @@ import {
   type McpCapabilities,
   type McpServerDetail,
   type McpServerListItem,
+  type Transport,
 } from "../commands/mcp";
 import {
   DetailPanel,
@@ -72,6 +77,11 @@ type Mode =
   | { kind: "detail-loading"; item: McpServerListItem }
   | { kind: "detail"; server: McpServerDetail }
   | { kind: "tools"; server: McpServerDetail }
+  | { kind: "create-name" }
+  | { kind: "create-url" }
+  | { kind: "create-transport" }
+  | { kind: "create-auth" }
+  | { kind: "create-bearer" }
   | { kind: "busy"; label: string }
   | { kind: "result"; title: string; lines: string[]; back: Mode }
   | { kind: "error"; message: string; back: Mode };
@@ -79,6 +89,18 @@ type Mode =
 export function McpFlow({ onExit }: Props): React.ReactElement {
   const [servers, setServers] = useState<McpServerListItem[]>([]);
   const [mode, setMode] = useState<Mode>({ kind: "loading" });
+  const [draftName, setDraftName] = useState("");
+  const [draftUrl, setDraftUrl] = useState("");
+  const [draftBearer, setDraftBearer] = useState("");
+  const [draftTransport, setDraftTransport] = useState<Transport>("streamable_http");
+
+  const startCreate = (): void => {
+    setDraftName("");
+    setDraftUrl("");
+    setDraftBearer("");
+    setDraftTransport("streamable_http");
+    setMode({ kind: "create-name" });
+  };
 
   const loadList = async (): Promise<void> => {
     setMode({ kind: "loading" });
@@ -95,7 +117,12 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useInput((_input, key) => {
+  useInput((input, key) => {
+    // `c` starts registering a new server from the list.
+    if (mode.kind === "list" && (input === "c" || input === "C")) {
+      startCreate();
+      return;
+    }
     if (!key.escape) return;
     switch (mode.kind) {
       case "list":
@@ -106,6 +133,21 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
         break;
       case "tools":
         setMode({ kind: "detail", server: mode.server });
+        break;
+      case "create-name":
+        setMode({ kind: "list" });
+        break;
+      case "create-url":
+        setMode({ kind: "create-name" });
+        break;
+      case "create-transport":
+        setMode({ kind: "create-url" });
+        break;
+      case "create-auth":
+        setMode({ kind: "create-transport" });
+        break;
+      case "create-bearer":
+        setMode({ kind: "create-auth" });
         break;
       case "result":
       case "error":
@@ -127,7 +169,7 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
         <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Text bold>MCP servers</Text>
           <Text dimColor>No MCP servers found for your organisation.</Text>
-          <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
+          <KeyHints hints={[{ key: "c", label: "create" }, { key: "esc", label: "back", nav: true }]} />
         </Box>
       );
     }
@@ -156,8 +198,125 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
           hints={[
             { key: "↑↓", label: "move", nav: true },
             { key: "enter", label: "open", nav: true },
+            { key: "c", label: "create" },
             { key: "esc", label: "back", nav: true },
           ]}
+        />
+      </Box>
+    );
+  }
+
+  if (mode.kind === "create-name") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>New MCP server</Text>
+        <Box marginTop={1}>
+          <Text color="yellow">Name </Text>
+          <TextInput
+            value={draftName}
+            onChange={setDraftName}
+            placeholder="firecrawl-mcp"
+            onSubmit={(raw) => {
+              if (raw.trim()) setMode({ kind: "create-url" });
+            }}
+          />
+        </Box>
+        <KeyHints
+          hints={[
+            { key: "enter", label: "continue", nav: true },
+            { key: "esc", label: "cancel", nav: true },
+          ]}
+        />
+      </Box>
+    );
+  }
+
+  if (mode.kind === "create-url") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>URL · {draftName.trim()}</Text>
+        <Box marginTop={1}>
+          <Text color="yellow">URL </Text>
+          <TextInput
+            value={draftUrl}
+            onChange={setDraftUrl}
+            placeholder="https://mcp.example.com/mcp"
+            onSubmit={(raw) => {
+              if (raw.trim()) setMode({ kind: "create-transport" });
+            }}
+          />
+        </Box>
+        <KeyHints
+          hints={[
+            { key: "enter", label: "continue", nav: true },
+            { key: "esc", label: "back", nav: true },
+          ]}
+          note="embed a vault secret as {{$NAME}}"
+        />
+      </Box>
+    );
+  }
+
+  if (mode.kind === "create-transport") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Transport · {draftName.trim()}</Text>
+        <Box marginTop={1}>
+          <SelectInput
+            items={TRANSPORTS.map((t) => ({ label: t, value: t }))}
+            onSelect={(item) => {
+              setDraftTransport(item.value as Transport);
+              setMode({ kind: "create-auth" });
+            }}
+          />
+        </Box>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
+      </Box>
+    );
+  }
+
+  if (mode.kind === "create-auth") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Auth · {draftName.trim()}</Text>
+        <Box marginTop={1}>
+          <SelectInput
+            items={[
+              { label: "None", value: "none" },
+              { label: "Bearer (from a vault secret)", value: "bearer" },
+            ]}
+            onSelect={(item) => {
+              if (item.value === "bearer") setMode({ kind: "create-bearer" });
+              else void doCreate();
+            }}
+          />
+        </Box>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} note="header auth & custom headers: use `voiceai mcp create --file`" />
+      </Box>
+    );
+  }
+
+  if (mode.kind === "create-bearer") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text bold>Bearer secret · {draftName.trim()}</Text>
+        <Box marginTop={1}>
+          <Text color="yellow">Vault secret name </Text>
+          <TextInput
+            value={draftBearer}
+            onChange={setDraftBearer}
+            placeholder="FIRECRAWL_API_KEY"
+            onSubmit={(raw) => {
+              if (raw.trim()) void doCreate();
+            }}
+          />
+        </Box>
+        <KeyHints
+          hints={[
+            { key: "enter", label: "create", nav: true },
+            { key: "esc", label: "back", nav: true },
+          ]}
+          note="the secret must already exist in the vault"
         />
       </Box>
     );
@@ -255,6 +414,35 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
   }
 
   return <Text />;
+
+  async function doCreate(): Promise<void> {
+    const name = draftName.trim();
+    setMode({ kind: "busy", label: `Creating ${name}…` });
+    const bearer = draftBearer.trim();
+    const res = await createServer(
+      buildServerBody({
+        name,
+        url: draftUrl.trim(),
+        transport: draftTransport,
+        bearerSecret: bearer || undefined,
+      }),
+    );
+    if (!res.ok || !res.data) {
+      setMode({ kind: "error", message: formatAgentsError(res), back: { kind: "list" } });
+      return;
+    }
+    try {
+      setServers(await listAllServers());
+    } catch {
+      // best-effort refresh; the server was created
+    }
+    setMode({
+      kind: "result",
+      title: `Created ${name}`,
+      lines: ["Open it and use Connect & refresh to probe it."],
+      back: { kind: "list" },
+    });
+  }
 
   async function openServer(item: McpServerListItem): Promise<void> {
     setMode({ kind: "detail-loading", item });
