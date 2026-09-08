@@ -425,17 +425,14 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
       setMode({ kind: "error", message: formatAgentsError(res), back: { kind: "list" } });
       return;
     }
+    // Refresh the list in the background, then land on the new server's detail —
+    // Connect & refresh is right there to probe it.
     try {
       setServers(await listAllServers());
     } catch {
       // best-effort refresh; the server was created
     }
-    setMode({
-      kind: "result",
-      title: `Created ${name}`,
-      lines: ["Open it and use Connect & refresh to probe it."],
-      back: { kind: "list" },
-    });
+    setMode({ kind: "detail", server: res.data });
   }
 
   async function openServer(item: McpServerListItem): Promise<void> {
