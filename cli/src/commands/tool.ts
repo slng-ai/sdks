@@ -178,6 +178,7 @@ export function toolCommand(): Command {
 COMMANDS
   list                     list every tool available to your organisation
   get <tool>               show one tool in full (by name or id)
+  build <tool>             build a code tool (introspect its code) so it can run
   run <tool>               execute one tool and report what happened (by name or id)
 
 EXAMPLES
@@ -185,12 +186,16 @@ EXAMPLES
   $ voiceai tool list --json | jq '.[].name'   scriptable
   $ voiceai tool get api_request               one tool, all properties
   $ voiceai tool get check_order --json | jq .arg_schema   the input schema
+  $ voiceai tool build check_order             build it before the first run
   $ echo '{"id":7}' | voiceai tool run check_order --confirm-side-effects
   $ voiceai tool run check_order --input sample.json --confirm-side-effects
 
 NOTES
   Tool names are matched exactly and are case-sensitive. A tool id (UUID) is
   also accepted and addresses the tool directly, without a name lookup.
+
+  A \`code\` tool must be built before its first run (and after its code changes) —
+  \`build\` runs that step. Other tool types do not need it.
 
   \`--json\` carries \`arg_schema\` — the JSON Schema of a tool's input, derived from
   the pydantic model for a code tool.
@@ -246,6 +251,33 @@ NOTES
       const res = await agentsRequest<ToolDetail>(
         "GET",
         `/v1/agents/tools/${encodeURIComponent(id)}`,
+      );
+      if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
+      if (opts.json) {
+        console.log(JSON.stringify(res.data, null, 2));
+        return;
+      }
+      printTool(res.data);
+    });
+
+  cmd
+    .command("build <tool>")
+    .description("Build a code tool (introspect its code) so it can run and publish")
+    .option("--json", "Output JSON")
+    .action(async (tool: string, opts) => {
+      const spinner = spin(`building ${tool}`);
+      let id: string;
+      try {
+        id = await resolveToolId(tool, opts.json);
+      } finally {
+        spinner?.stop();
+      }
+      // Introspect is the build step: it re-parses the code, rebuilds the code
+      // environment and re-derives arg_schema. The server rejects it on a
+      // non-code tool, so its error is surfaced rather than pre-empted.
+      const res = await agentsRequest<ToolDetail>(
+        "POST",
+        `/v1/agents/tools/${encodeURIComponent(id)}/introspect`,
       );
       if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
       if (opts.json) {

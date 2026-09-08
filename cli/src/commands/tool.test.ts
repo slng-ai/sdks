@@ -164,6 +164,30 @@ test("get accepts a tool id and resolves it without a name lookup", async () => 
   expect(r.calls).toEqual([`GET /v1/agents/tools/${UUID}`]);
 });
 
+// --- build (introspect) ----------------------------------------------------
+
+test("build introspects a tool by id and reports the result", async () => {
+  const r = await runCli(["tool", "build", UUID], (req) =>
+    new URL(req.url).pathname === `/v1/agents/tools/${UUID}/introspect`
+      ? json(item({ id: UUID, name: "check_order", latest_version: 2 }))
+      : json([], 404),
+  );
+  expect(r.code).toBe(0);
+  expect(r.stdout).toContain("latest_version        2");
+  expect(r.calls).toEqual([`POST /v1/agents/tools/${UUID}/introspect`]);
+});
+
+test("build surfaces the platform error on failure", async () => {
+  const r = await runCli(["tool", "build", UUID, "--json"], () =>
+    json(
+      { detail: "d", error: { code: "CODE_TOOL_BUILD_REQUIRED", message: "nope", request_id: "r" } },
+      409,
+    ),
+  );
+  expect(r.code).toBe(1);
+  expect(JSON.parse(r.stdout).ok).toBe(false);
+});
+
 // --- get: not found (FR-007) -----------------------------------------------
 
 test("get exits 1 and explains case sensitivity when nothing matches", async () => {
