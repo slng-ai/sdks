@@ -167,6 +167,145 @@ test("get --json still emits parseable JSON when it fails", async () => {
   expect(JSON.parse(r.stdout).ok).toBe(false);
 });
 
+// --- get --version / --id: immutable, id-addressed reads --------------------
+//
+// The existing detailServer helper does `path.split("/").pop()`, which returns
+// the version NUMBER (not the tool id) for `/versions/{n}` — a regex matcher is
+// required here, the same way push.test.ts matches nested paths.
+
+const TOOL_ID = "3f2c1a00-0000-0000-0000-000000000001";
+
+function idServer(opts: {
+  detail?: Record<string, unknown>;
+  versions?: Record<number, Record<string, unknown>>;
+}) {
+  return (req: Request) => {
+    const path = new URL(req.url).pathname;
+    const vMatch = path.match(/^\/v1\/agents\/tools\/([^/]+)\/versions\/(\d+)$/);
+    if (vMatch) {
+      const [, id, vStr] = vMatch as [string, string, string];
+      const v = id === TOOL_ID ? opts.versions?.[Number(vStr)] : undefined;
+      return v
+        ? json(v)
+        : json(
+            {
+              detail: "Tool version not found",
+              error: { code: "RESOURCE_NOT_FOUND", message: "Tool version not found", request_id: "rid-v" },
+            },
+            404,
+          );
+    }
+    const dMatch = path.match(/^\/v1\/agents\/tools\/([^/]+)$/);
+    if (dMatch) {
+      const id = dMatch[1];
+      return id === TOOL_ID && opts.detail
+        ? json(opts.detail)
+        : json(
+            { detail: "Tool not found", error: { code: "RESOURCE_NOT_FOUND", message: "Tool not found", request_id: "rid-9" } },
+            404,
+          );
+    }
+    if (path === "/v1/agents/tools") return json([]);
+    return json({ detail: "unstubbed" }, 500);
+  };
+}
+
+test("get --version reads the immutable version envelope and echoes its identity exactly", async () => {
+  const envelope = {
+    tool_id: TOOL_ID,
+    version_number: 7,
+    snapshot_json: { argument_schema: { type: "object", properties: {} } },
+    content_hash: "hash-abc",
+    published_at: "2026-08-01T00:00:00Z",
+  };
+  const r = await runCli(
+    ["tool", "get", TOOL_ID, "--version", "7", "--json"],
+    idServer({ versions: { 7: envelope } }),
+  );
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.stdout)).toEqual(envelope);
+  // Version mode hits the version endpoint alone — no name list, no plain detail.
+  expect(r.calls).toEqual([`GET /v1/agents/tools/${TOOL_ID}/versions/7`]);
+});
+
+test("get --version on a missing version exits 1 and never falls back to the draft or latest", async () => {
+  const r = await runCli(
+    ["tool", "get", TOOL_ID, "--version", "9", "--json"],
+    idServer({ versions: {}, detail: { id: TOOL_ID, name: "x", latest_version: 9 } }),
+  );
+  expect(r.code).toBe(1);
+  expect(JSON.parse(r.stdout).ok).toBe(false);
+  // Only the version endpoint was tried, even though a draft/detail WAS available.
+  expect(r.calls).toEqual([`GET /v1/agents/tools/${TOOL_ID}/versions/9`]);
+});
+
+test("--version rejects a non-integer before making any request", async () => {
+  const r = await runCli(["tool", "get", TOOL_ID, "--version", "abc", "--json"], idServer({}));
+  expect(r.code).toBe(1);
+  expect(JSON.parse(r.stdout).error).toContain("positive integer");
+  expect(r.calls).toEqual([]);
+});
+
+test("--version rejects zero, since a version is never version 0", async () => {
+  const r = await runCli(["tool", "get", TOOL_ID, "--version", "0", "--json"], idServer({}));
+  expect(r.code).toBe(1);
+  expect(r.calls).toEqual([]);
+});
+
+// The hazard: the root program installs a global -V/--version via commander's
+// own .version(pkg.version). A naive `tool get` implementation lets the root
+// claim this token first and print the CLI's own version instead of running
+// the command at all — proven by reproduction against this exact commander
+// version before the fix (see flags.ts's enablePositionalOptions()).
+test("tool get --version does not collide with the root -V/--version flag", async () => {
+  const envelope = {
+    tool_id: TOOL_ID,
+    version_number: 3,
+    snapshot_json: {},
+    content_hash: "h",
+    published_at: "2026-08-01T00:00:00Z",
+  };
+  const r = await runCli(
+    ["tool", "get", TOOL_ID, "--version", "3", "--json"],
+    idServer({ versions: { 3: envelope } }),
+  );
+  expect(r.stdout.trim()).not.toBe("0.1.16");
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.stdout).version_number).toBe(3);
+});
+
+test("get --id reads tool identity directly, skipping the name lookup", async () => {
+  const detail = {
+    id: TOOL_ID,
+    name: "check_order",
+    tool_type: "code",
+    description: "",
+    last_run_status: null,
+    latest_version: 4,
+    config_valid: true,
+    arg_schema: null,
+    organisation_id: "org-1",
+    source: "organisation",
+  };
+  const r = await runCli(["tool", "get", TOOL_ID, "--id", "--json"], idServer({ detail }));
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.stdout)).toEqual(detail);
+  // No /v1/agents/tools list-by-name call — --id skips name resolution entirely.
+  expect(r.calls).toEqual([`GET /v1/agents/tools/${TOOL_ID}`]);
+});
+
+test("get --id on an unknown id exits 1 without ever listing by name", async () => {
+  const r = await runCli(["tool", "get", "nope-id", "--id", "--json"], idServer({}));
+  expect(r.code).toBe(1);
+  expect(r.calls).toEqual(["GET /v1/agents/tools/nope-id"]);
+});
+
+test("get with neither flag still resolves by name, listing then fetching by the resolved id", async () => {
+  const r = await runCli(["tool", "get", "end_call"], detailServer(single));
+  expect(r.code).toBe(0);
+  expect(r.calls).toEqual(["GET /v1/agents/tools", "GET /v1/agents/tools/id-org"]);
+});
+
 // --- list: piping and empty state (FR-008, FR-009, SC-003) -----------------
 
 test("list writes only data to stdout when not a TTY", async () => {

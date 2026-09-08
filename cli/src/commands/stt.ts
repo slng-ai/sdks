@@ -3,6 +3,7 @@ import { readFileSync, createReadStream } from "node:fs";
 import { makeClients } from "../lib/sdk";
 import { recordPcm } from "../lib/audio";
 import { load } from "../lib/config";
+import { printJson } from "../lib/output";
 
 const STT_EPILOGUE = `
 EXAMPLES
@@ -46,7 +47,7 @@ async function httpTranscribe(file: string, opts: { model: string }): Promise<vo
   const response = await (http as any).speechToText.create(opts.model, {
     audio: new File([bytes], file, { type: "audio/wav" }),
   });
-  console.log(JSON.stringify(response, null, 2));
+  printJson(response);
 }
 
 async function streamTranscribe(opts: { model: string; source: string }): Promise<void> {

@@ -12,6 +12,7 @@ import {
   useProfile,
   DEFAULT_PROFILE,
 } from "../lib/config";
+import { printJson } from "../lib/output";
 
 const CONFIG_EPILOGUE = `
 KEYS
@@ -59,7 +60,7 @@ export function configCommand(): Command {
     .action((key: string | undefined, opts: WithProfileOpts) => {
       const cfg = load(opts.profile);
       if (!key) {
-        console.log(JSON.stringify({ ...cfg, apiKey: maskKey(cfg.apiKey) }, null, 2));
+        printJson({ ...cfg, apiKey: maskKey(cfg.apiKey) });
         return;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

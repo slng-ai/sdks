@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import ora from "ora";
-import { agentsRequest, formatAgentsError } from "../lib/agents";
+import { agentsRequest, formatAgentsError, type AgentsResult } from "../lib/agents";
+import { printJson } from "../lib/output";
 
 // --- types -----------------------------------------------------------------
 // Mirrors the McpServerListItem / McpServerDetail schemas of the public
@@ -126,6 +127,16 @@ export function connectServer(id: string) {
 }
 
 /**
+ * One server's detail record, addressed directly by id. No name lookup — a
+ * rename or a name reuse cannot redirect this to a different server. The
+ * existing `get`/`run` handlers use it for `--id`; push's guarded mode (T014)
+ * uses it too, to check a staged `observed_schema_hash` without probing.
+ */
+export async function getServerById(id: string): Promise<AgentsResult<McpServerDetail>> {
+  return agentsRequest<McpServerDetail>("GET", `/v1/agents/mcp-servers/${encodeURIComponent(id)}`);
+}
+
+/**
  * Is the platform's capability snapshot too old to attach against?
  *
  * ponytail: `next_refresh_at` is when the platform intends to look again, which
@@ -141,6 +152,34 @@ export function isSnapshotStale(server: McpServerDetail, now: Date = new Date())
   if (typeof next !== "string") return false;
   const due = Date.parse(next);
   return Number.isFinite(due) && due < now.getTime();
+}
+
+/**
+ * Why the platform would refuse to attach against this snapshot, or null when
+ * it would accept it. The strict counterpart to `isSnapshotStale`, for the
+ * guarded push: it mirrors `validate_selected_tools` in the backend, which
+ * refuses a record that is not healthy, was probed at an older server
+ * revision, or has aged out — even though `_mark_failure` leaves the previous
+ * capability document (and so the checked hash) in place. Unlike
+ * `isSnapshotStale`, missing or unreadable metadata is a refusal here, not a
+ * pass: a matching hash on a record the platform will reject proves nothing,
+ * and this mode has no refresh-and-retry to fall back on.
+ */
+export function snapshotRefusal(server: McpServerDetail, now: Date = new Date()): string | null {
+  if (server.capability_status !== "healthy") {
+    return `capability_status is ${server.capability_status ?? "unknown"}, not healthy`;
+  }
+  if (server.capability_revision !== server.revision) {
+    return `snapshot is for revision ${server.capability_revision ?? "?"}, the server is at revision ${server.revision ?? "?"}`;
+  }
+  const observed = Date.parse(server.capability_observed_at ?? "");
+  if (!Number.isFinite(observed)) return "capability_observed_at is missing or unreadable";
+  const due = typeof server.next_refresh_at === "string" ? Date.parse(server.next_refresh_at) : NaN;
+  if (!Number.isFinite(due)) return "next_refresh_at is missing or unreadable";
+  if (due <= now.getTime()) {
+    return `snapshot expired: observed ${server.capability_observed_at}, refresh was due ${server.next_refresh_at}`;
+  }
+  return null;
 }
 
 /**
@@ -165,7 +204,7 @@ export function diffToolNames(
 
 /** Exit non-zero, keeping stdout valid JSON under --json. */
 function fail(json: boolean | undefined, message: string): never {
-  if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
+  if (json) printJson({ ok: false, error: message });
   else process.stderr.write(`${message}\n`);
   process.exit(1);
 }
@@ -246,6 +285,19 @@ async function resolveServer(
   return chosen;
 }
 
+/** `getServerById` for the CLI: exits, rather than returning, on a miss. */
+async function resolveServerById(
+  id: string,
+  json: boolean | undefined,
+  label: string,
+): Promise<McpServerDetail> {
+  const spinner = spin(label);
+  const res = await getServerById(id);
+  spinner?.stop();
+  if (!res.ok || !res.data) fail(json, formatAgentsError(res));
+  return res.data;
+}
+
 // --- command tree ----------------------------------------------------------
 
 export function mcpCommand(): Command {
@@ -264,12 +316,19 @@ EXAMPLES
   $ voiceai mcp list                             every server your agents can call
   $ voiceai mcp list --json | jq '.[].name'      scriptable
   $ voiceai mcp get firecrawl-mcp                one server, all properties
+  $ voiceai mcp get srv_abc123 --id --json       by id, skipping the name lookup
   $ voiceai mcp tools firecrawl-mcp              the tools that server exposes
   $ voiceai mcp tools firecrawl-mcp --json       each tool's full input schema
   $ voiceai mcp run firecrawl-mcp                check the server is up right now
+  $ voiceai mcp run srv_abc123 --id              by id, then verify it is still that server
 
 NOTES
   Server names are matched exactly and are case-sensitive.
+
+  \`--id\` addresses a server directly, skipping the name lookup entirely — a
+  rename or a name reuse cannot redirect \`get\`/\`run\` to a different server.
+  \`run --id\` also re-reads that same id once after connecting, to confirm it
+  is still the server it started with.
 
   \`capability_status\` and \`capability_tool_count\` come from the last capability
   probe, not from a live call: a server can be listed and still be unreachable.
@@ -298,7 +357,7 @@ NOTES
       }
       spinner?.stop();
       if (opts.json) {
-        console.log(JSON.stringify(rows, null, 2));
+        printJson(rows);
         return;
       }
       if (!rows.length) {
@@ -315,12 +374,15 @@ NOTES
 
   cmd
     .command("get <server-name>")
-    .description("Show one MCP server by its exact name")
+    .description("Show one MCP server by its exact name, or by id with --id")
     .option("--json", "Output JSON")
-    .action(async (name: string, opts) => {
-      const server = await resolveServer(name, opts.json, `loading ${name}`);
+    .option("--id", "Treat the argument as a server ID, skipping the name lookup")
+    .action(async (nameOrId: string, opts) => {
+      const server = opts.id
+        ? await resolveServerById(nameOrId, opts.json, `loading ${nameOrId}`)
+        : await resolveServer(nameOrId, opts.json, `loading ${nameOrId}`);
       if (opts.json) {
-        console.log(JSON.stringify(server, null, 2));
+        printJson(server);
         return;
       }
       printServer(server);
@@ -330,10 +392,13 @@ NOTES
     .command("run <server-name>")
     .description("Connect to one MCP server now and report what it exposes")
     .option("--json", "Output JSON")
-    .action(async (name: string, opts) => {
-      const server = await resolveServer(name, opts.json, `connecting to ${name}`);
+    .option("--id", "Treat the argument as a server ID, skipping the name lookup")
+    .action(async (nameOrId: string, opts) => {
+      const server = opts.id
+        ? await resolveServerById(nameOrId, opts.json, `loading ${nameOrId}`)
+        : await resolveServer(nameOrId, opts.json, `connecting to ${nameOrId}`);
       const previous = ((server.capabilities ?? {}) as McpCapabilities).tools ?? null;
-      const spinner = spin(`connecting to ${name}`);
+      const spinner = spin(`connecting to ${nameOrId}`);
       const res = await connectServer(server.id);
       spinner?.stop();
       if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
@@ -341,8 +406,19 @@ NOTES
       const tools = result.capabilities?.tools ?? [];
       const diff = diffToolNames(server.capability_observed_at ? previous : null, tools);
 
+      // --id's whole point is that a rename or a name reuse cannot redirect this
+      // to a different server. A successful connect can still be followed by a
+      // renamed/deleted record, so re-read the same id once and check it is
+      // still the server we started with before reporting success.
+      if (opts.id && result.status === "connected") {
+        const reread = await resolveServerById(server.id, opts.json, `verifying ${server.id}`);
+        if (reread.id !== server.id) {
+          fail(opts.json, `mcp server ${server.id} changed identity after connecting.`);
+        }
+      }
+
       if (opts.json) {
-        console.log(JSON.stringify({ ...result, added: diff.added, removed: diff.removed }, null, 2));
+        printJson({ ...result, added: diff.added, removed: diff.removed });
       } else {
         const changes = diff.firstProbe
           ? `first probe — ${tools.length} tool${tools.length === 1 ? "" : "s"} discovered`
@@ -383,7 +459,7 @@ NOTES
         );
       }
       if (opts.json) {
-        console.log(JSON.stringify(tools, null, 2));
+        printJson(tools);
         return;
       }
       if (!tools.length) {

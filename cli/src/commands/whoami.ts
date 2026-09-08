@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import ora from "ora";
 import { currentProfile, load, requireApiKey } from "../lib/config";
+import { printJson } from "../lib/output";
 import { type Account, verifyApiKey } from "../lib/verify";
 
 export function whoamiCommand(): Command {
@@ -27,7 +28,7 @@ EXAMPLES
 
       if (result.error) {
         if (opts.json) {
-          console.log(JSON.stringify({ ok: false, error: result.error, masked_key: masked, profile }));
+          printJson({ ok: false, error: result.error, masked_key: masked, profile }, false);
         } else {
           const msg = "Couldn't reach SLNG to check your key. Check your connection and try again.";
           spinner ? spinner.fail(msg) : console.error(msg);
@@ -38,7 +39,7 @@ EXAMPLES
       if (result.ok) {
         const account = result.account ?? {};
         if (opts.json) {
-          console.log(JSON.stringify({ ok: true, status: 200, profile, masked_key: masked, account }));
+          printJson({ ok: true, status: 200, profile, masked_key: masked, account }, false);
         } else {
           const line = formatAccount(account, profile, masked);
           spinner ? spinner.succeed(line) : console.log(line);
@@ -49,7 +50,7 @@ EXAMPLES
       // The gateway may return 401; /v1/me itself returns 403 for a bad key.
       if (result.status === 401 || result.status === 403) {
         if (opts.json) {
-          console.log(JSON.stringify({ ok: false, status: result.status, masked_key: masked, profile }));
+          printJson({ ok: false, status: result.status, masked_key: masked, profile }, false);
         } else {
           const msg = `That key didn't work for profile "${profile}". It may be invalid or revoked.`;
           spinner ? spinner.fail(msg) : console.error(msg);
@@ -58,7 +59,7 @@ EXAMPLES
       }
 
       if (opts.json) {
-        console.log(JSON.stringify({ ok: false, status: result.status, masked_key: masked, profile, body: result.body ?? "" }));
+        printJson({ ok: false, status: result.status, masked_key: masked, profile, body: result.body ?? "" }, false);
       } else {
         const msg = `Couldn't check your key right now (status ${result.status}). Try again.`;
         spinner ? spinner.warn(msg) : console.error(msg);

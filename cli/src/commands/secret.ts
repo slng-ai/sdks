@@ -4,6 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { parseEnv } from "node:util";
 import ora from "ora";
 import { agentsRequest, formatAgentsError, type AgentsResult } from "../lib/agents";
+import { printJson } from "../lib/output";
 
 // --- types -----------------------------------------------------------------
 // Mirrors the OrgSecretOut schema of the public shared-resource vault routes.
@@ -56,7 +57,7 @@ function fail(
   message: string,
   extra?: Record<string, unknown>,
 ): never {
-  if (json) console.log(JSON.stringify({ ok: false, ...extra, error: message }, null, 2));
+  if (json) printJson({ ok: false, ...extra, error: message });
   else process.stderr.write(`${message}\n`);
   process.exit(1);
 }
@@ -300,7 +301,7 @@ NOTES
       }
       spinner?.stop();
       if (opts.json) {
-        console.log(JSON.stringify(rows.map(redact), null, 2));
+        printJson(rows.map(redact));
         return;
       }
       if (!rows.length) {
@@ -330,7 +331,7 @@ NOTES
       if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
       const safe = redact(res.data);
       if (opts.json) {
-        console.log(JSON.stringify(safe, null, 2));
+        printJson(safe);
         return;
       }
       printSecret(safe as unknown as Record<string, unknown>);
@@ -413,7 +414,7 @@ NOTES
       }
 
       if (opts.json) {
-        console.log(JSON.stringify({ ok: !failed, secrets: done }, null, 2));
+        printJson({ ok: !failed, secrets: done });
       } else {
         for (const d of done) {
           // Names only. No code path here prints a value.
