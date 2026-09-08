@@ -165,11 +165,18 @@ type Mode =
   | { kind: "list" }
   | { kind: "detail-loading"; item: ToolListItem }
   | { kind: "detail"; tool: ToolDetail }
+  | { kind: "build-busy"; tool: ToolDetail }
+  | { kind: "build-result"; tool: ToolDetail }
   | { kind: "run-input"; tool: ToolDetail; error?: string }
   | { kind: "run-confirm"; tool: ToolDetail; input: Record<string, unknown> }
   | { kind: "run-busy"; tool: ToolDetail }
   | { kind: "run-result"; tool: ToolDetail; status: string; lines: string[] }
   | { kind: "error"; message: string; back: Mode };
+
+/** Only code tools have a build (introspect) step. */
+function canBuild(tool: ToolDetail): boolean {
+  return tool.tool_type === "code";
+}
 
 export function ToolsFlow({ onExit }: Props): React.ReactElement {
   const [tools, setTools] = useState<ToolListItem[]>([]);
@@ -199,6 +206,11 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
         if (url) openExternal(url);
         return;
       }
+      // `b` builds (introspects) a code tool so it can run.
+      if ((input === "b" || input === "B") && canBuild(mode.tool)) {
+        void doBuild(mode.tool);
+        return;
+      }
       // `r` starts a run: prompt for input if the tool takes arguments, else confirm.
       if (input === "r" || input === "R") {
         if (hasArgs(mode.tool.arg_schema)) {
@@ -218,6 +230,7 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
       case "detail":
         setMode({ kind: "list" });
         break;
+      case "build-result":
       case "run-input":
       case "run-confirm":
       case "run-result":
@@ -226,12 +239,13 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
       case "error":
         setMode(mode.back);
         break;
-      // loading / detail-loading / run-busy: ignore esc
+      // loading / detail-loading / build-busy / run-busy: ignore esc
     }
   });
 
   if (mode.kind === "loading") return <Loading label="Loading tools…" />;
   if (mode.kind === "detail-loading") return <Loading label={`Loading ${mode.item.name}…`} />;
+  if (mode.kind === "build-busy") return <Loading label={`Building ${String(mode.tool.name)}…`} />;
   if (mode.kind === "run-busy") return <Loading label={`Running ${String(mode.tool.name)}…`} />;
   if (mode.kind === "error") return <ErrorView message={mode.message} />;
 
@@ -291,12 +305,23 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
         />
         <KeyHints
           hints={[
+            ...(canBuild(tool) ? [{ key: "b", label: "build" }] : []),
             { key: "r", label: "run" },
             ...(url ? [{ key: "e", label: "edit in browser" }] : []),
             { key: "esc", label: "back", nav: true },
           ]}
           note={`voiceai tool get ${String(tool.id)} --json  ·  full detail`}
         />
+      </Box>
+    );
+  }
+
+  // build result
+  if (mode.kind === "build-result") {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text color="green">✓ built {String(mode.tool.name)} — it can now run</Text>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }
@@ -382,6 +407,22 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
   }
 
   return <Text />;
+
+  async function doBuild(tool: ToolDetail): Promise<void> {
+    setMode({ kind: "build-busy", tool });
+    // Introspect is the build step for a code tool — it re-parses the code and
+    // prepares the environment/schema so a run no longer 409s BUILD_REQUIRED.
+    const res = await agentsRequest<ToolDetail>(
+      "POST",
+      `/v1/agents/tools/${encodeURIComponent(tool.id)}/introspect`,
+    );
+    if (!res.ok || !res.data) {
+      setMode({ kind: "error", message: formatAgentsError(res), back: { kind: "detail", tool } });
+      return;
+    }
+    // Carry the refreshed record forward so the detail reflects the new state.
+    setMode({ kind: "build-result", tool: res.data });
+  }
 
   async function doRun(tool: ToolDetail, input: Record<string, unknown>): Promise<void> {
     setMode({ kind: "run-busy", tool });
