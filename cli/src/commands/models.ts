@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { TTS_MODELS, STT_MODELS, isSlngHosted, type TtsModel, type SttModel } from "../lib/models";
+import { printJson } from "../lib/output";
 
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
@@ -31,10 +32,10 @@ EXAMPLES
       const showTts = opts.tts || !opts.stt;
       const showStt = opts.stt || !opts.tts;
       if (opts.json) {
-        console.log(JSON.stringify({
+        printJson({
           tts: showTts ? TTS_MODELS : undefined,
           stt: showStt ? STT_MODELS : undefined,
-        }, null, 2));
+        });
         return;
       }
       const color = process.stdout.isTTY === true;

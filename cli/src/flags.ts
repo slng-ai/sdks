@@ -27,6 +27,8 @@ EXAMPLES
   $ voiceai voices --model slng/deepgram/aura:2-en       list catalogued voices
   $ voiceai whoami                                       check that your API key is valid
   $ voiceai agents list                                  list your voice agents
+  $ voiceai agents push examples/slng-support            push a compiled package
+  $ voiceai agents push staged/ --require-resolved --expect-org org_abc --json
   $ voiceai tool list                                    list tools your agents can call
   $ voiceai tool get api_request                         show one tool by name
   $ voiceai tool run check_order --confirm-side-effects  execute one tool for real
@@ -59,6 +61,14 @@ export async function runFlagMode(argv: string[]): Promise<void> {
         "Run with no arguments to open the interactive TUI.",
     )
     .version(pkg.version)
+    // Without this, commander scans the WHOLE argv for the root's own options —
+    // including past a subcommand boundary — so a subcommand that defines its
+    // own same-named option (e.g. `tool get --version <n>`) never sees it: the
+    // root's `-V, --version` claims the token first and exits with the CLI's
+    // version. This confines root options (--debug, --profile, -V/--version) to
+    // before the first subcommand, which is also the only place any example in
+    // this file's own epilogue ever shows them.
+    .enablePositionalOptions()
     .option("--debug", "Enable verbose SDK logging (equivalent to VOICEAI_LOG=debug)")
     .option("--profile <name>", "Use a named credential profile (see `voiceai config profiles`)")
     .hook("preAction", (thisCmd) => {

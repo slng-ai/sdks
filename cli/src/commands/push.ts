@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { basename, dirname } from "node:path";
 import ora from "ora";
 import { agentsRequest, formatAgentsError, type AgentsResult } from "../lib/agents";
+import { requireApiKey } from "../lib/config";
+import { printJson } from "../lib/output";
 import {
   isManagedSingleton,
   loadPackage,
@@ -11,19 +13,22 @@ import {
   PackageError,
   requiredSecretNames,
   type LoadedPackage,
+  type PackageMcpRef,
   type PackageToolBody,
   type PackageToolRef,
 } from "../lib/package";
 import { verifyApiKey } from "../lib/verify";
 import {
   connectServer,
+  getServerById,
   isSnapshotStale,
   loadServers,
+  snapshotRefusal,
   type McpCapabilities,
   type McpServerDetail,
 } from "./mcp";
 import { listSecrets, redact, type VaultEntry } from "./secret";
-import { listAllTools, type RunResult, type ToolListItem } from "./tool";
+import { fetchToolDetail, fetchToolVersion, listAllTools, type RunResult, type ToolDetail, type ToolListItem, type ToolVersion } from "./tool";
 
 // --- dashboard ------------------------------------------------------------
 // Every blocker points at the page that fixes it. Nothing here is created by
@@ -44,7 +49,12 @@ export type BlockerKind =
   | "singleton_exists"
   | "mcp_unresolved"
   | "mcp_stale"
-  | "agent_ambiguous";
+  | "agent_ambiguous"
+  // --require-resolved only, below this line.
+  | "organisation_mismatch"
+  | "authored_tool_body"
+  | "tool_version_unavailable"
+  | "mcp_hash_changed";
 
 export interface Blocker {
   kind: BlockerKind;
@@ -147,7 +157,7 @@ interface PublishResult {
 // --- small helpers --------------------------------------------------------
 
 function fail(json: boolean | undefined, message: string, extra?: Record<string, unknown>): never {
-  if (json) console.log(JSON.stringify({ ok: false, ...extra, error: message }, null, 2));
+  if (json) printJson({ ok: false, ...extra, error: message });
   else process.stderr.write(`${message}\n`);
   process.exit(1);
 }
@@ -220,6 +230,44 @@ export function declaredDiffers(declared: unknown, live: unknown): boolean {
   );
 }
 
+// --- agent identity (shared by ordinary and --require-resolved planning) --
+
+interface AgentIdentity {
+  action: "create" | "update";
+  existingId?: string;
+  /** Set only for "more than one agent has this name and no --agent-id". */
+  blocker?: Blocker;
+}
+
+/**
+ * Which agent a push writes to, and whether that is even decidable. Shared by
+ * `buildPlan` and the `--require-resolved` builder — FR/contract requirement
+ * "reuse existing agent selection" means this logic lives in exactly one place.
+ */
+function resolveAgentIdentity(
+  name: string,
+  agents: AgentRow[],
+  agentIdOverride: string | undefined,
+): AgentIdentity {
+  const matches = agents.filter((a) => a.name === name);
+  let existingId = agentIdOverride;
+  let blocker: Blocker | undefined;
+  if (!existingId) {
+    if (matches.length > 1) {
+      blocker = {
+        kind: "agent_ambiguous",
+        items: matches.map((a) => `${a.name}  ${a.id}`),
+        detail:
+          `${matches.length} agents are named "${name}". ` +
+          "name the one to update with --agent-id <id>.",
+      };
+    } else {
+      existingId = matches[0]?.id;
+    }
+  }
+  return { action: existingId ? "update" : "create", existingId, blocker };
+}
+
 // --- plan (pure, read-only) -----------------------------------------------
 
 export interface PlanInputs {
@@ -259,22 +307,10 @@ export function buildPlan(input: PlanInputs): PushPlan {
 
   // --- agent identity ---
   const named = input.pkg.agent.name;
-  const matches = input.agents.filter((a) => a.name === named);
-  let existingId = input.agentIdOverride;
-  if (!existingId) {
-    if (matches.length > 1) {
-      blockers.push({
-        kind: "agent_ambiguous",
-        items: matches.map((a) => `${a.name}  ${a.id}`),
-        detail:
-          `${matches.length} agents are named "${named}". ` +
-          "name the one to update with --agent-id <id>.",
-      });
-    } else {
-      existingId = matches[0]?.id;
-    }
-  }
-  const action: "create" | "update" = existingId ? "update" : "create";
+  const identity = resolveAgentIdentity(named, input.agents, input.agentIdOverride);
+  if (identity.blocker) blockers.push(identity.blocker);
+  const existingId = identity.existingId;
+  const action = identity.action;
 
   // --- mcp ---
   // No MCP session is opened, here or anywhere: `observed_schema_hash` is the
@@ -628,13 +664,393 @@ async function resolveOrganisation(
   return { id };
 }
 
+interface OrgConfirmation {
+  ok: boolean;
+  /** The confirmed id, when one could be read — even on a mismatch. */
+  id: string;
+  name?: string;
+  /** Why confirmation failed. Present iff !ok. */
+  reason?: string;
+}
+
+/**
+ * `--require-resolved`'s gate, called before anything else: confirm
+ * `--expect-org` against the credential's REAL account, not a matching
+ * profile name (data-model.md, "Deployment context"). Unlike
+ * `resolveOrganisation`, this never falls back to an id inferred from agents,
+ * secrets, or a live agent — an org that cannot be confirmed this way is a
+ * refusal in this mode, never a pass.
+ */
+async function confirmOrganisation(expectOrg: string): Promise<OrgConfirmation> {
+  let apiKey: string;
+  try {
+    apiKey = requireApiKey();
+  } catch (e) {
+    return { ok: false, id: "", reason: (e as Error).message };
+  }
+  const probe = await verifyApiKey(apiKey);
+  if (!probe.ok || !probe.account?.org_id) {
+    return {
+      ok: false,
+      id: "",
+      reason: probe.error
+        ? `could not confirm an organisation for this credential: ${probe.error}`
+        : `could not confirm an organisation for this credential (status ${probe.status ?? "unknown"}).`,
+    };
+  }
+  const id = probe.account.org_id;
+  if (id !== expectOrg) {
+    return {
+      ok: false,
+      id,
+      name: probe.account.org_name,
+      reason: `--expect-org ${expectOrg} does not match the confirmed organisation ${id}.`,
+    };
+  }
+  return { ok: true, id, name: probe.account.org_name };
+}
+
+// --- guarded resolved plan (--require-resolved) ----------------------------
+//
+// Ordinary buildPlan resolves references by NAME against an already-fetched
+// catalogue — pure and synchronous. This mode resolves by CHECKED IDENTITY
+// instead: each reference already carries the exact tool_id/version or
+// server_id/observed_schema_hash Unmute staged, and every one of them is
+// verified against the platform directly (never by name, never the first
+// same-name record). That verification is inherently a network call per
+// reference, so — unlike buildPlan — this is async. The fetchers are
+// injected so the resolution logic itself stays unit-testable without a stub
+// server; planResolvedPush below wires in the real ones.
+
+export interface ResolvedPlanInputs {
+  pkg: LoadedPackage;
+  agents: AgentRow[];
+  secrets: VaultEntry[];
+  liveAgent?: AgentRow;
+  organisation: { id: string; name?: string };
+  agentIdOverride?: string;
+  mintId?: () => string;
+  getTool: (id: string) => Promise<AgentsResult<ToolDetail>>;
+  getToolVersion: (id: string, version: number) => Promise<AgentsResult<ToolVersion>>;
+  getMcpServer: (id: string) => Promise<AgentsResult<McpServerDetail>>;
+  now?: Date;
+}
+
+/** A staged tool_refs/mcp_refs entry, carrying the explicit fields this mode requires. */
+type StagedToolRef = PackageToolRef & { tool_id?: unknown; version?: unknown };
+type StagedMcpRef = PackageMcpRef & { server_id?: unknown; observed_schema_hash?: unknown };
+
+export async function buildResolvedPlan(input: ResolvedPlanInputs): Promise<PushPlan> {
+  const { pkg, secrets, liveAgent } = input;
+  const blockers: Blocker[] = [];
+  const mint = input.mintId ?? randomUUID;
+  const now = input.now ?? new Date();
+  const orgId = input.organisation.id;
+
+  const identity = resolveAgentIdentity(pkg.agent.name, input.agents, input.agentIdOverride);
+  if (identity.blocker) blockers.push(identity.blocker);
+
+  // Authored tool bodies are refused outright: this mode attaches only checked
+  // published versions, never a body this push would create or update itself.
+  if (pkg.tools.length) {
+    blockers.push({
+      kind: "authored_tool_body",
+      items: pkg.tools.map((t) => `${t.name} (${t.tool_type})`),
+      detail:
+        "--require-resolved attaches checked published versions only. remove the tool body " +
+        "from the package and reference it by tool_id and version instead.",
+      url: TOOLS_URL,
+    });
+  }
+
+  // --- vault (same requirement, same source of truth as ordinary mode) ---
+  const bySecretName = new Map(secrets.map((s) => [s.name, s]));
+  const missingSecrets: string[] = [];
+  for (const name of requiredSecretNames(pkg)) {
+    const entry = bySecretName.get(name);
+    if (!entry) missingSecrets.push(name);
+    else if (entry.kind !== "secret") missingSecrets.push(`${name} (exists as a variable, not a secret)`);
+  }
+  if (missingSecrets.length) {
+    blockers.push({
+      kind: "vault_missing",
+      items: missingSecrets,
+      detail: "create them, then push again. a name that exists as a variable does not count — the platform's publish gate counts secrets only.",
+      url: VAULT_URL,
+    });
+  }
+
+  // --- tool references: checked id + exact version, never a name lookup ---
+  const reuseTool = new Map((liveAgent?.tool_refs ?? []).map((r) => [r.tool_id, r.attachment_id]));
+  const refs: PlannedRef[] = [];
+  const toolInvalid: string[] = [];
+  const toolVersionUnavailable: string[] = [];
+
+  for (const raw of (pkg.agent.tool_refs ?? []) as StagedToolRef[]) {
+    const { tool: displayName, tool_id: rawId, version: rawVersion, ...carried } = raw;
+    const label = typeof displayName === "string" && displayName ? displayName : "(unnamed reference)";
+
+    if (typeof rawId !== "string" || !rawId) {
+      toolInvalid.push(`${label} — no explicit tool_id`);
+      continue;
+    }
+    if (typeof rawVersion !== "number" || !Number.isInteger(rawVersion) || rawVersion <= 0) {
+      toolInvalid.push(`${label} (${rawId}) — no explicit positive integer version`);
+      continue;
+    }
+    const detail = await input.getTool(rawId);
+    if (!detail.ok || !detail.data) {
+      toolInvalid.push(`${label} (${rawId}) — tool id not found: ${formatAgentsError(detail)}`);
+      continue;
+    }
+    const scoped = !detail.data.organisation_id || detail.data.organisation_id === orgId;
+    if (!scoped) {
+      toolInvalid.push(`${label} (${rawId}) — belongs to a different organisation`);
+      continue;
+    }
+    if (typeof displayName === "string" && displayName && detail.data.name !== displayName) {
+      toolInvalid.push(`${label} (${rawId}) — resolves to "${detail.data.name}", not "${displayName}"`);
+      continue;
+    }
+    const version = await input.getToolVersion(rawId, rawVersion);
+    if (!version.ok || !version.data) {
+      toolVersionUnavailable.push(`${detail.data.name} (${rawId}) v${rawVersion}`);
+      continue;
+    }
+    const existingAttachment = reuseTool.get(rawId);
+    refs.push({
+      name: detail.data.name,
+      toolId: rawId,
+      version: rawVersion,
+      attachmentId: existingAttachment ?? mint(),
+      reused: Boolean(existingAttachment),
+      carried,
+    });
+  }
+  if (toolInvalid.length) {
+    blockers.push({
+      kind: "tool_unresolved",
+      items: toolInvalid,
+      detail:
+        "each reference must carry a checked tool_id whose name and organisation scope match. " +
+        "rerun resolution rather than guessing the first same-name record.",
+      url: TOOLS_URL,
+    });
+  }
+  if (toolVersionUnavailable.length) {
+    blockers.push({
+      kind: "tool_version_unavailable",
+      items: toolVersionUnavailable,
+      detail: "the checked version is no longer available. rerun resolution against the latest published version.",
+      url: TOOLS_URL,
+    });
+  }
+
+  // --- mcp references: checked server id + exact observed hash ---
+  const reuseMcp = new Map(
+    (liveAgent?.mcp_refs ?? []).map((r) => [`${r.server_id} ${r.tool_name}`, r.attachment_id]),
+  );
+  const mcpRefs: PlannedMcpRef[] = [];
+  const mcpInvalid: string[] = [];
+  const mcpStale: string[] = [];
+  const mcpHashChanged: string[] = [];
+
+  for (const raw of (pkg.agent.mcp_refs ?? []) as StagedMcpRef[]) {
+    const {
+      server: _s,
+      server_name: _sn,
+      tool_name: toolName,
+      server_id: rawServerId,
+      observed_schema_hash: rawHash,
+      ...carried
+    } = raw;
+    const namedHint = mcpRefServer(raw);
+    const label = namedHint ?? "(unnamed reference)";
+    const toolLabel = typeof toolName === "string" && toolName ? toolName : "?";
+
+    if (typeof rawServerId !== "string" || !rawServerId) {
+      mcpInvalid.push(`${label}/${toolLabel} — no explicit server_id`);
+      continue;
+    }
+    if (typeof rawHash !== "string" || !rawHash) {
+      mcpInvalid.push(`${label}/${toolLabel} (${rawServerId}) — no explicit observed_schema_hash`);
+      continue;
+    }
+    const detail = await input.getMcpServer(rawServerId);
+    if (!detail.ok || !detail.data) {
+      mcpInvalid.push(`${label}/${toolLabel} (${rawServerId}) — server id not found: ${formatAgentsError(detail)}`);
+      continue;
+    }
+    const scoped = !detail.data.organisation_id || detail.data.organisation_id === orgId;
+    if (!scoped) {
+      mcpInvalid.push(`${label}/${toolLabel} (${rawServerId}) — belongs to a different organisation`);
+      continue;
+    }
+    if (namedHint && detail.data.name !== namedHint) {
+      mcpInvalid.push(`${label}/${toolLabel} (${rawServerId}) — resolves to "${detail.data.name}", not "${namedHint}"`);
+      continue;
+    }
+    // Before looking at the hash: the platform keeps the last capability
+    // document when a refresh fails, so a retained hash can still match on a
+    // record it will refuse to attach against. Same test the write will apply.
+    const refusal = snapshotRefusal(detail.data, now);
+    if (refusal) {
+      mcpStale.push(`${detail.data.name}/${toolLabel} (${rawServerId}) — ${refusal}`);
+      continue;
+    }
+    const caps = (detail.data.capabilities ?? {}) as McpCapabilities;
+    const tool = (caps.tools ?? []).find((t) => t.name === toolName);
+    if (!tool?.schema_hash) {
+      mcpHashChanged.push(`${detail.data.name}/${toolLabel} — no longer exposed by the server`);
+      continue;
+    }
+    if (tool.schema_hash !== rawHash) {
+      mcpHashChanged.push(`${detail.data.name}/${toolLabel} — schema hash changed since resolution`);
+      continue;
+    }
+    const key = `${rawServerId} ${toolName}`;
+    const existing = reuseMcp.get(key);
+    mcpRefs.push({
+      server: detail.data.name,
+      serverId: rawServerId,
+      toolName: String(toolName),
+      schemaHash: rawHash,
+      attachmentId: existing ?? mint(),
+      reused: Boolean(existing),
+      carried,
+    });
+  }
+  if (mcpInvalid.length) {
+    blockers.push({
+      kind: "mcp_unresolved",
+      items: mcpInvalid,
+      detail:
+        "each reference must carry a checked server_id whose name and organisation scope match. " +
+        "rerun resolution rather than guessing the first same-name record.",
+      url: MCP_URL,
+    });
+  }
+  if (mcpStale.length) {
+    blockers.push({
+      kind: "mcp_stale",
+      items: mcpStale,
+      detail:
+        "the platform's capability snapshot for this server is unavailable or expired, and it will " +
+        "refuse the attachment even though the checked hash still matches. this mode never refreshes " +
+        "it: refresh with `voiceai mcp run <server-id> --id`, then rerun resolution.",
+      url: MCP_URL,
+    });
+  }
+  if (mcpHashChanged.length) {
+    blockers.push({
+      kind: "mcp_hash_changed",
+      items: mcpHashChanged,
+      detail:
+        "the checked schema hash is no longer current. rerun resolution — this mode never " +
+        "refreshes a stale snapshot and attaches it unchecked.",
+      url: MCP_URL,
+    });
+  }
+
+  // --- removals / overwrites: same comparisons as ordinary mode ---
+  const keptAttachments = new Set(refs.map((r) => r.attachmentId));
+  const removals = (liveAgent?.tool_refs ?? [])
+    .filter((r) => !keptAttachments.has(r.attachment_id))
+    .map((r) => ({ attachment_id: r.attachment_id, tool_id: r.tool_id }));
+  const keptMcp = new Set(mcpRefs.map((r) => r.attachmentId));
+  const mcpRemovals = (liveAgent?.mcp_refs ?? []).filter((r) => !keptMcp.has(r.attachment_id));
+  const overwrites: string[] = [];
+  if (liveAgent) {
+    for (const field of COMPARED_FIELDS) {
+      if (!(field in pkg.agent)) continue;
+      if (declaredDiffers(pkg.agent[field], liveAgent[field])) overwrites.push(field);
+    }
+  }
+
+  return {
+    organisation: input.organisation,
+    packagePath: pkg.location.agentBody,
+    agent: { name: pkg.agent.name, action: identity.action, existingId: identity.existingId },
+    tools: [], // this mode ships no tool bodies — see authored_tool_body above
+    refs,
+    mcpRefs,
+    removals,
+    mcpRemovals,
+    overwrites,
+    blockers,
+  };
+}
+
+/**
+ * The `--require-resolved` counterpart to `planPush`: confirms the account
+ * before anything else, and only then reads what's needed to check every
+ * staged reference. Read-only — the same guarantee planPush makes.
+ */
+export async function planResolvedPush(
+  dir: string,
+  opts: { agentId?: string; expectOrg: string },
+): Promise<{ plan: PushPlan; pkg: LoadedPackage; orgConfirmed: boolean }> {
+  const pkg = loadPackage(dir);
+
+  const orgCheck = await confirmOrganisation(opts.expectOrg);
+  if (!orgCheck.ok) {
+    return {
+      pkg,
+      orgConfirmed: false,
+      plan: {
+        organisation: { id: orgCheck.id || opts.expectOrg, name: orgCheck.name },
+        packagePath: pkg.location.agentBody,
+        agent: { name: pkg.agent.name, action: "create" },
+        tools: [],
+        refs: [],
+        mcpRefs: [],
+        removals: [],
+        mcpRemovals: [],
+        overwrites: [],
+        blockers: [
+          {
+            kind: "organisation_mismatch",
+            items: [orgCheck.reason ?? "organisation could not be confirmed."],
+            detail: "confirm the credential and --expect-org, then push again. nothing was read or changed.",
+          },
+        ],
+      },
+    };
+  }
+
+  const agents = await must<AgentRow[]>(agentsRequest("GET", "/v1/agents"));
+  const secrets = (await listSecrets()).map(redact) as VaultEntry[];
+
+  // Same two-step identity read planPush uses: a minimal local resolution to
+  // decide whether a live agent needs reading, then the full (re-)resolution
+  // inside buildResolvedPlan itself.
+  const existing = opts.agentId ?? agents.filter((a) => a.name === pkg.agent.name)[0]?.id;
+  let liveAgent: AgentRow | undefined;
+  if (existing) {
+    liveAgent = await must<AgentRow>(agentsRequest("GET", `/v1/agents/${encodeURIComponent(existing)}`));
+  }
+
+  const plan = await buildResolvedPlan({
+    pkg,
+    agents,
+    secrets,
+    liveAgent,
+    organisation: { id: orgCheck.id, name: orgCheck.name },
+    agentIdOverride: opts.agentId,
+    getTool: fetchToolDetail,
+    getToolVersion: fetchToolVersion,
+    getMcpServer: getServerById,
+  });
+  return { plan, pkg, orgConfirmed: true };
+}
+
 // --- apply ----------------------------------------------------------------
 
 /** Tools first, then the agent, then the label. The platform's dependencies fix this order. */
 export async function applyPush(
   plan: PushPlan,
   pkg: LoadedPackage,
-  opts: { label?: string; now: string },
+  opts: { label?: string; now: string; allowMcpRefresh?: boolean },
 ): Promise<ApplyOutcome> {
   const outcome: ApplyOutcome = { tools: [] };
   const byName = new Map(pkg.tools.map((t) => [t.name, t]));
@@ -679,7 +1095,13 @@ export async function applyPush(
       // The platform flags this one retryable, and it self-heals: a connect
       // refreshes the snapshot the write was rejected against. Once, not a
       // loop — if one refresh does not fix it, the problem is not staleness.
-      if (!plan.mcpRefs.length || !isCapabilityUnavailable((e as Error).message)) throw e;
+      // --require-resolved disables this: that mode attaches an exact checked
+      // hash and refuses a changed one rather than silently refreshing and
+      // attaching an unchecked snapshot (Unmute owns that one refresh).
+      const allowRefresh = opts.allowMcpRefresh ?? true;
+      if (!allowRefresh || !plan.mcpRefs.length || !isCapabilityUnavailable((e as Error).message)) {
+        throw e;
+      }
       note("mcp capabilities were stale; refreshing and retrying");
       await refreshMcpCapabilities(plan);
       written = await writeAgent();
@@ -885,6 +1307,10 @@ const KIND_TITLE: Record<BlockerKind, string> = {
   mcp_unresolved: "unresolved MCP reference",
   mcp_stale: "MCP capability snapshot is stale",
   agent_ambiguous: "more than one agent has this name",
+  organisation_mismatch: "--expect-org does not match the confirmed organisation",
+  authored_tool_body: "authored tool bodies are not allowed under --require-resolved",
+  tool_version_unavailable: "checked tool version is no longer available",
+  mcp_hash_changed: "checked MCP schema hash is no longer current",
 };
 
 /**
@@ -1125,6 +1551,132 @@ function indent(text: string): string {
   return text.split("\n").join("\n    ");
 }
 
+// --- --require-resolved command -------------------------------------------
+
+interface ResolvedOpts {
+  dryRun?: boolean;
+  agentId?: string;
+  label?: string;
+  json?: boolean;
+  expectOrg?: string;
+}
+
+/**
+ * The resolved (checked-id) refs/mcpRefs from a plan, in the same snake_case
+ * shape planJson uses — reused so a dry-run, a blocked report, a success and a
+ * partial-failure document all name resolved tool ids/versions and MCP
+ * ids/hashes the same way (contract requirement 7).
+ */
+function resolvedRefsJson(plan: PushPlan): { refs: unknown; mcp_refs: unknown } {
+  const doc = planJson(plan);
+  return { refs: doc.refs, mcp_refs: doc.mcp_refs };
+}
+
+async function runResolvedPush(dir: string, opts: ResolvedOpts): Promise<void> {
+  if (!opts.expectOrg) {
+    fail(opts.json, "--require-resolved needs --expect-org <organisation-id>.", { resolution_contract: 1 });
+  }
+
+  const spinner = spin("checking package");
+  let plan: PushPlan;
+  let pkg: LoadedPackage;
+  try {
+    ({ plan, pkg } = await planResolvedPush(dir, { agentId: opts.agentId, expectOrg: opts.expectOrg }));
+  } catch (e) {
+    spinner?.stop();
+    const message = e instanceof PackageError ? e.message : (e as Error).message;
+    fail(opts.json, message, { changed: false, resolution_contract: 1 });
+  }
+  spinner?.stop();
+
+  const blocked = plan.blockers.length > 0;
+
+  if (opts.dryRun) {
+    // No live write and no discovery in this branch, whatever else was asked
+    // for (--run-samples is meaningless here: this mode ships no tool bodies).
+    // Still names the selected agent id/action, even when blocked.
+    const doc = { ok: !blocked, dry_run: true, changed: false, resolution_contract: 1, ...planJson(plan) };
+    if (opts.json) {
+      printJson(doc);
+    } else {
+      console.log(renderPlan(plan));
+      if (blocked) process.stderr.write(`${renderBlockers(plan.blockers)}\n`);
+    }
+    if (blocked) process.exit(1);
+    return;
+  }
+
+  if (blocked) {
+    const doc = { ok: false, changed: false, resolution_contract: 1, ...planJson(plan) };
+    if (opts.json) printJson(doc);
+    else process.stderr.write(`${renderBlockers(plan.blockers)}\n`);
+    process.exit(1);
+  }
+
+  note(renderHeader(plan));
+  const applying = spin(`${plan.agent.action === "create" ? "creating" : "replacing"} ${plan.agent.name}`);
+  let outcome: ApplyOutcome;
+  try {
+    outcome = await applyPush(plan, pkg, {
+      label: opts.label,
+      now: new Date().toISOString(),
+      allowMcpRefresh: false,
+    });
+  } catch (e) {
+    applying?.stop();
+    const partial = (e as { outcome?: ApplyOutcome }).outcome ?? { tools: [] };
+    const message = (e as Error).message;
+    if (opts.json) {
+      printJson({
+        ok: false,
+        changed: true,
+        resolution_contract: 1,
+        error: message,
+        organisation: plan.organisation,
+        ...resolvedRefsJson(plan),
+        ...partial,
+      });
+    } else {
+      process.stderr.write(`${renderPartial(partial, message)}\n`);
+    }
+    process.exit(1);
+  }
+  applying?.stop();
+
+  if (outcome.failedAt) {
+    const message = outcome.tools.find((t) => t.error)?.error ?? "push failed";
+    if (opts.json) {
+      printJson({
+        ok: false,
+        changed: true,
+        resolution_contract: 1,
+        error: message,
+        organisation: plan.organisation,
+        ...resolvedRefsJson(plan),
+        ...outcome,
+      });
+    } else {
+      process.stderr.write(`${renderPartial(outcome, message)}\n`);
+    }
+    process.exit(1);
+  }
+
+  // A returned success agrees with the supplied resolution by construction:
+  // refs/mcp_refs below are the SAME checked ids/versions/hashes buildResolvedPlan
+  // verified and buildAgentBody sent — nothing here re-derives them.
+  if (opts.json) {
+    printJson({
+      ok: true,
+      resolution_contract: 1,
+      organisation: plan.organisation,
+      ...resolvedRefsJson(plan),
+      ...outcome,
+    });
+  } else {
+    console.log(renderOutcome(plan, outcome));
+  }
+}
+
 // --- command --------------------------------------------------------------
 
 export function pushCommand(): Command {
@@ -1135,6 +1687,11 @@ export function pushCommand(): Command {
     .option("--run-samples", "Execute each tool's sample against your real dependencies")
     .option("--agent-id <id>", "Update this agent, when a name matches more than one")
     .option("--label <text>", "Version label (default: package name and timestamp)")
+    .option(
+      "--require-resolved",
+      "Guarded mode: attach only the exact tool_id/version and MCP server_id/hash the staged package carries",
+    )
+    .option("--expect-org <id>", "Confirm this organisation before any write (required with --require-resolved)")
     .option("--json", "Output JSON")
     .addHelpText(
       "afterAll",
@@ -1144,6 +1701,8 @@ EXAMPLES
   $ voiceai agents push build/slng --dry-run               check without changing anything
   $ voiceai agents push . --run-samples                    also execute each tool's sample
   $ voiceai agents push . --json | jq -r '.agent.id'       scriptable
+  $ voiceai agents push staged/ --require-resolved --expect-org org_abc --dry-run --json
+  $ voiceai agents push staged/ --require-resolved --expect-org org_abc --json
 
 NOTES
   The directory may be the package root or the compiled build/slng directory.
@@ -1160,9 +1719,22 @@ NOTES
   MCP references resolve by server name; each tool's observed_schema_hash is copied
   from the platform's own capability snapshot, so nothing connects to the server. If
   that snapshot has gone stale, refresh it with \`voiceai mcp run <server>\`.
+
+  --require-resolved is a different mode, for a caller (such as unmute) that has
+  already resolved every reference to an exact tool_id/version or MCP server_id/hash
+  and wants those honoured EXACTLY — never re-resolved by name, never the first
+  same-name record, never refreshed. It refuses authored tool bodies, confirms
+  --expect-org against the real credential before any write, discovery or tool
+  operation, and never runs a sample. The JSON document carries the explicit marker
+  \`resolution_contract: 1\` so a caller can tell a supporting release apart from an
+  older CLI that would otherwise ignore the flag or reject it outright.
 `,
     )
     .action(async (dir: string, opts) => {
+      if (opts.requireResolved) {
+        await runResolvedPush(dir, opts);
+        return;
+      }
       const spinner = spin("checking package");
       let plan: PushPlan;
       let pkg: LoadedPackage;
@@ -1180,13 +1752,7 @@ NOTES
 
       if (plan.blockers.length) {
         if (opts.json) {
-          console.log(
-            JSON.stringify(
-              { ok: false, changed: false, organisation: plan.organisation, blockers: plan.blockers },
-              null,
-              2,
-            ),
-          );
+          printJson({ ok: false, changed: false, organisation: plan.organisation, blockers: plan.blockers });
         } else {
           process.stderr.write(`${renderBlockers(plan.blockers)}\n`);
         }
@@ -1194,7 +1760,7 @@ NOTES
       }
 
       if (opts.dryRun) {
-        if (opts.json) console.log(JSON.stringify({ ok: true, dry_run: true, ...planJson(plan) }, null, 2));
+        if (opts.json) printJson({ ok: true, dry_run: true, ...planJson(plan) });
         else console.log(renderPlan(plan));
         return;
       }
@@ -1211,7 +1777,7 @@ NOTES
         const partial = (e as { outcome?: ApplyOutcome }).outcome;
         const message = (e as Error).message;
         if (opts.json) {
-          console.log(JSON.stringify({ ok: false, changed: true, error: message, ...partial }, null, 2));
+          printJson({ ok: false, changed: true, error: message, ...partial });
         } else {
           process.stderr.write(`${renderPartial(partial ?? { tools: [] }, message)}\n`);
         }
@@ -1222,7 +1788,7 @@ NOTES
       if (outcome.failedAt) {
         const message = outcome.tools.find((t) => t.error)?.error ?? "push failed";
         if (opts.json) {
-          console.log(JSON.stringify({ ok: false, changed: true, error: message, ...outcome }, null, 2));
+          printJson({ ok: false, changed: true, error: message, ...outcome });
         } else {
           process.stderr.write(`${renderPartial(outcome, message)}\n`);
         }
@@ -1230,7 +1796,7 @@ NOTES
       }
 
       if (opts.json) {
-        console.log(JSON.stringify({ ok: true, organisation: plan.organisation, ...outcome }, null, 2));
+        printJson({ ok: true, organisation: plan.organisation, ...outcome });
       }
       else console.log(renderOutcome(plan, outcome));
     });

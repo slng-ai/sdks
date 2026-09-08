@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { voicesFor, languageLabel } from "../lib/models";
+import { printJson } from "../lib/output";
 
 export function voicesCommand(): Command {
   return new Command("voices")
@@ -28,7 +29,7 @@ NOTES
       }
       if (opts.json) {
         // JSON keeps the raw 2-letter code for scripting/filtering.
-        console.log(JSON.stringify(voices, null, 2));
+        printJson(voices);
         return;
       }
       // Human-readable: show the language as a full name.

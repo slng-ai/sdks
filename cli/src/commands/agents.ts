@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import ora from "ora";
 import { agentsRequest, agentsBaseUrl, formatAgentsError, type AgentsResult } from "../lib/agents";
+import { printJson } from "../lib/output";
 import { pushCommand } from "./push";
 
 // --- helpers ---------------------------------------------------------------
@@ -42,7 +43,7 @@ async function send<T = unknown>(
     if (json) {
       spinner?.stop();
       // Emit the API's JSON error body (or a synthesized one) so --json stays parseable.
-      console.log(JSON.stringify(result.data ?? { ok: false, status: result.status, error: msg }, null, 2));
+      printJson(result.data ?? { ok: false, status: result.status, error: msg });
     } else if (spinner) {
       spinner.fail(msg);
     } else {
@@ -51,7 +52,7 @@ async function send<T = unknown>(
     process.exit(1);
   }
   spinner?.stop();
-  if (json) console.log(JSON.stringify(result.data ?? null, null, 2));
+  if (json) printJson(result.data ?? null);
   return result.data;
 }
 
