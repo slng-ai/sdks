@@ -482,6 +482,36 @@ export function McpFlow({ onExit }: Props): React.ReactElement {
       });
       return;
     }
-    setMode({ kind: "result", title: `Connected to ${server.name}`, lines, back: { kind: "detail", server } });
+    // Fold the fresh probe back into the detail, so "View tools" and the badges
+    // reflect what connect just returned instead of the stale create-time snapshot.
+    let refreshed: McpServerDetail = {
+      ...server,
+      capabilities: result.capabilities ?? server.capabilities,
+      capability_status: "healthy",
+      capability_tool_count: tools.length,
+      capability_observed_at: new Date().toISOString(),
+    };
+    // Re-read the stored detail (what the dashboard shows) so the tool list is
+    // authoritative; fall back to the merged snapshot if the re-read fails.
+    try {
+      const found = await loadServers([server.name]);
+      if (found[0]) refreshed = found[0];
+    } catch {
+      // keep the merged snapshot
+    }
+    // Keep the list in sync too, so its STATUS/TOOLS columns update.
+    setServers((prev) =>
+      prev.map((s) =>
+        s.id === server.id
+          ? { ...s, capability_status: "healthy", capability_tool_count: tools.length }
+          : s,
+      ),
+    );
+    setMode({
+      kind: "result",
+      title: `Connected to ${server.name}`,
+      lines,
+      back: { kind: "detail", server: refreshed },
+    });
   }
 }
