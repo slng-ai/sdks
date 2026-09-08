@@ -5,6 +5,7 @@ import { ToolsFlow } from "./ToolsFlow";
 import { McpFlow } from "./McpFlow";
 import { SecretsFlow } from "./SecretsFlow";
 import { TrunksFlow } from "./TrunksFlow";
+import { MenuItem } from "./MenuItem";
 import { KeyHints } from "./resourceKit";
 
 interface Props {
@@ -29,11 +30,11 @@ export function ResourcesMenu({ onExit }: Props): React.ReactElement {
   if (mode === "trunks") return <TrunksFlow onExit={() => setMode("menu")} />;
 
   const items = [
-    { label: "🔧  Tools - Browse shared tools", value: "tools" as const },
-    { label: "🧩  MCP servers - Browse & connect", value: "mcp" as const },
-    { label: "🔐  Secrets - Browse & create", value: "secrets" as const },
-    { label: "☎️   Trunks - Browse SIP trunks", value: "trunks" as const },
-    { label: "←   Back", value: "back" as const },
+    { label: "🔧\tTools - Browse shared tools", value: "tools" as const },
+    { label: "🧩\tMCP servers - Browse & connect", value: "mcp" as const },
+    { label: "🔐\tSecrets - Browse & create", value: "secrets" as const },
+    { label: "☎️\tTrunks - Browse SIP trunks", value: "trunks" as const },
+    { label: "←\tBack", value: "back" as const },
   ];
 
   return (
@@ -42,6 +43,7 @@ export function ResourcesMenu({ onExit }: Props): React.ReactElement {
       <Box marginTop={1}>
         <SelectInput
           items={items}
+          itemComponent={MenuItem}
           onSelect={(item) => {
             if (item.value === "back") onExit();
             else setMode(item.value);
