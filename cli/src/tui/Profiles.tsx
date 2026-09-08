@@ -188,7 +188,7 @@ export function Profiles({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <KeyHints hints={[{ key: "enter", label: "confirm", nav: true }, { key: "esc", label: "cancel", nav: true }]} />
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -217,7 +217,6 @@ export function Profiles({ onExit }: Props): React.ReactElement {
   return (
     <Box flexDirection="column" marginTop={1} paddingX={1}>
       <Text bold>Profiles</Text>
-      <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} note="★ marks the current profile" />
       <Box marginTop={1}>
         <SelectInput
           items={items}
@@ -260,6 +259,7 @@ export function Profiles({ onExit }: Props): React.ReactElement {
           <Text color="red">✗ {error}</Text>
         </Box>
       )}
+      <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} note="★ marks the current profile" />
     </Box>
   );
 }

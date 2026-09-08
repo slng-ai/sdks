@@ -99,6 +99,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           items={[{ label: "(auto)", value: "" }, ...regions.map((r) => ({ label: r, value: r }))]}
           onSelect={(item) => commit("region", item.value)}
         />
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -112,6 +113,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           items={[{ label: "(auto)", value: "" }, ...worldParts.map((w) => ({ label: w, value: w }))]}
           onSelect={(item) => commit("worldPart", item.value)}
         />
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -144,7 +146,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
             commit(editing, item.value);
           }}
         />
-        <KeyHints hints={[{ key: "enter", label: "save", nav: true }, { key: "esc", label: "cancel", nav: true }]} />
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -161,7 +163,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           ]}
           onSelect={(item) => commit("defaultSttMode", item.value)}
         />
-        <KeyHints hints={[{ key: "enter", label: "save", nav: true }, { key: "esc", label: "cancel", nav: true }]} />
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -177,9 +179,10 @@ export function Settings({ onExit }: Props): React.ReactElement {
           ]}
           onSelect={(item) => commit("defaultSttInput", item.value)}
         />
-        <Text dimColor>
-          {inputs.length === 0 ? "probing inputs… " : ""}enter to save · esc to cancel
-        </Text>
+        <KeyHints
+          hints={[{ key: "esc", label: "cancel", nav: true }]}
+          note={inputs.length === 0 ? "probing inputs…" : undefined}
+        />
       </Box>
     );
   }
@@ -215,7 +218,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           limit={10}
           onSelect={(item) => commit("defaultTtsVoice", item.value)}
         />
-        <KeyHints hints={[{ key: "enter", label: "save", nav: true }, { key: "esc", label: "cancel", nav: true }]} />
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -223,7 +226,6 @@ export function Settings({ onExit }: Props): React.ReactElement {
   return (
     <Box flexDirection="column" marginTop={1} paddingX={1}>
       <Text bold>Settings</Text>
-      <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       <Box flexDirection="column" marginTop={1}>
         <SelectInput
           items={[
@@ -243,6 +245,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           }}
         />
       </Box>
+      <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
     </Box>
   );
 }

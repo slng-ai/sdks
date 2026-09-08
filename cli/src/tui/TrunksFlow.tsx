@@ -125,7 +125,7 @@ export function TrunksFlow({ onExit }: Props): React.ReactElement {
           <Text dimColor>No trunks found{filter ? ` on the ${filter} side` : ""}.</Text>
           <KeyHints
             hints={[
-              ...(filter ? [{ key: "d", label: "cycle direction" }] : []),
+              { key: "d", label: "cycle direction" },
               { key: "esc", label: "back", nav: true },
             ]}
           />
@@ -152,8 +152,6 @@ export function TrunksFlow({ onExit }: Props): React.ReactElement {
         </Box>
         <KeyHints
           hints={[
-            { key: "↑↓", label: "move", nav: true },
-            { key: "enter", label: "open", nav: true },
             { key: "d", label: "cycle direction" },
             { key: "esc", label: "back", nav: true },
           ]}

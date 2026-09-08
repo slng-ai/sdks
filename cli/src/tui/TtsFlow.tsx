@@ -107,11 +107,11 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
     <Box flexDirection="column" marginTop={1} paddingX={1}>
       <Text bold>Text → Speech</Text>
       {usingDefaults && (
-        <Text dimColor>
-          using defaults: {model}{voice ? ` · ${voice}` : ""} · esc to change
-        </Text>
+        <Text dimColor>using defaults: {model}{voice ? ` · ${voice}` : ""}</Text>
       )}
-      {!usingDefaults && <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />}
+      {step !== "done" && step !== "error" && step !== "pick-voice" && (
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
+      )}
 
       {step === "pick-language" && (
         <Box flexDirection="column" marginTop={1}>
@@ -239,13 +239,6 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
   );
 }
 
-function RestartListener({ onRestart }: { onRestart: () => void }): null {
-  useInput((_input, key) => {
-    if (key.return) onRestart();
-  });
-  return null;
-}
-
 interface DonePaneProps {
   bytes: Uint8Array;
   modelVariant: string;
@@ -289,9 +282,16 @@ function DonePane({ bytes, modelVariant, voice, text, onRestart }: DonePaneProps
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text color="green">✓ Played {bytes.length} bytes.</Text>
-      <Text dimColor>
-        enter redo · s save to file · {showCode ? "c hide code" : "c show code"} · esc back
-      </Text>
+      {savingPath === null && (
+        <KeyHints
+          hints={[
+            { key: "enter", label: "redo", nav: true },
+            { key: "s", label: "save to file" },
+            { key: "c", label: showCode ? "hide code" : "show code" },
+            { key: "esc", label: "back", nav: true },
+          ]}
+        />
+      )}
 
       {savingPath !== null && (
         <Box flexDirection="column" marginTop={1}>
@@ -391,14 +391,6 @@ function VoicePicker({ model, language, onPick }: VoicePickerProps): React.React
             {" "}({voices.length} {languageLabel(language)} of {totalUnfiltered} total)
           </Text>
         )}
-        :{" "}
-        <Text>
-          <Text dimColor>[</Text>
-          <Text bold color="yellow">p</Text>
-          <Text dimColor>] preview · [</Text>
-          <Text bold color="cyan">enter</Text>
-          <Text dimColor>] pick</Text>
-        </Text>
       </Text>
       <SelectInput
         items={voices.map((v) => ({ label: voiceLabel(v), value: v.voiceId }))}
@@ -431,6 +423,7 @@ function VoicePicker({ model, language, onPick }: VoicePickerProps): React.React
           <Text color="red">preview failed: {previewError}</Text>
         </Box>
       )}
+      <KeyHints hints={[{ key: "p", label: "preview" }, { key: "esc", label: "back", nav: true }]} />
     </Box>
   );
 }

@@ -263,14 +263,14 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
   return (
     <Box flexDirection="column" marginTop={1} paddingX={1}>
       <Text bold>Speech → Text</Text>
-      {defaultModel ? (
+      {defaultModel && (
         <Text dimColor>
           using default model: {defaultModel}
           {defaultMode ? ` · mode: ${defaultMode}` : ""}
-          {step !== "recording" ? " · esc to go back" : ""}
         </Text>
-      ) : (
-        step !== "recording" && <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
+      )}
+      {(step === "pick-model" || step === "pick-mode") && (
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       )}
 
       {step === "pick-model" && (
@@ -322,7 +322,7 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
               void startMic(model, item.value);
             }}
           />
-          <KeyHints hints={[{ key: "enter", label: "record", nav: true }, { key: "esc", label: "back", nav: true }]} />
+          <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
         </Box>
       )}
 

@@ -145,13 +145,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <KeyHints
-          hints={[
-            { key: "↑↓", label: "move", nav: true },
-            { key: "enter", label: "open", nav: true },
-            { key: "esc", label: "back", nav: true },
-          ]}
-        />
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }
@@ -236,7 +230,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
         <KeyHints
           hints={[
             { key: "enter", label: "save", nav: true },
-            { key: "esc", label: "back", nav: true },
+            { key: "esc", label: "cancel", nav: true },
           ]}
           note="input is masked"
         />
@@ -333,7 +327,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
         </Box>
         <KeyHints
           hints={[
-            { key: "enter", label: "save", nav: true },
+            { key: "enter", label: "create", nav: true },
             { key: "esc", label: "back", nav: true },
           ]}
           note="input is masked"

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import SyntaxHighlight from "ink-syntax-highlight";
+import { KeyHints } from "./resourceKit";
 
 export type Lang = "typescript" | "python" | "curl";
 
@@ -41,13 +42,11 @@ export function CodeSample({ modelVariant, voice, text, region, worldPart }: Pro
         <Text color={lang === "python" ? "cyan" : "gray"}> python </Text>
         <Text dimColor>/</Text>
         <Text color={lang === "curl" ? "cyan" : "gray"}> curl </Text>
-        <Text dimColor>  [</Text>
-        <Text bold color="yellow">tab</Text>
-        <Text dimColor>] to cycle</Text>
       </Box>
       <Box marginTop={1}>
         <SyntaxHighlight code={sample} language={HL_LANGUAGE[lang]} />
       </Box>
+      <KeyHints hints={[{ key: "tab", label: "cycle language" }]} />
     </Box>
   );
 }

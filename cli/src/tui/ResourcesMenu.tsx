@@ -46,13 +46,7 @@ export function ResourcesMenu({ onExit }: Props): React.ReactElement {
           onSelect={(item) => setMode(item.value)}
         />
       </Box>
-      <KeyHints
-        hints={[
-          { key: "↑↓", label: "move", nav: true },
-          { key: "enter", label: "open", nav: true },
-          { key: "esc", label: "back", nav: true },
-        ]}
-      />
+      <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
     </Box>
   );
 }
