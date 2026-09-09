@@ -112,6 +112,19 @@ export function getSecret(name: string): Promise<AgentsResult<VaultEntry>> {
 export const KINDS = ["secret", "variable"] as const;
 export type Kind = (typeof KINDS)[number];
 
+// The platform requires SCREAMING_SNAKE_CASE names. Mirror the rule client-side
+// so a bad name is caught before the request instead of coming back as a 422.
+const SECRET_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
+
+/** null when `name` is a valid vault name, else a human-readable reason. */
+export function secretNameError(name: string): string | null {
+  if (SECRET_NAME_RE.test(name)) return null;
+  return (
+    `invalid name "${name}": must be SCREAMING_SNAKE_CASE — start with a letter, ` +
+    "then letters, digits, or underscores (e.g. STRIPE_API_KEY)."
+  );
+}
+
 /** Create. The platform has no upsert: POST on a name that exists is an error. */
 export function createSecret(name: string, kind: Kind, value: string) {
   return agentsRequest("POST", "/v1/agents/secrets", { body: { name, kind, value } });
@@ -308,9 +321,9 @@ NOTES
         console.log("no secrets found.");
         return;
       }
-      console.log(row(["NAME", "KIND", "VALUE", "DESCRIPTION"]));
+      console.log(row(["NAME", "VALUE", "DESCRIPTION"]));
       for (const s of rows) {
-        console.log(row([s.name, s.kind, valueCell(s.has_value), cell(s.description)]));
+        console.log(row([s.name, valueCell(s.has_value), cell(s.description)]));
       }
     });
 
@@ -359,7 +372,12 @@ NOTES
           fail(opts.json, (e as Error).message);
         }
         if (!pairs.length) fail(opts.json, `${opts.secretsFile} defines no KEY=VALUE entries.`);
+        // Catch bad names before touching the vault or prompting for a value.
+        const bad = pairs.map((p) => secretNameError(p.name)).filter((m): m is string => m !== null);
+        if (bad.length) fail(opts.json, bad.join(" "));
       } else {
+        const nameErr = secretNameError(name!);
+        if (nameErr) fail(opts.json, nameErr);
         // Never from argv: it would land in shell history and in `ps`.
         pairs = [{ name: name!, value: await readValue(`Value for ${name}: `) }];
         if (!pairs[0]!.value) fail(opts.json, "aborted: no value provided.");

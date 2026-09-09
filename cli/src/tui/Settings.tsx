@@ -17,6 +17,7 @@ import {
   type SttModel,
 } from "../lib/models";
 import { SlngFirstItem } from "./SlngFirstItem";
+import { KeyHints } from "./resourceKit";
 
 type Field =
   | "profile"
@@ -83,7 +84,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>API key</Text>
         <TextInput value={draft} onChange={setDraft} onSubmit={(v) => commit("apiKey", v)} mask="*" />
-        <Text dimColor>enter to save · esc to cancel</Text>
+        <KeyHints hints={[{ key: "enter", label: "save", nav: true }, { key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -98,6 +99,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           items={[{ label: "(auto)", value: "" }, ...regions.map((r) => ({ label: r, value: r }))]}
           onSelect={(item) => commit("region", item.value)}
         />
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -111,6 +113,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           items={[{ label: "(auto)", value: "" }, ...worldParts.map((w) => ({ label: w, value: w }))]}
           onSelect={(item) => commit("worldPart", item.value)}
         />
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -143,7 +146,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
             commit(editing, item.value);
           }}
         />
-        <Text dimColor>enter to save · esc to cancel</Text>
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -160,7 +163,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           ]}
           onSelect={(item) => commit("defaultSttMode", item.value)}
         />
-        <Text dimColor>enter to save · esc to cancel</Text>
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -176,9 +179,10 @@ export function Settings({ onExit }: Props): React.ReactElement {
           ]}
           onSelect={(item) => commit("defaultSttInput", item.value)}
         />
-        <Text dimColor>
-          {inputs.length === 0 ? "probing inputs… " : ""}enter to save · esc to cancel
-        </Text>
+        <KeyHints
+          hints={[{ key: "esc", label: "cancel", nav: true }]}
+          note={inputs.length === 0 ? "probing inputs…" : undefined}
+        />
       </Box>
     );
   }
@@ -188,7 +192,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
       return (
         <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Text color="yellow">Set a default TTS model first.</Text>
-          <Text dimColor>esc to go back</Text>
+          <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
         </Box>
       );
     }
@@ -199,7 +203,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           <Text color="yellow">
             No catalogued voices for <Text bold>{cfg.defaultTtsModel}</Text>.
           </Text>
-          <Text dimColor>esc to go back</Text>
+          <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
         </Box>
       );
     }
@@ -214,7 +218,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           limit={10}
           onSelect={(item) => commit("defaultTtsVoice", item.value)}
         />
-        <Text dimColor>enter to save · esc to cancel</Text>
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }
@@ -222,7 +226,6 @@ export function Settings({ onExit }: Props): React.ReactElement {
   return (
     <Box flexDirection="column" marginTop={1} paddingX={1}>
       <Text bold>Settings</Text>
-      <Text dimColor>esc to go back</Text>
       <Box flexDirection="column" marginTop={1}>
         <SelectInput
           items={[
@@ -242,6 +245,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
           }}
         />
       </Box>
+      <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
     </Box>
   );
 }

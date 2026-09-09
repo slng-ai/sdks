@@ -5,6 +5,7 @@ import {
   getSecret,
   partition,
   readSecretsFile,
+  secretNameError,
   valueCell,
   type VaultEntry,
 } from "./secret";
@@ -168,14 +169,36 @@ function vaultServer(rows: VaultEntry[]) {
   };
 }
 
+// --- name validation -------------------------------------------------------
+
+test("secretNameError accepts SCREAMING_SNAKE_CASE and rejects the rest", () => {
+  expect(secretNameError("STRIPE_API_KEY")).toBeNull();
+  expect(secretNameError("A")).toBeNull();
+  expect(secretNameError("A1_B2")).toBeNull();
+  for (const bad of ["stripe", "Stripe", "1FOO", "FOO-BAR", "_FOO", ""]) {
+    expect(secretNameError(bad)).toContain("SCREAMING_SNAKE_CASE");
+  }
+});
+
+test("create rejects a bad name locally, before any request", async () => {
+  let called = false;
+  const r = await runCli(["secret", "create", "stripe-key"], () => {
+    called = true;
+    return json([]);
+  });
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("SCREAMING_SNAKE_CASE");
+  expect(called).toBe(false);
+});
+
 // --- list (US1: FR-003, FR-005, FR-010) ------------------------------------
 
 test("list prints a header and one row per entry, with nothing on stderr", async () => {
   const r = await runCli(["secret", "list"], vaultServer(vault));
   expect(r.code).toBe(0);
-  expect(r.stdout.split("\n")[0]).toBe("NAME\tKIND\tVALUE\tDESCRIPTION");
-  expect(r.stdout).toContain("FIRECRAWL_API_KEY\tsecret\tyes\tscraper");
-  expect(r.stdout).toContain("REGION\tvariable\tyes\t-");
+  expect(r.stdout.split("\n")[0]).toBe("NAME\tVALUE\tDESCRIPTION");
+  expect(r.stdout).toContain("FIRECRAWL_API_KEY\tyes\tscraper");
+  expect(r.stdout).toContain("REGION\tyes\t-");
   expect(r.stderr).toBe("");
 });
 

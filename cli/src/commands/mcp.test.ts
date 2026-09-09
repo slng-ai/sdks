@@ -1,6 +1,7 @@
 import { test, expect, afterEach } from "bun:test";
 import {
   listAllServers,
+  buildServerBody,
   cell,
   firstLine,
   isSnapshotStale,
@@ -663,4 +664,58 @@ test("tools distinguishes an unprobed server from one with no tools", async () =
       : json({ ...item({ id: "id-1", name: "s" }), capabilities: { tools: [] } });
   const r2 = await runCli(["mcp", "tools", "s"], probed);
   expect(r2.stdout.trim()).toBe("the last probe reported no tools.");
+});
+
+// --- create ----------------------------------------------------------------
+
+test("buildServerBody defaults transport and no-auth, adds bearer when asked", () => {
+  const basic = buildServerBody({ name: "acme", url: "https://acme/mcp" });
+  expect(basic).toEqual({
+    name: "acme",
+    url_template: "https://acme/mcp",
+    transport: "streamable_http",
+    auth: { type: "none" },
+  });
+  const bearer = buildServerBody({
+    name: "acme",
+    url: "https://acme/mcp",
+    transport: "sse",
+    description: "d",
+    bearerSecret: "ACME_TOKEN",
+  });
+  expect(bearer.transport).toBe("sse");
+  expect(bearer.description).toBe("d");
+  expect(bearer.auth).toEqual({ type: "bearer", secret_name: "ACME_TOKEN" });
+});
+
+test("create posts the built body and prints the created server", async () => {
+  const r = await runCli(["mcp", "create", "acme", "--url", "https://acme/mcp"], (req) =>
+    req.method === "POST" && new URL(req.url).pathname === "/v1/agents/mcp-servers"
+      ? json({ id: "id-9", name: "acme", transport: "streamable_http", url_template: "https://acme/mcp" }, 201)
+      : json({ detail: "unexpected" }, 500),
+  );
+  expect(r.code).toBe(0);
+  expect(r.stdout).toContain("acme");
+});
+
+test("create requires --url without --file", async () => {
+  let called = false;
+  const r = await runCli(["mcp", "create", "acme"], () => {
+    called = true;
+    return json({});
+  });
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("--url is required");
+  expect(called).toBe(false);
+});
+
+test("create rejects mixing --file with a name", async () => {
+  let called = false;
+  const r = await runCli(["mcp", "create", "acme", "--file", "server.json"], () => {
+    called = true;
+    return json({});
+  });
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("either --file or a name");
+  expect(called).toBe(false);
 });

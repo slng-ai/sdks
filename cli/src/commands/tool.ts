@@ -221,8 +221,9 @@ export function toolCommand(): Command {
       `
 COMMANDS
   list                     list every tool available to your organisation
-  get <tool-name>          show one tool in full
-  run <tool-name>          execute one tool and report what happened
+  get <tool>               show one tool in full (by name, or by id with --id)
+  build <tool>             build a code tool so it can run (by name, or id with --id)
+  run <tool>               execute one tool (by name, or id with --id)
 
 EXAMPLES
   $ voiceai tool list                          every tool your agents can call
@@ -231,11 +232,16 @@ EXAMPLES
   $ voiceai tool get check_order --json | jq .arg_schema   the input schema
   $ voiceai tool get 3f2c... --id --json       by id, skipping the name lookup
   $ voiceai tool get 3f2c... --version 7 --json   one immutable published version
+  $ voiceai tool build check_order             build it before the first run
   $ echo '{"id":7}' | voiceai tool run check_order --confirm-side-effects
   $ voiceai tool run check_order --input sample.json --confirm-side-effects
 
 NOTES
-  Tool names are matched exactly and are case-sensitive.
+  Tool names are matched exactly and are case-sensitive. Pass \`--id\` on \`get\`,
+  \`build\`, or \`run\` to address the tool by id directly, skipping the name lookup.
+
+  A \`code\` tool must be built before its first run (and after its code changes) —
+  \`build\` runs that step. Other tool types do not need it.
 
   \`--json\` carries \`arg_schema\` — the JSON Schema of a tool's input, derived from
   the pydantic model for a code tool.
@@ -282,7 +288,7 @@ NOTES
     });
 
   cmd
-    .command("get <tool-name>")
+    .command("get <tool>")
     .description("Show one tool by its exact name, or by id with --id / --version")
     .option("--json", "Output JSON")
     .option("--id", "Treat the argument as a tool ID, skipping the name lookup")
@@ -340,12 +346,41 @@ NOTES
     });
 
   cmd
-    .command("run <tool-name>")
+    .command("build <tool>")
+    .description("Build a code tool (introspect its code) so it can run and publish")
+    .option("--id", "Treat the argument as a tool ID, skipping the name lookup")
+    .option("--json", "Output JSON")
+    .action(async (tool: string, opts) => {
+      const spinner = spin(`building ${tool}`);
+      let id: string;
+      try {
+        id = opts.id ? tool : (await resolveTool(tool, opts.json)).id;
+      } finally {
+        spinner?.stop();
+      }
+      // Introspect is the build step: it re-parses the code, rebuilds the code
+      // environment and re-derives arg_schema. The server rejects it on a
+      // non-code tool, so its error is surfaced rather than pre-empted.
+      const res = await agentsRequest<ToolDetail>(
+        "POST",
+        `/v1/agents/tools/${encodeURIComponent(id)}/introspect`,
+      );
+      if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
+      if (opts.json) {
+        printJson(res.data);
+        return;
+      }
+      printTool(res.data);
+    });
+
+  cmd
+    .command("run <tool>")
     .description("Execute one tool against your real dependencies")
     .option("--input <file>", "JSON input document, or - for stdin")
     .option("--confirm-side-effects", "Consent to executing the tool for real")
+    .option("--id", "Treat the argument as a tool ID, skipping the name lookup")
     .option("--json", "Output JSON")
-    .action(async (name: string, opts) => {
+    .action(async (tool: string, opts) => {
       const input = await readRunInput(opts.input);
       // Read the input before the consent check: a typo in the file is worth
       // hearing about without having to consent to a run first.
@@ -353,21 +388,21 @@ NOTES
       if (!opts.confirmSideEffects) {
         fail(
           opts.json,
-          `running ${name} executes the tool against your real dependencies. ` +
+          `running ${tool} executes the tool against your real dependencies. ` +
             "re-run with --confirm-side-effects to consent to that.",
         );
       }
 
-      const spinner = spin(`running ${name}`);
-      let chosen: ToolListItem;
+      const spinner = spin(`running ${tool}`);
+      let id: string;
       try {
-        chosen = await resolveTool(name, opts.json);
+        id = opts.id ? tool : (await resolveTool(tool, opts.json)).id;
       } finally {
         spinner?.stop();
       }
       const res = await agentsRequest<RunResult>(
         "POST",
-        `/v1/agents/tools/${encodeURIComponent(chosen.id)}/run`,
+        `/v1/agents/tools/${encodeURIComponent(id)}/run`,
         // Required literal. Supplied only because --confirm-side-effects was
         // passed: it is the operator's consent to execute their dependencies.
         { body: { sample_input: input.value, confirm_side_effects: true } },

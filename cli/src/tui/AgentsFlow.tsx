@@ -6,6 +6,7 @@ import TextInput from "ink-text-input";
 import Link from "ink-link";
 import { agentsRequest, formatAgentsError } from "../lib/agents";
 import { BrandSpinner } from "./BrandSpinner";
+import { KeyHints } from "./resourceKit";
 
 const DASHBOARD_URL = "https://app.slng.ai";
 
@@ -218,7 +219,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text color="red">✗ {mode.message}</Text>
-        <Text dimColor>esc to go back</Text>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }
@@ -230,9 +231,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
         {mode.lines.map((l, i) => (
           <Text key={i}>{l}</Text>
         ))}
-        <Box marginTop={1}>
-          <Text dimColor>esc to go back</Text>
-        </Box>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }
@@ -251,9 +250,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
             </Link>
           </Text>
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>esc to go back</Text>
-        </Box>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }
@@ -265,9 +262,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
         <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Text bold>Agents</Text>
           <Text dimColor>No agents yet. Create one with `voiceai agents create --file agent.json`.</Text>
-          <Box marginTop={1}>
-            <Text dimColor>esc to go back</Text>
-          </Box>
+          <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
         </Box>
       );
     }
@@ -292,9 +287,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>↑↓ choose · enter open · esc back</Text>
-        </Box>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );
   }
@@ -310,7 +303,6 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
       { label: "🌐  Test in browser (dashboard)", value: "test" },
       { label: "📑  Duplicate", value: "duplicate" },
       { label: "🗑   Delete", value: "delete" },
-      { label: "←   Back to list", value: "back" },
     ];
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
@@ -344,16 +336,14 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
                 case "delete":
                   setMode({ kind: "confirm-delete", agent: a });
                   break;
-                case "back":
-                  setMode({ kind: "list" });
-                  break;
               }
             }}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>esc back · edit agents with `voiceai agents update --file`</Text>
-        </Box>
+        <KeyHints
+          hints={[{ key: "esc", label: "back", nav: true }]}
+          note="edit agents with `voiceai agents update --file`"
+        />
       </Box>
     );
   }
@@ -373,9 +363,12 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
             onSubmit={(raw) => void dispatchCall(a, raw.trim())}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text dimColor>enter to dispatch · esc to cancel</Text>
-        </Box>
+        <KeyHints
+          hints={[
+            { key: "enter", label: "dispatch", nav: true },
+            { key: "esc", label: "cancel", nav: true },
+          ]}
+        />
       </Box>
     );
   }
@@ -406,9 +399,10 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
             ))}
           </Box>
         )}
-        <Box marginTop={1}>
-          <Text dimColor>{mode.items.length} call{mode.items.length === 1 ? "" : "s"} · dates in local time · esc to go back</Text>
-        </Box>
+        <KeyHints
+          hints={[{ key: "esc", label: "back", nav: true }]}
+          note={`${mode.items.length} call${mode.items.length === 1 ? "" : "s"} · dates in local time`}
+        />
       </Box>
     );
   }
@@ -431,7 +425,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
             }}
           />
         </Box>
-        <Text dimColor>esc to cancel</Text>
+        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
     );
   }

@@ -152,6 +152,44 @@ test("get --json emits a single object, never an array", async () => {
   expect(parsed.latest_version).toBe(3);
 });
 
+const UUID = "9f30e460-8d62-454d-acff-9e506cdc0768";
+
+// --- build (introspect) ----------------------------------------------------
+
+test("build resolves the name, then introspects the tool by id", async () => {
+  const rows = [item({ id: UUID, name: "check_order", latest_version: 2 })];
+  const r = await runCli(["tool", "build", "check_order"], (req) => {
+    const path = new URL(req.url).pathname;
+    if (path === "/v1/agents/tools") return json(rows);
+    if (path === `/v1/agents/tools/${UUID}/introspect`) return json({ ...rows[0], latest_version: 3 });
+    return json([], 404);
+  });
+  expect(r.code).toBe(0);
+  expect(r.stdout).toContain("latest_version        3");
+  expect(r.calls).toContain(`POST /v1/agents/tools/${UUID}/introspect`);
+});
+
+test("build --id introspects the tool directly, skipping the name lookup", async () => {
+  const r = await runCli(["tool", "build", UUID, "--id"], (req) =>
+    new URL(req.url).pathname === `/v1/agents/tools/${UUID}/introspect`
+      ? json(item({ id: UUID, name: "check_order", latest_version: 3 }))
+      : json([], 404),
+  );
+  expect(r.code).toBe(0);
+  expect(r.calls).toEqual([`POST /v1/agents/tools/${UUID}/introspect`]);
+});
+
+test("build surfaces the platform error on failure", async () => {
+  const r = await runCli(["tool", "build", "check_order", "--json"], () =>
+    json(
+      { detail: "d", error: { code: "CODE_TOOL_BUILD_REQUIRED", message: "nope", request_id: "r" } },
+      409,
+    ),
+  );
+  expect(r.code).toBe(1);
+  expect(JSON.parse(r.stdout).ok).toBe(false);
+});
+
 // --- get: not found (FR-007) -----------------------------------------------
 
 test("get exits 1 and explains case sensitivity when nothing matches", async () => {
@@ -378,6 +416,18 @@ test("run executes with consent and exits 0 on success", async () => {
   expect(r.code).toBe(0);
   expect(r.stdout).toContain("status                succeeded");
   expect(r.calls).toContain("POST /v1/agents/tools/id-org/run");
+});
+
+test("run --id runs the tool directly, skipping the name lookup", async () => {
+  const r = await runCli(
+    ["tool", "run", UUID, "--id", "--confirm-side-effects"],
+    (req) =>
+      new URL(req.url).pathname === `/v1/agents/tools/${UUID}/run`
+        ? json({ status: "succeeded" })
+        : json([], 404),
+  );
+  expect(r.code).toBe(0);
+  expect(r.calls).toEqual([`POST /v1/agents/tools/${UUID}/run`]);
 });
 
 test("run takes its input from stdin", async () => {
