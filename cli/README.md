@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/voiceai-cli?label=voiceai-cli&color=F2DD52)](https://www.npmjs.com/package/voiceai-cli)
 
-The official [Voiceai](https://slng.ai) CLI — text-to-speech, speech-to-text,
+The official [Voiceai](https://slng.ai) CLI: text-to-speech, speech-to-text,
 real-time streaming, and voice agents.
 
 ```
@@ -14,18 +14,38 @@ real-time streaming, and voice agents.
  ╚══════╝ ╚══════╝ ╚═╝  ╚═══╝  ╚═════╝  ╚═╝     ╚═╝
 
    Voice AI for builders — text-to-speech, speech-to-text, real-time.
-   v0.1.14
 
-   ❯ 🗣  Text → Speech - Synthesize
-     👂  Speech → Text - Transcribe
-     🤖  Agents - Browse & dispatch
-     ⚙️   Settings
-     ❌   Quit
+ What would you like to do?
 
-   ctrl+c quit
+ ❯ 🗣   Text → Speech - Synthesize
+   👂  Speech → Text - Transcribe
+   🤖  Agents - Browse & dispatch
+   🧰  Platform resources - Tools, MCP, secrets, trunks
+   ⚙️  Settings
+   ❌  Quit
+
+ [ctrl+c] quit
 ```
 
 Run `voiceai` to open the interactive TUI above, or pass flags to script it.
+
+## Contents
+
+- [Install](#install)
+- [Configure](#configure)
+- [Quick start](#quick-start)
+- [Interactive mode](#interactive-mode)
+- [Commands](#commands)
+  - [Global flags](#global-flags)
+  - [Text to speech](#text-to-speech) · [Speech to text](#speech-to-text)
+  - [Catalogs](#catalogs) · [Auth check](#auth-check)
+  - [Agents](#agents)
+  - [Platform resources](#platform-resources): [tools](#tools) · [MCP servers](#mcp-servers) · [secrets](#secrets) · [SIP trunks](#sip-trunks)
+  - [Configuration](#configuration-config)
+- [Reference](#reference)
+  - [Configuration file](#configuration-file) · [Environment variables](#environment-variables) · [Exit codes](#exit-codes) · [Audio dependencies](#external-audio-dependencies)
+- [Troubleshooting](#troubleshooting)
+- [More](#more)
 
 ## Install
 
@@ -54,16 +74,8 @@ Package name is `voiceai-cli`; the installed binary is `voiceai`. The
 postinstall step downloads a pre-built binary for your platform. Use
 Homebrew or the curl one-liner if you want to skip that network call.
 
-### macOS Gatekeeper note
-
-The pre-built macOS binary is currently unsigned. The first time you run it,
-Gatekeeper may block it. To clear the quarantine:
-
-```sh
-xattr -d com.apple.quarantine $(which voiceai)
-```
-
-Or right-click `voiceai` in Finder and choose **Open** once.
+On the first run, macOS may block the unsigned binary. See
+[Troubleshooting](#troubleshooting) to clear it.
 
 ## Configure
 
@@ -80,7 +92,7 @@ voiceai config set apiKey slng_cu_…
 ```
 
 You can also set `VOICEAI_API_KEY` in your environment. The first time you
-launch the TUI without a key, it'll prompt for one and save it.
+launch the TUI without a key, it prompts for one and saves it.
 
 Get a key at <https://app.slng.ai/api-keys>.
 
@@ -169,11 +181,42 @@ The list is a table (`AGENT · LANGUAGE · TELEPHONY · UPDATED`); enter opens a
 agent. **Dispatch a call** only appears when the agent has outbound telephony.
 **View calls** shows a color-coded table (green = completed, red = failed) with
 local-time dates. **Test in browser** opens the dashboard tester. Creating or
-editing agents is flag-mode only, via `--file` (see [Agents](#agents) below).
+editing agents is done with flags, via `--file` (see [Agents](#agents) below).
 
-## Flag mode
+**Platform resources**
 
-### Text → speech
+A nested menu for browsing the shared resources your agents reference:
+
+```
+Platform resources
+❯ 🔧  Tools - Browse shared tools
+  🧩  MCP servers - Browse & connect
+  🔐  Secrets - Browse & create
+  ☎️  Trunks - Browse SIP trunks
+```
+
+Tools, MCP servers, and trunks are read-only browsers; the MCP flow can also
+connect to a server, and the secrets flow can create entries. `esc` steps back
+to this menu, then to the home screen. The same operations are scriptable via
+the [Platform resources](#platform-resources) commands.
+
+## Commands
+
+Every command below also drives the interactive TUI; the flags let you script
+it. These flags work everywhere:
+
+### Global flags
+
+| Flag | Description |
+|---|---|
+| `--json` | Machine-readable output. `get` is always a single object; `list` is an array. |
+| `--profile <name>` | Use a named profile for this command (overrides the current default and `VOICEAI_PROFILE`). |
+| `--debug` | Verbose SDK logging (same as `VOICEAI_LOG=debug`). |
+
+Command-specific flags are listed with each command. Exit-code behavior is in
+[Reference → Exit codes](#exit-codes).
+
+### Text to speech
 
 ```sh
 # Friendly voice name resolves to the upstream voiceId.
@@ -182,7 +225,7 @@ voiceai tts "hi" -m slng/deepgram/aura:2-en -v amalthea
 # Save to a path of your choice (audio still plays unless stdout is a pipe).
 voiceai tts "save me" --out ~/voice.mp3
 
-# Pipe raw audio bytes — useful in scripts.
+# Pipe raw audio bytes, useful in scripts.
 voiceai tts "binary" > out.mp3
 
 # Stream chunks via WebSocket for low-latency playback.
@@ -195,7 +238,7 @@ voiceai tts "regional" --region eu-north-1
 Without `--out`, audio is also written to `$TMPDIR/voiceai-tts/` so you
 can replay or re-export later.
 
-### Speech → text
+### Speech to text
 
 ```sh
 # One-shot transcription of an audio file.
@@ -270,16 +313,12 @@ voiceai agents calls get a1b2 c3d4
 voiceai agents calls get --agent-id a1b2 --call-id c3d4   # equivalent
 ```
 
-Every subcommand supports `--json`. On failure the exit code is non-zero and,
-with `--json`, the API's error body is printed to stdout.
-
 #### Pushing a compiled package
 
-`unmute compile --target slng` writes a deployment body into `build/slng/` and
-stops — it opens no connection to SLNG, and it writes **names** everywhere the
-platform wants identifiers, because no compiler can invent an id a server
-assigns. `agents push` closes that gap: it resolves every name, mints the
-attachment ids the platform requires, and creates or replaces the agent.
+`unmute compile --target slng` writes a deployment body into `build/slng/`, but
+it writes **names** wherever the platform wants identifiers. `agents push`
+resolves those names, mints the ids the platform requires, and creates or
+replaces the agent.
 
 ```sh
 voiceai agents push examples/slng-support --dry-run   # check, change nothing
@@ -287,81 +326,22 @@ voiceai agents push examples/slng-support             # push it
 voiceai agents push . --json | jq -r '.agent.id'      # scriptable
 ```
 
-The directory may be the package root or the compiled `build/slng` directory.
+Nothing is created until every check passes, and updating an agent **replaces**
+it with what the package declares (references it no longer names are detached).
+Publishing a package's own `code`/`api_request` tools needs `--run-samples`, and
+a stricter `--require-resolved` mode exists for callers that have already
+resolved every reference.
 
-Nothing is created until every check passes. Missing vault entries and
-unresolved tool names are reported **together**, each with the dashboard page
-that fixes it — a push that cannot succeed leaves your organisation exactly as
-it was. Note that a vault entry of kind `variable` does not satisfy a tool's
-secret requirement; the platform counts secrets only.
+Full reference, including sample runs, MCP snapshots, and `--require-resolved`:
+[docs/agents-push.md](./docs/agents-push.md).
 
-Updating **replaces** the agent with what the package declares: a reference the
-package no longer names is detached, and configuration added in the dashboard
-since the last push is overwritten. `--dry-run` lists what would be detached
-before you commit to it.
+### Platform resources
 
-```sh
-voiceai agents push . --run-samples          # also execute each tool's sample
-```
+Read-only views of the shared resources your agents can reference: tools, MCP
+servers, vault secrets, and SIP trunks. Names in all four are matched **exactly
+and case-sensitively**.
 
-A package that ships its own tool bodies needs each one created and published
-before the agent can reference it, and the platform will not publish a `code` or
-`api_request` tool until one successful run has proved it. Those runs execute
-against your real dependencies — a webhook really fires — so `push` never
-performs one without `--run-samples`. Write the input as
-`build/slng/samples/<tool>.json`; a tool that needs a run and has no sample is
-reported before anything is created, not discovered halfway through.
-
-Packages carrying `mcp_refs` are resolved like any other reference: the server
-name becomes its id, and each tool's `observed_schema_hash` is copied from the
-platform's own capability snapshot — the same value `voiceai mcp tools <server>
---json` prints. Nothing connects to the MCP server to compute it.
-
-That snapshot does go stale. When it has, `push` says so and names the fix:
-
-```sh
-voiceai mcp run <server>       # connect now; also refreshes the snapshot
-```
-
-If the platform rejects a write because it has no current record of a server,
-`push` refreshes and retries once on its own.
-
-Updating an agent **replaces** its MCP attachments as well as its tool
-references, so an MCP server attached in the dashboard and not declared by the
-package is detached. `--dry-run` names every attachment that would go.
-
-#### Guarded resolved push
-
-`--require-resolved` is a stricter mode for a caller that has already resolved
-every reference to an exact checked identity — a `tool_id`/`version`, or an MCP
-`server_id`/`observed_schema_hash` — and wants those honoured **exactly**, never
-re-resolved by name and never refreshed:
-
-```sh
-voiceai agents push staged/ --require-resolved --expect-org org_abc --dry-run --json
-voiceai agents push staged/ --require-resolved --expect-org org_abc --json
-```
-
-`--expect-org` is confirmed against the credential's real account before any
-write, discovery, sample run, or tool operation — a mismatch, or an
-organisation that cannot be confirmed at all, aborts having changed nothing.
-Authored tool bodies are refused outright: this mode attaches checked published
-versions only, never a body it would create or update itself. Every
-reference's id, organisation scope, and (when a name is also given) name are
-checked directly against the platform — never resolved to the first same-name
-record — and an unavailable version or a changed MCP schema hash is refused
-rather than silently replaced. An MCP snapshot the platform would itself refuse
-to attach against — not healthy, probed at an older server revision, or past
-its refresh — is refused too, even when it still carries the checked hash. This
-mode never runs a sample and never refreshes a stale MCP capability snapshot on
-its own.
-
-The JSON document carries the explicit marker `resolution_contract: 1`, in both
-the dry-run and the success document, so a caller can tell a supporting release
-apart from an older CLI that would otherwise reject the flag or, worse, ignore
-it and push unchecked.
-
-### Tools
+#### Tools
 
 Read-only view of the tools your agents can call.
 
@@ -375,10 +355,7 @@ voiceai tool get check_order --json | jq .arg_schema   # the tool's input schema
 `list` prints `NAME`, `TYPE`, and `VERSION`, tab-separated, so `cut -f3` works. A
 tool that has never been published shows `-` rather than a version.
 
-Tool names are matched **exactly and case-sensitively** — `API_REQUEST` will not
-find `api_request`.
-
-`--json` carries `arg_schema`, the JSON Schema of the tool's input — derived from
+`--json` carries `arg_schema`, the JSON Schema of the tool's input, derived from
 the pydantic model for a `code` tool. `get --json` is always a single object,
 never an array.
 
@@ -390,7 +367,7 @@ voiceai tool get <tool_id> --id --json         # by id, skipping the name lookup
 voiceai tool get <tool_id> --version 7 --json  # one immutable published version
 ```
 
-Neither falls back to a name, the draft, or the latest version — a missing
+Neither falls back to a name, the draft, or the latest version; a missing
 version is an error. A version's parameters live at
 `snapshot_json.argument_schema`, a different field than the mutable draft's
 `arg_schema`.
@@ -404,11 +381,11 @@ voiceai tool run check_order --input sample.json --confirm-side-effects
 ```
 
 The input comes from `--input <file>`, from stdin, or is `{}` when neither is
-given, and is never printed back — it may hold a secret. **Nothing runs without
-`--confirm-side-effects`**: a run reaches the tool's real dependencies, and a
-webhook really fires. Exit is `0` only when the run succeeded.
+given, and is never printed back, since it may hold a secret. **Nothing runs
+without `--confirm-side-effects`**: a run reaches the tool's real dependencies,
+and a webhook really fires.
 
-### MCP servers
+#### MCP servers
 
 The MCP servers your agents can call.
 
@@ -421,30 +398,29 @@ voiceai mcp tools firecrawl-mcp --json | jq '.[].input_schema'
 voiceai mcp run firecrawl-mcp               # connect right now, and report
 ```
 
-`list` prints `NAME`, `TRANSPORT`, `STATUS`, and `TOOLS`, tab-separated. Server
-names are matched **exactly and case-sensitively**.
+`list` prints `NAME`, `TRANSPORT`, `STATUS`, and `TOOLS`, tab-separated.
 
-`STATUS` and `TOOLS` come from the last capability probe, not from a live call —
-a server can be listed and still be unreachable. `capability_observed_at` on
+`STATUS` and `TOOLS` come from the last capability probe, not from a live call,
+so a server can be listed and still be unreachable. `capability_observed_at` on
 `get` says when the probe ran.
 
-`tools` lists what one server exposes — `NAME` and the first line of each
+`tools` lists what one server exposes: `NAME` and the first line of each
 description, tab-separated. `tools --json` gives the whole array, with every
 tool's `input_schema`, `output_schema`, and `schema_hash`.
 
 `run` is the one command here that actually calls the server. It reports how
 long the server took, what it identifies itself as, and which tools appeared or
 went away since the last probe. A successful run also refreshes the platform's
-snapshot — which is what makes an agent referencing that server publishable
+snapshot, which is what makes an agent referencing that server publishable
 again once the snapshot has gone stale.
 
 Every subcommand reads the stored probe; none calls the server. If the probe was
 truncated, `tools` says so on stderr rather than presenting a short list as
 complete.
 
-`get` and `run` also address a server directly by id, skipping the name
-lookup — so a rename, or a different server reusing an old name, cannot
-redirect either one:
+`get` and `run` also address a server directly by id, skipping the name lookup,
+so a rename, or a different server reusing an old name, cannot redirect either
+one:
 
 ```sh
 voiceai mcp get <server_id> --id --json
@@ -453,7 +429,7 @@ voiceai mcp run <server_id> --id     # connects, then re-reads the same id once 
 
 Auth is reported as the vault secret's **name**, never its value.
 
-### Secrets
+#### Secrets
 
 Read-only view of your organisation's vault. Use it to check that a secret a tool
 declares is actually present before you rely on it.
@@ -466,7 +442,7 @@ voiceai secret get STRIPE_KEY >/dev/null   # exit 0 if present, 1 if not
 ```
 
 `list` prints `NAME`, `KIND`, `VALUE`, and `DESCRIPTION`, tab-separated, so
-`cut -f1` works. The `VALUE` column is `yes`/`no` — whether a value is stored,
+`cut -f1` works. The `VALUE` column is `yes`/`no`: whether a value is stored,
 never the value itself.
 
 **Values are never displayed.** The vault holds two kinds: a `secret` is
@@ -475,9 +451,9 @@ config the API *would* return in plaintext. The CLI redacts both, in every outpu
 mode including `--json`, so no vault value can end up in your terminal scrollback
 or your CI logs. Use `has_value` to tell whether an entry is populated.
 
-Secret names are matched **exactly and case-sensitively** — `stripe_key` will not
-find `STRIPE_KEY`. `get` exits non-zero when the name does not exist, so a shell
-script can gate on it without parsing output.
+`get` exits non-zero when the name does not exist, so a shell script can gate on
+it without parsing output.
+
 `create` makes a new entry, or every entry in a dotenv-style file:
 
 ```sh
@@ -489,8 +465,8 @@ voiceai secret create --kind variable REGION      # a variable, not a secret
 
 It reads the vault first and **never overwrites silently**. Any name already
 present is listed by name and confirmed before anything is written; `--overwrite`
-answers in advance. Without it the run is refused whole — not even the safe
-creates go through — so `--json` reports `would_create` and `would_overwrite` for
+answers in advance. Without it the run is refused whole (not even the safe
+creates go through), so `--json` reports `would_create` and `would_overwrite` for
 a script to act on.
 
 The file is parsed with the platform's own dotenv parser, so comments, `export `
@@ -505,7 +481,7 @@ prompted for without echo, or read from stdin when piped:
 printf %s "$TOKEN" | voiceai secret create STRIPE_KEY
 ```
 
-### SIP trunks
+#### SIP trunks
 
 Read-only view of your organisation's SIP trunks, inbound and outbound.
 
@@ -526,23 +502,23 @@ both sides and `DIRECTION` is part of a trunk's identity.
 
 The listing is organisation-wide. The platform exposes trunks only through an
 agent, so the command reads every agent in your organisation and merges the
-results — that is what makes an inbound trunk already attached to one agent
+results. That is what makes an inbound trunk already attached to one agent
 visible. An organisation with no agents cannot be enumerated at all, and says so
 rather than reporting an empty list.
 
-`get` adds no fields — the reachable view carries no SIP address, transport,
+`get` adds no fields. The reachable view carries no SIP address, transport,
 provider, or setup mode, and there is no per-trunk route, so it costs the same
 reads as `list`. What it adds is the breakdown `list` folds away: `selectable`,
 `is_current`, and `unavailable_reason` are **per agent**, and `list` reduces them
 to one `usable` flag and the first `in_use_by` name it sees. A trunk listed as
-usable can still be unusable for the agent you care about — `get` says which.
+usable can still be unusable for the agent you care about, and `get` says which.
 A name on both sides is refused rather than guessed; pass `--direction`.
 
 One limit worth knowing. The platform withholds any trunk that is both unusable
 and attached to no agent, so such a trunk cannot appear in either command; both
 say so on stderr on every run.
 
-### Configuration
+### Configuration (`config`)
 
 ```sh
 voiceai config get                         # print the current profile (apiKey masked)
@@ -562,12 +538,14 @@ Setting `defaultTtsModel` (and optionally `defaultTtsVoice`) skips the
 picker steps in the TUI. Same for `defaultSttModel` / `defaultSttMode` /
 `defaultSttInput`.
 
-`config reset` is what `brew uninstall` won't do for you — Homebrew leaves
+`config reset` is what `brew uninstall` won't do for you: Homebrew leaves
 files in `~/.config/` untouched. Run it before uninstalling, or any time
 you want the TUI to show the first-run API-key prompt again. Pass `--all`
 to also clear the `$TMPDIR/voiceai-tts/` replay cache.
 
-## Configuration reference
+## Reference
+
+### Configuration file
 
 `~/.config/voiceai/config.json` stores one or more named profiles:
 
@@ -599,17 +577,30 @@ Per-profile keys (env overrides apply to the resolved profile):
 | `defaultTtsModel` | — | Skip the TTS model picker in the TUI. |
 | `defaultTtsVoice` | — | Skip the TTS voice picker (requires `defaultTtsModel`). |
 | `defaultSttModel` | — | Skip the STT model picker. |
-| `defaultSttMode` | — | `mic` or `file` — skip the source picker. |
+| `defaultSttMode` | — | `mic` or `file`; skip the source picker. |
 | `defaultSttInput` | — | Audio input device for mic mode (skip device picker). |
 
-Additional environment variables:
+### Environment variables
 
 | Env var | Description |
 |---|---|
 | `VOICEAI_PROFILE` | Select a named profile (overridden by `--profile`). |
 | `VOICEAI_LOG` | `debug` for verbose SDK logging (also enabled by `--debug`). |
 
-## External audio dependencies
+Every per-profile key with an env override in the table above can also be set
+this way.
+
+### Exit codes
+
+Every command exits `0` on success and non-zero on failure. With `--json`, a
+failure also prints the API's error body to stdout, so a script can read it.
+A few commands lean on this deliberately:
+
+- `voiceai secret get <name>` exits non-zero when the entry does not exist, so a
+  shell script can gate on it without parsing output.
+- `voiceai tool run …` exits `0` only when the tool run actually succeeded.
+
+### External audio dependencies
 
 The CLI shells out to your system's audio tools rather than opening devices
 directly. Install whichever's appropriate:
@@ -617,6 +608,26 @@ directly. Install whichever's appropriate:
 - **macOS**: `afplay` (built-in). For STT mic: `brew install sox`.
 - **Linux**: `ffplay` (`apt install ffmpeg`) or `paplay`. For STT mic:
   `apt install sox` or `apt install alsa-utils`.
+
+## Troubleshooting
+
+**macOS blocks the binary on first run.** The pre-built macOS binary is
+currently unsigned, so Gatekeeper may block it the first time. Clear the
+quarantine:
+
+```sh
+xattr -d com.apple.quarantine $(which voiceai)
+```
+
+Or right-click `voiceai` in Finder and choose **Open** once.
+
+**No audio plays, or the mic isn't found.** The CLI relies on system audio
+tools rather than opening devices itself. Install the ones for your platform
+(see [External audio dependencies](#external-audio-dependencies)).
+
+**The TUI stopped asking for an API key.** Once a key is saved, the first-run
+prompt won't return. Run `voiceai config reset` to clear `~/.config/voiceai`
+(and the legacy `slng` dir) and see the first-run prompt again.
 
 ## More
 
