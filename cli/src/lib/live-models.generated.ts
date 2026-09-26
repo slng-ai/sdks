@@ -56,6 +56,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "da",
       "el",
       "en",
+      "es",
       "et",
       "fa",
       "fi",
@@ -99,12 +100,14 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "deployments": {
       "regions": [
         "au",
-        "eu",
+        "eu-west",
+        "in",
         "us-east"
       ],
       "worldParts": [
         "au",
-        "eu",
+        "eu-west",
+        "in",
         "us-east"
       ],
       "platforms": [],
@@ -137,11 +140,11 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/stt/deepgram-nova-3-medical/nova-3-medical-http",
     "deployments": {
       "regions": [
-        "eu",
+        "eu-west",
         "us-east"
       ],
       "worldParts": [
-        "eu",
+        "eu-west",
         "us-east"
       ],
       "platforms": [],
@@ -176,10 +179,10 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/stt/gradium-stt/gradium-stt-default-ws",
     "deployments": {
       "regions": [
-        "eu"
+        "eu-west"
       ],
       "worldParts": [
-        "eu"
+        "eu-west"
       ],
       "platforms": [],
       "protocols": [
@@ -207,10 +210,10 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/stt/reson8-stt-v1/reson8-stt-v1-ws",
     "deployments": {
       "regions": [
-        "eu"
+        "eu-west"
       ],
       "worldParts": [
-        "eu"
+        "eu-west"
       ],
       "platforms": [],
       "protocols": [
@@ -606,7 +609,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
         "europe-west4"
       ],
       "worldParts": [
-        "eu"
+        "eu-north"
       ],
       "platforms": [],
       "protocols": [
@@ -707,12 +710,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/stt/soniox-speech-ai-rt-v3/speech-ai-real-time-v4-http",
     "deployments": {
       "regions": [
-        "eu",
+        "eu-west",
         "jp",
         "us-central"
       ],
       "worldParts": [
-        "eu",
+        "eu-west",
         "jp",
         "us-central"
       ],
@@ -797,12 +800,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "streaming": true,
     "deployments": {
       "regions": [
-        "eu",
+        "eu-west",
         "jp",
         "us-central"
       ],
       "worldParts": [
-        "eu",
+        "eu-west",
         "jp",
         "us-central"
       ],
@@ -887,12 +890,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/stt/soniox-speech-ai-real-time-v5/speech-ai-real-time-v5-ws",
     "deployments": {
       "regions": [
-        "eu",
+        "eu-west",
         "jp",
         "us-central"
       ],
       "worldParts": [
-        "eu",
+        "eu-west",
         "jp",
         "us-central"
       ],
@@ -964,12 +967,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/tts/cartesia-sonic-3/cartesia-sonic-3-ws",
     "deployments": {
       "regions": [
-        "eu",
+        "eu-west",
         "in",
         "us-central"
       ],
       "worldParts": [
-        "eu",
+        "eu-west",
         "in",
         "us-central"
       ],
@@ -1042,12 +1045,41 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/tts/cartesia-sonic-3-5/cartesia-sonic-3-5-ws",
     "deployments": {
       "regions": [
-        "eu",
+        "au",
+        "eu-west",
         "in",
         "us-central"
       ],
       "worldParts": [
-        "eu",
+        "au",
+        "eu-west",
+        "in",
+        "us-central"
+      ],
+      "platforms": [],
+      "protocols": [
+        "wss"
+      ]
+    }
+  },
+  {
+    "code": "cartesia/sonic:3.6",
+    "enabled": true,
+    "internal": false,
+    "service_type": "tts",
+    "name": "Sonic 3.6",
+    "provider_code": "cartesia",
+    "streaming": true,
+    "deployments": {
+      "regions": [
+        "au",
+        "eu-west",
+        "in",
+        "us-central"
+      ],
+      "worldParts": [
+        "au",
+        "eu-west",
         "in",
         "us-central"
       ],
@@ -1084,12 +1116,14 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "deployments": {
       "regions": [
         "au",
-        "eu",
+        "eu-west",
+        "in",
         "us-east"
       ],
       "worldParts": [
         "au",
-        "eu",
+        "eu-west",
+        "in",
         "us-east"
       ],
       "platforms": [],
@@ -1190,6 +1224,44 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     }
   },
   {
+    "code": "gradium/tts:default",
+    "enabled": true,
+    "internal": false,
+    "service_type": "tts",
+    "name": "Gradium TTS",
+    "provider_code": "gradium",
+    "short_description": "Seamless real-time streaming with natural, expressive speech that masters complex pronunciations. Perfect text-audio synchronization through high-precision word-level timestamps.",
+    "capabilities": [
+      "Streaming",
+      "Expressive voice",
+      "Customizable"
+    ],
+    "languages": [
+      "de",
+      "en",
+      "es",
+      "fr",
+      "ja",
+      "ko",
+      "pt"
+    ],
+    "streaming": true,
+    "docs_url": "https://docs.slng.ai/api-reference/tts/gradium-tts/gradium-tts-default-http",
+    "deployments": {
+      "regions": [
+        "eu-west"
+      ],
+      "worldParts": [
+        "eu-west"
+      ],
+      "platforms": [],
+      "protocols": [
+        "https",
+        "wss"
+      ]
+    }
+  },
+  {
     "code": "kugelaudio/kugel:2",
     "enabled": true,
     "internal": false,
@@ -1248,10 +1320,10 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/tts/kugel-2/kugel-2-ws",
     "deployments": {
       "regions": [
-        "eu"
+        "eu-west"
       ],
       "worldParts": [
-        "eu"
+        "eu-west"
       ],
       "platforms": [],
       "protocols": [
@@ -1300,7 +1372,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "regions": [
         "ae",
         "au",
-        "eu",
+        "eu-west",
         "gb",
         "in",
         "jp",
@@ -1310,7 +1382,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       "worldParts": [
         "ae",
         "au",
-        "eu",
+        "eu-west",
         "gb",
         "in",
         "jp",
@@ -1480,108 +1552,7 @@ export const LIVE_MODELS: readonly LiveModel[] = [
       ],
       "worldParts": [
         "au",
-        "eu"
-      ],
-      "platforms": [],
-      "protocols": [
-        "https",
-        "wss"
-      ]
-    }
-  },
-  {
-    "code": "slng/inworld/max:1.5",
-    "enabled": true,
-    "internal": false,
-    "service_type": "tts",
-    "name": "TTS 1.5 Max",
-    "provider_code": "inworld",
-    "short_description": "Realtime AI that feels as human as it sounds.",
-    "capabilities": [
-      "Streaming",
-      "Human sound",
-      "SOTA"
-    ],
-    "languages": [
-      "af",
-      "am",
-      "ar",
-      "as",
-      "az",
-      "be",
-      "bg",
-      "bn",
-      "bs",
-      "ca",
-      "cs",
-      "da",
-      "de",
-      "el",
-      "en",
-      "es",
-      "et",
-      "eu",
-      "fa",
-      "fi",
-      "fr",
-      "ga",
-      "gl",
-      "gu",
-      "he",
-      "hi",
-      "hr",
-      "ht",
-      "hu",
-      "hy",
-      "id",
-      "is",
-      "it",
-      "ja",
-      "jv",
-      "ka",
-      "kk",
-      "kn",
-      "ko",
-      "ln",
-      "lo",
-      "lt",
-      "lv",
-      "mk",
-      "ms",
-      "my",
-      "nb",
-      "ne",
-      "nl",
-      "no",
-      "pa",
-      "pl",
-      "pt",
-      "ro",
-      "ru",
-      "sc",
-      "sk",
-      "sl",
-      "sm",
-      "so",
-      "sq",
-      "sr",
-      "sv",
-      "ta",
-      "te",
-      "tl",
-      "uk",
-      "vi",
-      "zh",
-      "zu"
-    ],
-    "streaming": true,
-    "docs_url": "https://docs.slng.ai/api-reference/tts/inworld-max-1-5/inworld-max-1-5-ws",
-    "deployments": {
-      "regions": [
-        "nebius-eu-north1"
-      ],
-      "worldParts": [
-        "eu"
+        "eu-north"
       ],
       "platforms": [],
       "protocols": [
@@ -1658,12 +1629,12 @@ export const LIVE_MODELS: readonly LiveModel[] = [
     "docs_url": "https://docs.slng.ai/api-reference/tts/soniox-tts-v1/soniox-tts-v1-http",
     "deployments": {
       "regions": [
-        "eu",
+        "eu-west",
         "jp",
         "us-central"
       ],
       "worldParts": [
-        "eu",
+        "eu-west",
         "jp",
         "us-central"
       ],
