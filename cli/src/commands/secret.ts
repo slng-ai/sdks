@@ -15,10 +15,11 @@ export interface VaultEntry {
   id: string;
   organisation_id: string;
   name: string;
-  // A "variable" is non-sensitive config living in the same vault as secrets.
-  kind: "secret" | "variable";
+  // The API no longer returns this: every entry is a secret. Kept optional so a
+  // response that still says `variable` is never counted as a secret.
+  kind?: "secret" | "variable";
   description: string | null;
-  // Never surfaced. null for secrets; decrypted plaintext for variables.
+  // Never surfaced. The API returns null, but redaction does not rely on that.
   value?: string | null;
   has_value: boolean;
   is_managed: boolean;
@@ -35,10 +36,10 @@ export interface VaultEntry {
 /**
  * Strip `value` at the response boundary, before any renderer sees the record.
  *
- * Deliberately unconditional. `kind: "secret"` always comes back null, but
- * `kind: "variable"` comes back as decrypted plaintext — so dumping a raw
- * record under --json would print a live vault value to stdout. One rule at one
- * place is what stops a future output path from forgetting.
+ * Deliberately unconditional. The vault holds secrets only and returns `value`
+ * as null, but an API that ever sends a plaintext value back must not reach
+ * stdout under --json. One rule at one place is what stops a future output path
+ * from forgetting.
  */
 export function redact<T extends { value?: string | null }>(entry: T): Omit<T, "value"> {
   const { value: _value, ...rest } = entry;
@@ -109,9 +110,6 @@ export function getSecret(name: string): Promise<AgentsResult<VaultEntry>> {
   return agentsRequest<VaultEntry>("GET", `/v1/agents/secrets/${encodeURIComponent(name)}`);
 }
 
-export const KINDS = ["secret", "variable"] as const;
-export type Kind = (typeof KINDS)[number];
-
 // The platform requires SCREAMING_SNAKE_CASE names. Mirror the rule client-side
 // so a bad name is caught before the request instead of coming back as a 422.
 const SECRET_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
@@ -125,12 +123,16 @@ export function secretNameError(name: string): string | null {
   );
 }
 
-/** Create. The platform has no upsert: POST on a name that exists is an error. */
-export function createSecret(name: string, kind: Kind, value: string) {
-  return agentsRequest("POST", "/v1/agents/secrets", { body: { name, kind, value } });
+/**
+ * Create. The platform has no upsert: POST on a name that exists is an error.
+ * The body is `name` and `value` only: the vault stores secrets alone, and the
+ * route rejects a `kind` field with 422 `extra_forbidden`.
+ */
+export function createSecret(name: string, value: string) {
+  return agentsRequest("POST", "/v1/agents/secrets", { body: { name, value } });
 }
 
-/** Overwrite an existing entry's value. `kind` is fixed at creation. */
+/** Overwrite an existing entry's value. */
 export function updateSecret(name: string, value: string) {
   return agentsRequest("PATCH", `/v1/agents/secrets/${encodeURIComponent(name)}`, {
     body: { value },
@@ -251,7 +253,7 @@ export function partition(
 
 /** One field per line. Takes an already-redacted entry; it does not redact. */
 export function printSecret(entry: Record<string, unknown>): void {
-  const first = ["name", "kind", "has_value", "description", "revision", "is_managed"];
+  const first = ["name", "has_value", "description", "revision", "is_managed"];
   const keys = [...first, ...Object.keys(entry).filter((k) => !first.includes(k))];
   for (const k of keys) {
     const v = entry[k];
@@ -264,7 +266,7 @@ export function printSecret(entry: Record<string, unknown>): void {
 
 export function secretCommand(): Command {
   const cmd = new Command("secret")
-    .description("Inspect the secrets and variables in your organisation's vault")
+    .description("Inspect the secrets in your organisation's vault")
     .addHelpText(
       "afterAll",
       `
@@ -274,7 +276,7 @@ COMMANDS
   create <secret-name>     create one entry, or a whole file of them
 
 EXAMPLES
-  $ voiceai secret list                            every secret and variable
+  $ voiceai secret list                            every secret
   $ voiceai secret list --json | jq '.[].name'     scriptable
   $ voiceai secret get STRIPE_KEY                  one entry, all properties
   $ voiceai secret get STRIPE_KEY >/dev/null       exit 0 if present, 1 if not
@@ -285,9 +287,8 @@ EXAMPLES
 NOTES
   Secret names are matched exactly and are case-sensitive.
 
-  Values are never displayed. Entries of kind \`secret\` cannot be read back at
-  all; entries of kind \`variable\` could be, but this command redacts them too.
-  Use \`has_value\` to tell whether an entry is populated.
+  Values are never displayed: a secret cannot be read back at all. Use
+  \`has_value\` to tell whether an entry is populated.
 
   \`create\` reads the vault first and never overwrites silently. An entry that
   already exists is named and confirmed; \`--overwrite\` answers in advance, and
@@ -354,11 +355,18 @@ NOTES
     .command("create [secret-name]")
     .description("Create a vault entry, or every entry in a dotenv-style file")
     .option("--secrets-file <path>", "Create one entry per KEY=VALUE line in this file")
-    .addOption(new Option("--kind <kind>", "Entry kind for anything created").choices(KINDS).default("secret"))
+    // Kept hidden so scripts that passed `--kind secret` keep working. The vault
+    // no longer has kinds, so anything else is refused before a request is made.
+    .addOption(new Option("--kind <kind>").hideHelp())
     .option("--overwrite", "Also replace the value of entries that already exist")
     .option("--json", "Output JSON")
     .action(async (name: string | undefined, opts) => {
-      const kind: Kind = opts.kind;
+      if (opts.kind !== undefined && opts.kind !== "secret") {
+        fail(
+          opts.json,
+          `--kind ${opts.kind} is not supported: the vault stores secrets only. drop --kind.`,
+        );
+      }
       if (Boolean(name) === Boolean(opts.secretsFile)) {
         fail(opts.json, "give either a name or --secrets-file, not both and not neither.");
       }
@@ -422,7 +430,7 @@ NOTES
       let failed = false;
       for (const p of [...creates, ...overwrites]) {
         const isNew = creates.includes(p);
-        const res = isNew ? await createSecret(p.name, kind, p.value) : await updateSecret(p.name, p.value);
+        const res = isNew ? await createSecret(p.name, p.value) : await updateSecret(p.name, p.value);
         if (res.ok) {
           done.push({ name: p.name, action: isNew ? "created" : "overwritten" });
         } else {

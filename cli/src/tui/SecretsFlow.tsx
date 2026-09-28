@@ -4,7 +4,6 @@ import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import { formatAgentsError } from "../lib/agents";
 import {
-  KINDS,
   createSecret,
   getSecret,
   listSecrets,
@@ -12,7 +11,6 @@ import {
   secretNameError,
   updateSecret,
   valueCell,
-  type Kind,
   type VaultEntry,
 } from "../commands/secret";
 import { DetailPanel, ErrorView, KeyHints, Loading, ResultView, dateWithAge, pad } from "./resourceKit";
@@ -40,9 +38,8 @@ type Mode =
   | { kind: "detail"; entry: Record<string, unknown> }
   | { kind: "change-value"; entry: Record<string, unknown> }
   | { kind: "create-name" }
-  | { kind: "create-kind" }
-  | { kind: "create-value"; entryKind: Kind }
-  | { kind: "create-confirm-overwrite"; entryKind: Kind; value: string }
+  | { kind: "create-value" }
+  | { kind: "create-confirm-overwrite"; value: string }
   | { kind: "busy"; label: string }
   | { kind: "result"; title: string; lines: string[]; back: Mode }
   | { kind: "error"; message: string; back: Mode };
@@ -97,14 +94,11 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
         resetDraft();
         setMode({ kind: "list" });
         break;
-      case "create-kind":
+      case "create-value":
         setMode({ kind: "create-name" });
         break;
-      case "create-value":
-        setMode({ kind: "create-kind" });
-        break;
       case "create-confirm-overwrite":
-        setMode({ kind: "create-value", entryKind: mode.entryKind });
+        setMode({ kind: "create-value" });
         break;
       case "result":
       case "error":
@@ -152,7 +146,6 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
 
   if (mode.kind === "detail") {
     const e = mode.entry;
-    const kind = String(e.kind ?? "secret");
     const managed = e.is_managed === true;
     const created = e.created_at;
     const updated = e.updated_at;
@@ -162,7 +155,6 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
           icon="🔑"
           title={String(e.name ?? "")}
           badges={[
-            { text: kind, color: kind === "secret" ? "yellow" : "cyan" },
             { text: managed ? "managed" : "unmanaged", color: managed ? "yellow" : undefined },
           ]}
           sections={[
@@ -223,7 +215,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
                 });
                 return;
               }
-              void write(name, (mode.entry.kind as Kind) || "secret", raw, true);
+              void write(name, raw, true);
             }}
           />
         </Box>
@@ -261,7 +253,7 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
                 return;
               }
               setDraftName(name);
-              setMode({ kind: "create-kind" });
+              setMode({ kind: "create-value" });
             }}
           />
         </Box>
@@ -278,24 +270,6 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
             note="SCREAMING_SNAKE_CASE"
           />
         )}
-      </Box>
-    );
-  }
-
-  if (mode.kind === "create-kind") {
-    return (
-      <Box flexDirection="column" marginTop={1} paddingX={1}>
-        <Text bold>Kind · {draftName.trim()}</Text>
-        <Box marginTop={1}>
-          <SelectInput
-            items={KINDS.map((k) => ({ label: k, value: k }))}
-            onSelect={(item) => setMode({ kind: "create-value", entryKind: item.value as Kind })}
-          />
-        </Box>
-        <KeyHints
-          hints={[{ key: "esc", label: "back", nav: true }]}
-          note="secret = sensitive · variable = non-sensitive config"
-        />
       </Box>
     );
   }
@@ -318,9 +292,9 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
               const name = draftName.trim();
               const exists = secrets.some((s) => s.name === name);
               if (exists) {
-                setMode({ kind: "create-confirm-overwrite", entryKind: mode.entryKind, value: raw });
+                setMode({ kind: "create-confirm-overwrite", value: raw });
               } else {
-                void write(name, mode.entryKind, raw, false);
+                void write(name, raw, false);
               }
             }}
           />
@@ -348,8 +322,8 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
               { label: "Yes, overwrite", value: "yes" },
             ]}
             onSelect={(item) => {
-              if (item.value === "yes") void write(name, mode.entryKind, mode.value, true);
-              else setMode({ kind: "create-value", entryKind: mode.entryKind });
+              if (item.value === "yes") void write(name, mode.value, true);
+              else setMode({ kind: "create-value" });
             }}
           />
         </Box>
@@ -374,10 +348,10 @@ export function SecretsFlow({ onExit }: Props): React.ReactElement {
     setMode({ kind: "detail", entry: redact(res.data) as unknown as Record<string, unknown> });
   }
 
-  async function write(name: string, entryKind: Kind, value: string, overwrite: boolean): Promise<void> {
+  async function write(name: string, value: string, overwrite: boolean): Promise<void> {
     setMode({ kind: "busy", label: `Saving ${name}…` });
     // The platform has no upsert: create for a new name, PATCH the value otherwise.
-    const res = overwrite ? await updateSecret(name, value) : await createSecret(name, entryKind, value);
+    const res = overwrite ? await updateSecret(name, value) : await createSecret(name, value);
     if (!res.ok) {
       setMode({ kind: "error", message: formatAgentsError(res), back: { kind: "list" } });
       return;

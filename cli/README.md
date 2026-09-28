@@ -292,8 +292,7 @@ The directory may be the package root or the compiled `build/slng` directory.
 Nothing is created until every check passes. Missing vault entries and
 unresolved tool names are reported **together**, each with the dashboard page
 that fixes it — a push that cannot succeed leaves your organisation exactly as
-it was. Note that a vault entry of kind `variable` does not satisfy a tool's
-secret requirement; the platform counts secrets only.
+it was.
 
 Updating **replaces** the agent with what the package declares: a reference the
 package no longer names is detached, and configuration added in the dashboard
@@ -459,21 +458,20 @@ Read-only view of your organisation's vault. Use it to check that a secret a too
 declares is actually present before you rely on it.
 
 ```sh
-voiceai secret list                        # every secret and variable
+voiceai secret list                        # every secret
 voiceai secret list --json | jq '.[].name' # scriptable
 voiceai secret get STRIPE_KEY              # one entry, every property
 voiceai secret get STRIPE_KEY >/dev/null   # exit 0 if present, 1 if not
 ```
 
-`list` prints `NAME`, `KIND`, `VALUE`, and `DESCRIPTION`, tab-separated, so
+`list` prints `NAME`, `VALUE`, and `DESCRIPTION`, tab-separated, so
 `cut -f1` works. The `VALUE` column is `yes`/`no` — whether a value is stored,
 never the value itself.
 
-**Values are never displayed.** The vault holds two kinds: a `secret` is
-write-once and cannot be read back at all, while a `variable` is non-sensitive
-config the API *would* return in plaintext. The CLI redacts both, in every output
-mode including `--json`, so no vault value can end up in your terminal scrollback
-or your CI logs. Use `has_value` to tell whether an entry is populated.
+**Values are never displayed.** A secret is write-once and cannot be read back
+at all, and the CLI also strips any `value` field in every output mode including
+`--json`, so no vault value can end up in your terminal scrollback or your CI
+logs. Use `has_value` to tell whether an entry is populated.
 
 Secret names are matched **exactly and case-sensitively** — `stripe_key` will not
 find `STRIPE_KEY`. `get` exits non-zero when the name does not exist, so a shell
@@ -484,7 +482,6 @@ script can gate on it without parsing output.
 voiceai secret create STRIPE_KEY                  # prompts for the value, no echo
 voiceai secret create --secrets-file .env.local   # one entry per KEY=VALUE
 voiceai secret create --secrets-file .env --overwrite     # replace what exists
-voiceai secret create --kind variable REGION      # a variable, not a secret
 ```
 
 It reads the vault first and **never overwrites silently**. Any name already
