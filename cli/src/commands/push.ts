@@ -406,10 +406,11 @@ export function buildPlan(input: PlanInputs): PushPlan {
   const missingSecrets: string[] = [];
   for (const name of requiredSecretNames(pkg)) {
     const entry = bySecretName.get(name);
-    // A `variable` of the right name does NOT satisfy a secret requirement: the
-    // platform's secrets_exist gate counts kind === "secret" only.
+    // A `variable` of the right name does NOT satisfy a secret requirement. The
+    // vault API no longer returns `kind` (every entry is a secret), so only an
+    // entry that explicitly says `variable` is refused; a missing kind is a secret.
     if (!entry) missingSecrets.push(name);
-    else if (entry.kind !== "secret") missingSecrets.push(`${name} (exists as a variable, not a secret)`);
+    else if (entry.kind === "variable") missingSecrets.push(`${name} (exists as a variable, not a secret)`);
   }
   if (missingSecrets.length) {
     blockers.push({
@@ -769,7 +770,7 @@ export async function buildResolvedPlan(input: ResolvedPlanInputs): Promise<Push
   for (const name of requiredSecretNames(pkg)) {
     const entry = bySecretName.get(name);
     if (!entry) missingSecrets.push(name);
-    else if (entry.kind !== "secret") missingSecrets.push(`${name} (exists as a variable, not a secret)`);
+    else if (entry.kind === "variable") missingSecrets.push(`${name} (exists as a variable, not a secret)`);
   }
   if (missingSecrets.length) {
     blockers.push({

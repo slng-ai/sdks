@@ -259,6 +259,14 @@ test("a vault entry of kind variable does not satisfy a required secret", () => 
   expect(blocker?.items[0]).toContain("variable");
 });
 
+test("a vault entry with no kind satisfies it (the vault API no longer returns kind)", () => {
+  const plan = planFor({
+    pkgDir: writePackage({ agent: { system_prompt: "{{$CRM_TOKEN}}" } }),
+    secrets: [{ ...secret("CRM_TOKEN"), kind: undefined }],
+  });
+  expect(plan.blockers.find((b) => b.kind === "vault_missing")).toBeUndefined();
+});
+
 test("a vault entry of kind secret satisfies it", () => {
   const plan = planFor({
     pkgDir: writePackage({ agent: { system_prompt: "{{$CRM_TOKEN}}" } }),
