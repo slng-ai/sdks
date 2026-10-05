@@ -1,4 +1,7 @@
 import { test, expect, afterEach } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { listAllTools, versionCell, PAGE_SIZE, type ToolListItem } from "./tool";
 
 process.env.VOICEAI_API_KEY = "slng_test_key";
@@ -492,4 +495,170 @@ test("run never echoes the input document", async () => {
     stdin: '{"token":"sk-super-secret"}',
   });
   expect(r.stdout + r.stderr).not.toContain("sk-super-secret");
+});
+
+// --- create / update / publish ---------------------------------------------
+
+const CODE = `from pydantic import BaseModel
+
+
+class Input(BaseModel):
+    order_id: str
+
+
+class Output(BaseModel):
+    status: str
+
+
+def handler(input: Input) -> Output:
+    return Output(status="shipped")
+`;
+
+const ARG_SCHEMA = { type: "object", properties: { order_id: { type: "string" } }, required: ["order_id"] };
+
+/** A Python file in a temp directory, removed after the test. */
+function pyFile(name: string, content: string): string {
+  const dir = mkdtempSync(join(tmpdir(), "tool-create-"));
+  pyDirs.push(dir);
+  const path = join(dir, name);
+  writeFileSync(path, content);
+  return path;
+}
+const pyDirs: string[] = [];
+afterEach(() => {
+  for (const d of pyDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+/**
+ * A stub platform for the write path: an empty catalogue unless `existing` is
+ * given, a vault holding `secrets`, and a record of every write body.
+ */
+function writeServer(opts: { existing?: ToolListItem[]; secrets?: string[]; publish?: [number, unknown] } = {}) {
+  const bodies: Record<string, unknown> = {};
+  const handler = async (req: Request) => {
+    const path = new URL(req.url).pathname;
+    const key = `${req.method} ${path}`;
+    if (req.method !== "GET" && req.headers.get("content-length") !== "0") {
+      const text = await req.text();
+      if (text) bodies[key] = JSON.parse(text);
+    }
+    if (key === "GET /v1/agents/tools") return json(opts.existing ?? []);
+    if (key === "GET /v1/agents/secrets") {
+      return json((opts.secrets ?? []).map((name) => ({ name, kind: "secret" })));
+    }
+    if (key === "POST /v1/agents/tools") return json({ id: UUID, name: "order_status" }, 201);
+    if (key === `PATCH /v1/agents/tools/${UUID}`) return json({ id: UUID, name: "order_status" });
+    if (key === `POST /v1/agents/tools/${UUID}/introspect`) {
+      return json({ id: UUID, name: "order_status", arg_schema: ARG_SCHEMA });
+    }
+    if (key === `POST /v1/agents/tools/${UUID}/publish`) {
+      const [status, body] = opts.publish ?? [200, { published: true, version_number: 1, checks: {} }];
+      return json(body, status);
+    }
+    return json({ detail: "unexpected" }, 500);
+  };
+  return { handler, bodies };
+}
+
+test("create posts the file as a code tool, builds it, and prints its arguments", async () => {
+  const file = pyFile("order_status.py", CODE);
+  const server = writeServer({ secrets: ["ORDERS_KEY"] });
+  const r = await runCli(
+    ["tool", "create", file, "--description", "Look up an order.", "--secret", "ORDERS_KEY", "--dependency", "orjson==3.11.4"],
+    server.handler,
+  );
+  expect(r.code).toBe(0);
+  expect(server.bodies["POST /v1/agents/tools"]).toEqual({
+    name: "order_status",
+    tool_type: "code",
+    description: "Look up an order.",
+    code_src: CODE,
+    config: { type: "code", import_probes: [], egress: {} },
+    declared_secrets: ["ORDERS_KEY"],
+    dependencies: ["orjson==3.11.4"],
+  });
+  expect(r.calls).toContain(`POST /v1/agents/tools/${UUID}/introspect`);
+  expect(r.stdout).toContain("order_id (string)");
+  expect(r.stdout).toContain("voiceai tool publish order_status");
+  expect(r.stderr).toBe("");
+});
+
+test("create --json prints the built tool record", async () => {
+  const r = await runCli(["tool", "create", pyFile("order_status.py", CODE), "--json"], writeServer().handler);
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.stdout).arg_schema).toEqual(ARG_SCHEMA);
+});
+
+// The platform swaps an empty code_src for its weather starter, so an empty
+// file must never reach it.
+test("create refuses an empty file and sends nothing", async () => {
+  const r = await runCli(["tool", "create", pyFile("order_status.py", "  \n")], writeServer().handler);
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("is empty");
+  expect(r.calls).toEqual([]);
+});
+
+test("create refuses a bad name and a loose pin before any request", async () => {
+  const file = pyFile("order status.py", CODE);
+  const named = await runCli(["tool", "create", file], writeServer().handler);
+  expect(named.code).toBe(1);
+  expect(named.stderr).toContain("is not a tool name");
+  const pinned = await runCli(["tool", "create", file, "--name", "ok", "--dependency", "orjson>=3"], writeServer().handler);
+  expect(pinned.code).toBe(1);
+  expect(pinned.stderr).toContain("is not an exact pin");
+  expect([...named.calls, ...pinned.calls]).toEqual([]);
+});
+
+test("create on a name that exists names tool update and writes nothing", async () => {
+  const server = writeServer({ existing: [item({ id: UUID, name: "order_status" })] });
+  const r = await runCli(["tool", "create", pyFile("order_status.py", CODE)], server.handler);
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("voiceai tool update order_status --file");
+  expect(r.calls).not.toContain("POST /v1/agents/tools");
+});
+
+test("create warns when a declared secret is not in the vault as a secret", async () => {
+  const r = await runCli(
+    ["tool", "create", pyFile("order_status.py", CODE), "--secret", "ORDERS_KEY"],
+    writeServer().handler,
+  );
+  expect(r.code).toBe(0);
+  expect(r.stderr).toContain("publish will refuse order_status until the vault holds these as secrets: ORDERS_KEY");
+});
+
+test("update patches the code without tool_type, then builds again", async () => {
+  const server = writeServer({ existing: [item({ id: UUID, name: "order_status" })] });
+  const r = await runCli(["tool", "update", "order_status", "--file", pyFile("order_status.py", CODE)], server.handler);
+  expect(r.code).toBe(0);
+  expect(server.bodies[`PATCH /v1/agents/tools/${UUID}`]).toEqual({ code_src: CODE });
+  expect(r.calls).toContain(`POST /v1/agents/tools/${UUID}/introspect`);
+});
+
+test("update with nothing to change refuses before any request", async () => {
+  const r = await runCli(["tool", "update", "order_status"], writeServer().handler);
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("nothing to change");
+  expect(r.calls).toEqual([]);
+});
+
+test("publish prints the new version", async () => {
+  const server = writeServer({ existing: [item({ id: UUID, name: "order_status" })] });
+  const r = await runCli(["tool", "publish", "order_status"], server.handler);
+  expect(r.code).toBe(0);
+  expect(r.stdout).toContain("published order_status version 1");
+});
+
+test("publish refused names every failed gate and exits 1", async () => {
+  const checks = {
+    static: { parse: { passed: true }, secrets_exist: { passed: false, detail: "missing org secrets: ORDERS_KEY" } },
+    green_run: { passed: false, proven_hash: null },
+  };
+  const server = writeServer({
+    existing: [item({ id: UUID, name: "order_status" })],
+    publish: [409, { published: false, version_number: null, checks }],
+  });
+  const r = await runCli(["tool", "publish", "order_status"], server.handler);
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("static.secrets_exist: missing org secrets: ORDERS_KEY");
+  expect(r.stderr).toContain("green_run");
 });

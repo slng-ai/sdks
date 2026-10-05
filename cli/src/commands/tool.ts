@@ -1,7 +1,18 @@
 import { Command } from "commander";
+import { basename } from "node:path";
 import ora from "ora";
 import { agentsRequest, formatAgentsError, type AgentsResult } from "../lib/agents";
 import { printJson } from "../lib/output";
+import type { PackageToolBody } from "../lib/package";
+import {
+  buildTool,
+  describeGates,
+  publishTool,
+  runTool,
+  writeTool,
+  type WrittenTool,
+} from "../lib/tool-write";
+import { listSecrets } from "./secret";
 
 // --- types -----------------------------------------------------------------
 // Mirrors the ToolListItem / ToolDetail schemas of the public shared-resource
@@ -38,12 +49,7 @@ export interface ToolVersion {
   published_at: string;
 }
 
-/** What `POST /v1/agents/tools/{id}/run` answers with. Shared with push. */
-export interface RunResult {
-  status: "succeeded" | "failed" | "timed_out";
-  error?: string | null;
-  validation?: string;
-}
+export type { RunResult } from "../lib/tool-write";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -190,6 +196,69 @@ export function parsePositiveInt(raw: string): number | null {
   return n > 0 ? n : null;
 }
 
+// --- create / update -------------------------------------------------------
+
+/** The platform's tool name rule (LLM_TOOL_NAME_PATTERN, shared_tool_contract.py). */
+const TOOL_NAME = /^[A-Za-z0-9_-]{1,200}$/;
+/** One exact pin, which is the only dependency form the platform accepts. */
+const EXACT_PIN = /^[A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9][A-Za-z0-9.+!_-]*$/;
+
+/** Commander's way to take a flag more than once. */
+const collect = (value: string, previous: string[]) => [...previous, value];
+
+/**
+ * The Python file, refused when blank. The platform swaps an empty code_src for
+ * its own weather starter, so a blank file would create a working tool nobody
+ * wrote.
+ */
+async function readCode(file: string): Promise<{ code: string } | { error: string }> {
+  let code: string;
+  try {
+    code = await Bun.file(file).text();
+  } catch (e) {
+    return { error: `could not read ${file}: ${(e as Error).message}` };
+  }
+  if (!code.trim()) return { error: `${file} is empty. a code tool needs an Input model, an Output model and a handler.` };
+  return { code };
+}
+
+/** The checks every flag can fail before anything is sent. */
+function flagError(name: string | undefined, pins: string[]): string | null {
+  if (name !== undefined && !TOOL_NAME.test(name)) {
+    return `"${name}" is not a tool name. use letters, digits, _ and -, at most 200 characters.`;
+  }
+  const bad = pins.find((p) => !EXACT_PIN.test(p));
+  if (bad) return `"${bad}" is not an exact pin. write each dependency as name==version, such as orjson==3.11.4.`;
+  return null;
+}
+
+/**
+ * Secrets the code declares that publish will refuse: missing from the vault,
+ * or held there as a variable, which the publish gate does not count.
+ */
+async function missingSecrets(names: string[]): Promise<string[]> {
+  if (!names.length) return [];
+  const vault = new Map((await listSecrets()).map((s) => [s.name, s.kind]));
+  return names.filter((n) => vault.get(n) !== "secret");
+}
+
+/** The tool's arguments, as the build read them off its Input model. */
+function argumentLines(schema: Record<string, unknown> | null | undefined): string[] {
+  const properties = (schema?.properties ?? {}) as Record<string, { type?: string }>;
+  const required = new Set((schema?.required as string[] | undefined) ?? []);
+  return Object.entries(properties).map(
+    ([name, p]) => `${name} (${p.type ?? "any"}${required.has(name) ? "" : ", optional"})`,
+  );
+}
+
+function printWritten(action: string, tool: WrittenTool, name: string): void {
+  console.log(`${action.padEnd(22)}${name}  ${tool.id}`);
+  const args = argumentLines(tool.arg_schema);
+  console.log(`${"arguments".padEnd(22)}${args.length ? args.join(", ") : "-"}`);
+  console.log(`${"next".padEnd(22)}voiceai tool run ${name} --input <file> --confirm-side-effects`);
+  console.log(`${"".padEnd(22)}voiceai tool publish ${name}`);
+}
+
 function printToolVersion(v: ToolVersion): void {
   const order: (keyof ToolVersion)[] = [
     "tool_id",
@@ -215,15 +284,32 @@ export function printTool(tool: ToolDetail): void {
 
 export function toolCommand(): Command {
   const cmd = new Command("tool")
-    .description("Inspect the tools your agents can call")
+    .description("Create, inspect, run and publish the tools your agents can call")
     .addHelpText(
       "afterAll",
       `
 COMMANDS
   list                     list every tool available to your organisation
   get <tool>               show one tool in full (by name, or by id with --id)
+  create <file.py>         create a code tool from a Python file, and build it
+  update <tool>            change a tool's code or settings, and build it again
   build <tool>             build a code tool so it can run (by name, or id with --id)
   run <tool>               execute one tool (by name, or id with --id)
+  publish <tool>           publish the draft as a version agents can attach
+
+FROM A PYTHON FILE TO AN AGENT
+  $ voiceai tool create order_status.py --description "Look up an order." --secret ORDERS_KEY
+  $ voiceai tool run order_status --input sample.json --confirm-side-effects
+  $ voiceai tool publish order_status
+
+  The file defines three names: \`Input\` and \`Output\`, two pydantic BaseModel
+  classes, and \`handler(input: Input) -> Output\`. Input's fields are the tool's
+  arguments, and their descriptions are what the model reads. A --secret
+  arrives as an environment variable of that name. The code has no internet
+  access. A --dependency is one exact pin, such as orjson==3.11.4.
+
+  Publish needs a build and one successful run of the current code. Any code,
+  secret or dependency change needs a new run before the next publish.
 
 EXAMPLES
   $ voiceai tool list                          every tool your agents can call
@@ -361,16 +447,160 @@ NOTES
       // Introspect is the build step: it re-parses the code, rebuilds the code
       // environment and re-derives arg_schema. The server rejects it on a
       // non-code tool, so its error is surfaced rather than pre-empted.
-      const res = await agentsRequest<ToolDetail>(
-        "POST",
-        `/v1/agents/tools/${encodeURIComponent(id)}/introspect`,
-      );
-      if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
+      let built: ToolDetail;
+      try {
+        built = (await buildTool(id)) as ToolDetail;
+      } catch (e) {
+        fail(opts.json, (e as Error).message);
+      }
       if (opts.json) {
-        printJson(res.data);
+        printJson(built);
         return;
       }
-      printTool(res.data);
+      printTool(built);
+    });
+
+  cmd
+    .command("create <file>")
+    .description("Create a code tool from a Python file, and build it")
+    .option("--name <name>", "Tool name (default: the file name without .py)")
+    .option("--description <text>", "What the tool does, for the model")
+    .option("--secret <name>", "A vault secret the code reads from its environment (repeat for more)", collect, [])
+    .option("--dependency <pin>", "An exact pin such as orjson==3.11.4 (repeat for more)", collect, [])
+    .option("--json", "Output JSON")
+    .action(async (file: string, opts) => {
+      const name: string = opts.name ?? basename(file).replace(/\.py$/, "");
+      const invalid = flagError(name, opts.dependency);
+      if (invalid) fail(opts.json, invalid);
+      const read = await readCode(file);
+      if ("error" in read) fail(opts.json, read.error);
+
+      const spinner = spin(`creating ${name}`);
+      let created: WrittenTool;
+      let missing: string[];
+      try {
+        if ((await listAllTools([name])).length) {
+          spinner?.stop();
+          fail(
+            opts.json,
+            `a tool named "${name}" already exists. change its code with ` +
+              `\`voiceai tool update ${name} --file ${file}\`.`,
+          );
+        }
+        missing = await missingSecrets(opts.secret);
+        const body: PackageToolBody = {
+          name,
+          tool_type: "code",
+          description: opts.description ?? "",
+          code_src: read.code,
+          config: { type: "code", import_probes: [], egress: {} },
+          declared_secrets: opts.secret,
+          dependencies: opts.dependency,
+        };
+        created = await writeTool(body);
+      } catch (e) {
+        spinner?.stop();
+        fail(opts.json, (e as Error).message);
+      }
+      let built: WrittenTool;
+      try {
+        built = await buildTool(created.id);
+      } catch (e) {
+        spinner?.stop();
+        fail(
+          opts.json,
+          `created ${name} (${created.id}), but the build failed: ${(e as Error).message}\n` +
+            `fix the file, then run \`voiceai tool update ${name} --file ${file}\`.`,
+        );
+      }
+      spinner?.stop();
+      if (missing.length) {
+        process.stderr.write(
+          `warning: publish will refuse ${name} until the vault holds these as secrets: ${missing.join(", ")}\n`,
+        );
+      }
+      if (opts.json) {
+        printJson(built);
+        return;
+      }
+      printWritten("created", built, name);
+    });
+
+  cmd
+    .command("update <tool>")
+    .description("Change a tool's code, description, secrets or dependencies, and build it again")
+    .option("--file <file>", "The new Python code")
+    .option("--name <name>", "Rename the tool")
+    .option("--description <text>", "What the tool does, for the model")
+    .option("--secret <name>", "A vault secret the code reads; replaces the whole list (repeat for more)", collect, [])
+    .option("--dependency <pin>", "An exact pin; replaces the whole list (repeat for more)", collect, [])
+    .option("--id", "Treat the argument as a tool ID, skipping the name lookup")
+    .option("--json", "Output JSON")
+    .action(async (tool: string, opts) => {
+      const invalid = flagError(opts.name, opts.dependency);
+      if (invalid) fail(opts.json, invalid);
+      const patch: Partial<PackageToolBody> = {};
+      if (opts.file) {
+        const read = await readCode(opts.file);
+        if ("error" in read) fail(opts.json, read.error);
+        patch.code_src = read.code;
+      }
+      if (opts.name) patch.name = opts.name;
+      if (opts.description !== undefined) patch.description = opts.description;
+      if (opts.secret.length) patch.declared_secrets = opts.secret;
+      if (opts.dependency.length) patch.dependencies = opts.dependency;
+      if (!Object.keys(patch).length) {
+        fail(opts.json, "nothing to change. pass --file, --name, --description, --secret or --dependency.");
+      }
+
+      const spinner = spin(`updating ${tool}`);
+      let written: WrittenTool;
+      let missing: string[];
+      try {
+        const id = opts.id ? tool : (await resolveTool(tool, opts.json)).id;
+        missing = await missingSecrets(opts.secret);
+        written = await writeTool(patch, id);
+        // A code or dependency change makes the last build stale, and nothing
+        // runs or publishes from a stale build.
+        if (patch.code_src !== undefined || patch.dependencies) written = await buildTool(id);
+      } catch (e) {
+        spinner?.stop();
+        fail(opts.json, (e as Error).message);
+      }
+      spinner?.stop();
+      if (missing.length) {
+        process.stderr.write(
+          `warning: publish will refuse this tool until the vault holds these as secrets: ${missing.join(", ")}\n`,
+        );
+      }
+      if (opts.json) {
+        printJson(written);
+        return;
+      }
+      printWritten("updated", written, written.name ?? opts.name ?? tool);
+    });
+
+  cmd
+    .command("publish <tool>")
+    .description("Publish a tool's current draft as a new version agents can attach")
+    .option("--id", "Treat the argument as a tool ID, skipping the name lookup")
+    .option("--json", "Output JSON")
+    .action(async (tool: string, opts) => {
+      const spinner = spin(`publishing ${tool}`);
+      let result: Awaited<ReturnType<typeof publishTool>>;
+      try {
+        const id = opts.id ? tool : (await resolveTool(tool, opts.json)).id;
+        result = await publishTool(id);
+      } catch (e) {
+        spinner?.stop();
+        fail(opts.json, (e as Error).message);
+      }
+      spinner?.stop();
+      const published = result.published && result.version_number !== null;
+      if (opts.json) printJson(result);
+      else if (published) console.log(`published ${tool} version ${result.version_number}`);
+      else process.stderr.write(`${tool} was not published: ${describeGates(result.checks)}\n`);
+      if (!published) process.exit(1);
     });
 
   cmd
@@ -400,15 +630,14 @@ NOTES
       } finally {
         spinner?.stop();
       }
-      const res = await agentsRequest<RunResult>(
-        "POST",
-        `/v1/agents/tools/${encodeURIComponent(id)}/run`,
-        // Required literal. Supplied only because --confirm-side-effects was
-        // passed: it is the operator's consent to execute their dependencies.
-        { body: { sample_input: input.value, confirm_side_effects: true } },
-      );
-      if (!res.ok || !res.data) fail(opts.json, formatAgentsError(res));
-      const result = res.data;
+      // Reached only because --confirm-side-effects was passed: it is the
+      // operator's consent to execute their dependencies.
+      let result: Awaited<ReturnType<typeof runTool>>;
+      try {
+        result = await runTool(id, input.value);
+      } catch (e) {
+        fail(opts.json, (e as Error).message);
+      }
 
       if (opts.json) {
         printJson(result);

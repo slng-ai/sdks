@@ -33,7 +33,7 @@ Full reference in [`cli/README.md`](./cli/README.md). The command trees:
 | `tts` / `stt` | synth and transcribe, one-shot or `--stream` |
 | `models` / `voices` / `whoami` / `login` | catalogs and auth |
 | `agents` | `list get create update replace delete duplicate`, `calls {dispatch list get tool-exec}`, `web-sessions create`, `push` |
-| `tool` | `list get` (read-only; tools are written by `agents push`) |
+| `tool` | `list get create update build run publish` (`create` takes a Python file) |
 | `mcp` | `list get tools` (read-only; attach servers in the dashboard) |
 | `secret` | `list get create` (`--secrets-file`, `--kind`, `--overwrite`; values never readable back) |
 | `trunks` | `list get` (`--direction`; read-only) |

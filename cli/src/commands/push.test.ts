@@ -1732,6 +1732,7 @@ test("--require-resolved --dry-run reports the exact staged tool id/version and 
   const doc = JSON.parse(r.stdout);
   expect(doc.ok).toBe(true);
   expect(doc.resolution_contract).toBe(1);
+  expect(doc.task_tools).toBe(1);
   expect(doc.dry_run).toBe(true);
   expect(doc.refs[0]).toMatchObject({ tool_id: RESOLVED_TOOL_ID, version: 5 });
   expect(doc.mcp_refs[0]).toMatchObject({ server_id: RESOLVED_SERVER_ID, observed_schema_hash: RESOLVED_HASH });
@@ -2102,4 +2103,89 @@ test("--agent-id disambiguates two same-named agents under --require-resolved to
   );
   expect(r.code).toBe(0);
   expect(JSON.parse(r.stdout).agent).toEqual({ name: "slng", action: "update", id: "a2" });
+});
+
+// --- tasks name their tools; push writes the attachment ids ---------------
+
+/** One task and one group that name the agent's tools in every place they can. */
+const TASK_PKG = {
+  ...MCP_PKG,
+  tasks: [
+    {
+      name: "verify",
+      instructions: "Check the code.",
+      when: "The caller wants to change a booking.",
+      tools: ["end_call", "search"],
+      via: ["end_call"],
+      finish: [{ tool: "end_call", success: [{ status: "ok" }] }],
+      inputs: [{ memory: "phone_number" }, { tool: "end_call" }],
+    },
+  ],
+  task_groups: [{ name: "flow", steps: ["verify"], context_scope: "shared", then: "return", inputs: [{ tool: "search" }] }],
+};
+
+test("the write body swaps each task tool name for its attachment id", () => {
+  const dir = writePackage({ agent: TASK_PKG });
+  const plan = planFor({ pkgDir: dir, mcpServers: [mcpServer()] });
+  expect(plan.blockers).toEqual([]);
+  // MCP refs resolve first, so search is minted-1 and end_call minted-2.
+  const body = buildAgentBody(loadPackage(dir), plan);
+  expect(body.tasks).toEqual([
+    {
+      ...TASK_PKG.tasks[0],
+      tools: ["minted-2", "minted-1"],
+      via: ["minted-2"],
+      finish: [{ tool: "minted-2", success: [{ status: "ok" }] }],
+      inputs: [{ memory: "phone_number" }, { tool: "minted-2" }],
+    },
+  ]);
+  expect(body.task_groups).toEqual([{ ...TASK_PKG.task_groups[0], inputs: [{ tool: "minted-1" }] }]);
+});
+
+test("a task tool reuses the live agent's attachment id on an update", () => {
+  const dir = writePackage({ agent: { tasks: [{ name: "verify", instructions: "x", when: "y", tools: ["end_call"] }] } });
+  const plan = planFor({
+    pkgDir: dir,
+    liveAgent: { id: "a1", name: "slng", tool_refs: [{ attachment_id: "live-att", tool_id: "tool-org" }] },
+  });
+  const body = buildAgentBody(loadPackage(dir), plan);
+  expect((body.tasks as { tools: string[] }[])[0]!.tools).toEqual(["live-att"]);
+});
+
+test("a task naming a tool the agent does not attach is blocked", () => {
+  const dir = writePackage({ agent: { tasks: [{ name: "verify", instructions: "x", when: "y", tools: ["book"] }] } });
+  const blocker = planFor({ pkgDir: dir }).blockers.find((b) => b.kind === "task_tool_unresolved");
+  expect(blocker?.items).toEqual(["task verify: book — not attached to the agent"]);
+});
+
+test("a task tool whose own ref failed to resolve is reported once, on the ref", () => {
+  const dir = writePackage({ agent: { tasks: [{ name: "verify", instructions: "x", when: "y", tools: ["end_call"] }] } });
+  const kinds = planFor({ pkgDir: dir, catalogue: [] }).blockers.map((b) => b.kind);
+  expect(kinds).toEqual(["tool_unresolved"]);
+});
+
+test("a task tool name two attachments share is blocked", () => {
+  const dir = writePackage({
+    agent: {
+      tool_refs: [{ tool: "search", invocation: "model" }],
+      ...MCP_PKG,
+      tasks: [{ name: "verify", instructions: "x", when: "y", tools: ["search"] }],
+    },
+  });
+  const plan = planFor({ pkgDir: dir, catalogue: [toolRow({ name: "search" })], mcpServers: [mcpServer()] });
+  const blocker = plan.blockers.find((b) => b.kind === "task_tool_unresolved");
+  expect(blocker?.items).toEqual(["task verify: search — more than one attached tool has this name"]);
+});
+
+test("a replace that drops dashboard tasks lists them as overwritten", () => {
+  const live = { id: "a1", name: "slng", tool_refs: [], tasks: [{ name: "made_in_dashboard" }], task_groups: [] };
+  const plan = planFor({ pkgDir: writePackage({ agent: { tasks: [], task_groups: [] } }), liveAgent: live });
+  expect(plan.overwrites).toContain("tasks");
+  expect(plan.overwrites).not.toContain("task_groups");
+});
+
+test("the same task names are not overwrites, even though live tools are ids", () => {
+  const dir = writePackage({ agent: { tasks: [{ name: "verify", instructions: "x", when: "y", tools: ["end_call"] }] } });
+  const live = { id: "a1", name: "slng", tool_refs: [], tasks: [{ name: "verify", tools: ["live-att"] }] };
+  expect(planFor({ pkgDir: dir, liveAgent: live }).overwrites).not.toContain("tasks");
 });

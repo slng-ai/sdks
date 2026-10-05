@@ -289,6 +289,12 @@ voiceai agents push . --json | jq -r '.agent.id'      # scriptable
 
 The directory may be the package root or the compiled `build/slng` directory.
 
+A task names its tools the same way, by the name its `tool_refs` entry uses
+(`tool_name` for an MCP tool). Push writes the attachment id in its place, in
+`tools`, `via`, `finish[].tool` and every `inputs[].tool` of tasks and task
+groups. A task that names a tool the agent does not attach is reported before
+anything is created.
+
 Nothing is created until every check passes. Missing vault entries and
 unresolved tool names are reported **together**, each with the dashboard page
 that fixes it — a push that cannot succeed leaves your organisation exactly as
@@ -363,7 +369,8 @@ it and push unchecked.
 
 ### Tools
 
-Read-only view of the tools your agents can call.
+The tools your agents can call: read them, create a code tool from a Python
+file, run one, and publish it.
 
 ```sh
 voiceai tool list                          # every tool your agents can call
@@ -407,6 +414,51 @@ The input comes from `--input <file>`, from stdin, or is `{}` when neither is
 given, and is never printed back — it may hold a secret. **Nothing runs without
 `--confirm-side-effects`**: a run reaches the tool's real dependencies, and a
 webhook really fires. Exit is `0` only when the run succeeded.
+
+#### Create a code tool from a Python file
+
+```sh
+voiceai tool create order_status.py --description "Look up an order." --secret ORDERS_KEY
+voiceai tool run order_status --input sample.json --confirm-side-effects
+voiceai tool publish order_status
+```
+
+The file defines three names, and the platform finds them by name:
+
+```python
+from pydantic import BaseModel, Field
+
+
+class Input(BaseModel):
+    order_id: str = Field(description="The order number the caller reads out.")
+
+
+class Output(BaseModel):
+    status: str
+
+
+def handler(input: Input) -> Output:
+    return Output(status="shipped")
+```
+
+- `Input`'s fields are the tool's arguments. Their descriptions are what the
+  model reads.
+- A `--secret NAME` arrives as the environment variable `NAME`. Its value is
+  removed from run output.
+- The code has no internet access.
+- A `--dependency` is one exact pin, such as `orjson==3.11.4`.
+
+`create` builds the tool and prints its arguments. The name is the file name
+without `.py`, or `--name`. A blank file is refused. A name the organisation
+already has is refused too, and the message names `tool update`.
+
+`tool update <tool> --file <file.py>` changes the code and builds again.
+`--secret` and `--dependency` replace the whole list.
+
+`publish` needs a build and one successful `run` of the current code. A change
+to the code, a secret or a dependency needs a new run first. A refused publish
+lists every gate that failed. After that, an agent attaches the tool by its
+name, and unmute writes it as `slng: order_status`.
 
 ### MCP servers
 
