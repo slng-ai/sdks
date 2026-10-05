@@ -28,7 +28,8 @@ import {
   type McpServerDetail,
 } from "./mcp";
 import { listSecrets, redact, type VaultEntry } from "./secret";
-import { fetchToolDetail, fetchToolVersion, listAllTools, type RunResult, type ToolDetail, type ToolListItem, type ToolVersion } from "./tool";
+import { buildTool, describeGates, publishTool, runTool, writeTool } from "../lib/tool-write";
+import { fetchToolDetail, fetchToolVersion, listAllTools, type ToolDetail, type ToolListItem, type ToolVersion } from "./tool";
 
 // --- dashboard ------------------------------------------------------------
 // Every blocker points at the page that fixes it. Nothing here is created by
@@ -50,6 +51,7 @@ export type BlockerKind =
   | "mcp_unresolved"
   | "mcp_stale"
   | "agent_ambiguous"
+  | "task_tool_unresolved"
   // --require-resolved only, below this line.
   | "organisation_mismatch"
   | "authored_tool_body"
@@ -143,17 +145,6 @@ interface AgentRow {
   [k: string]: unknown;
 }
 
-interface GateCheck {
-  passed?: boolean;
-  detail?: string | null;
-}
-
-interface PublishResult {
-  published: boolean;
-  version_number: number | null;
-  checks?: Record<string, unknown>;
-}
-
 // --- small helpers --------------------------------------------------------
 
 function fail(json: boolean | undefined, message: string, extra?: Record<string, unknown>): never {
@@ -208,6 +199,32 @@ const COMPARED_FIELDS = [
   "models",
   "enable_interruptions",
 ] as const;
+
+/**
+ * Lists compared by the names of their entries only. A live task holds
+ * attachment ids where the package holds tool names, and the platform drops
+ * default keys when it stores one, so comparing whole entries would flag every
+ * push. Names still catch the loss that matters: a replace that drops tasks,
+ * groups, shapes or variables made in the dashboard.
+ */
+const COMPARED_BY_NAME = ["tasks", "task_groups", "shapes", "runtime_variables"] as const;
+
+function entryNames(list: unknown): string {
+  const names = Array.isArray(list) ? list.map((e) => String((e as Rec | null)?.name)) : [];
+  return JSON.stringify(names.sort());
+}
+
+/** COMPARED_FIELDS and COMPARED_BY_NAME, for one live agent. */
+function overwrittenFields(agent: Rec, live: Rec): string[] {
+  const out: string[] = [];
+  for (const field of COMPARED_FIELDS) {
+    if (field in agent && declaredDiffers(agent[field], live[field])) out.push(field);
+  }
+  for (const field of COMPARED_BY_NAME) {
+    if (field in agent && entryNames(agent[field]) !== entryNames(live[field])) out.push(field);
+  }
+  return out;
+}
 
 /**
  * Does the value the package declares differ from what the agent currently has?
@@ -550,15 +567,9 @@ export function buildPlan(input: PlanInputs): PushPlan {
     .map((r) => ({ ...r, name: nameById.get(r.tool_id) }));
 
   // --- what a replace would overwrite (FR-030, SC-006) ---
-  const overwrites: string[] = [];
-  if (liveAgent) {
-    for (const field of COMPARED_FIELDS) {
-      if (!(field in pkg.agent)) continue;
-      if (declaredDiffers(pkg.agent[field], liveAgent[field])) overwrites.push(field);
-    }
-  }
+  const overwrites = liveAgent ? overwrittenFields(pkg.agent, liveAgent) : [];
 
-  return {
+  const plan: PushPlan = {
     organisation: input.organisation,
     packagePath: pkg.location.agentBody,
     agent: { name: named, action, existingId },
@@ -570,6 +581,9 @@ export function buildPlan(input: PlanInputs): PushPlan {
     overwrites,
     blockers,
   };
+  const taskBlocker = taskToolBlocker(pkg, plan);
+  if (taskBlocker) blockers.push(taskBlocker);
+  return plan;
 }
 
 /** Read everything buildPlan needs. Read-only: no mutating request is issued here. */
@@ -959,15 +973,9 @@ export async function buildResolvedPlan(input: ResolvedPlanInputs): Promise<Push
     .map((r) => ({ attachment_id: r.attachment_id, tool_id: r.tool_id }));
   const keptMcp = new Set(mcpRefs.map((r) => r.attachmentId));
   const mcpRemovals = (liveAgent?.mcp_refs ?? []).filter((r) => !keptMcp.has(r.attachment_id));
-  const overwrites: string[] = [];
-  if (liveAgent) {
-    for (const field of COMPARED_FIELDS) {
-      if (!(field in pkg.agent)) continue;
-      if (declaredDiffers(pkg.agent[field], liveAgent[field])) overwrites.push(field);
-    }
-  }
+  const overwrites = liveAgent ? overwrittenFields(pkg.agent, liveAgent) : [];
 
-  return {
+  const plan: PushPlan = {
     organisation: input.organisation,
     packagePath: pkg.location.agentBody,
     agent: { name: pkg.agent.name, action: identity.action, existingId: identity.existingId },
@@ -979,6 +987,9 @@ export async function buildResolvedPlan(input: ResolvedPlanInputs): Promise<Push
     overwrites,
     blockers,
   };
+  const taskBlocker = taskToolBlocker(pkg, plan);
+  if (taskBlocker) blockers.push(taskBlocker);
+  return plan;
 }
 
 /**
@@ -1183,31 +1194,20 @@ async function syncTool(
   rec: ToolOutcome,
 ): Promise<{ id: string; version: number }> {
   const body = toolWriteBody(raw);
-  let id = planned.existingId ?? "";
-  if (planned.action === "update" && id) {
-    // tool_type is immutable, so it is never sent on update.
-    const { tool_type: _t, ...patch } = body;
-    await must(agentsRequest("PATCH", `/v1/agents/tools/${encodeURIComponent(id)}`, { body: patch }));
-    rec.updated = true;
-  } else {
-    const created = await must<{ id: string }>(agentsRequest("POST", "/v1/agents/tools", { body }));
-    id = created.id;
-    rec.created = true;
-  }
+  const update = planned.action === "update" && planned.existingId;
+  const { id } = await writeTool(body, update ? planned.existingId : undefined);
+  if (update) rec.updated = true;
+  else rec.created = true;
 
   if (body.tool_type === "code") {
-    await must(agentsRequest("POST", `/v1/agents/tools/${encodeURIComponent(id)}/introspect`));
+    await buildTool(id);
     rec.introspected = true;
   }
 
   if (planned.willRun) {
-    const run = await must<RunResult>(
-      agentsRequest("POST", `/v1/agents/tools/${encodeURIComponent(id)}/run`, {
-        // Required literal. Supplied only because --run-samples was passed:
-        // it is the operator's consent to execute their real dependencies.
-        body: { sample_input: pkg.samples.get(planned.name) ?? {}, confirm_side_effects: true },
-      }),
-    );
+    // Supplied only because --run-samples was passed: it is the operator's
+    // consent to execute their real dependencies.
+    const run = await runTool(id, pkg.samples.get(planned.name) ?? {});
     rec.ran = run.status;
     if (run.status !== "succeeded") {
       throw new Error(
@@ -1217,38 +1217,16 @@ async function syncTool(
     }
   }
 
-  // publish returns 409 WITH a PublishResult body when gates fail — a result
-  // shape, not an error envelope, so it is read rather than formatted.
-  const res = await agentsRequest<PublishResult>(
-    "POST",
-    `/v1/agents/tools/${encodeURIComponent(id)}/publish`,
-  );
-  const result = res.data as PublishResult | undefined;
-  if (!res.ok && res.status !== 409) throw new Error(formatAgentsError(res));
-  if (!result?.published || result.version_number === null) {
+  const result = await publishTool(id);
+  if (!result.published || result.version_number === null) {
     rec.published = false;
-    throw new Error(`publish rejected — ${describeGates(result?.checks)}`);
+    throw new Error(`publish rejected — ${describeGates(result.checks)}`);
   }
   rec.published = result.version_number;
   return { id, version: result.version_number };
 }
 
-/** Name the gates that failed, so a 409 says what to fix. */
-export function describeGates(checks: unknown, prefix = ""): string {
-  if (!checks || typeof checks !== "object") return "no gate detail returned";
-  const failed: string[] = [];
-  for (const [key, value] of Object.entries(checks as Record<string, unknown>)) {
-    if (!value || typeof value !== "object") continue;
-    const check = value as GateCheck;
-    if (typeof check.passed === "boolean") {
-      if (!check.passed) failed.push(`${prefix}${key}${check.detail ? `: ${check.detail}` : ""}`);
-    } else {
-      const nested = describeGates(value, `${prefix}${key}.`);
-      if (nested && !nested.startsWith("no gate")) failed.push(nested);
-    }
-  }
-  return failed.length ? failed.join("; ") : "no gate detail returned";
-}
+export { describeGates };
 
 /** Newest version number, or null when the agent has none. */
 async function newestVersion(agentId: string): Promise<number | null> {
@@ -1261,11 +1239,91 @@ async function newestVersion(agentId: string): Promise<number | null> {
   return res.data?.items?.[0]?.version_number ?? null;
 }
 
+// --- task tool references -------------------------------------------------
+// A task names a tool by the attachment_id it has on this agent, and push is
+// what chooses that id (reused from the live agent, or minted). So a package
+// writes the tool's name in a task, the same name its tool_refs entry uses
+// (`tool_name` for an MCP tool), and push swaps in the id after resolving.
+
+type Rec = Record<string, unknown>;
+
+/** Visit every task and group field that holds a tool reference. */
+function mapTaskTools(agent: Rec, swap: (name: unknown, owner: string) => unknown): { tasks?: unknown; task_groups?: unknown } {
+  const each = (list: unknown, fn: (item: Rec) => Rec) =>
+    Array.isArray(list) ? list.map((item) => (item && typeof item === "object" ? fn(item as Rec) : item)) : list;
+  const names = (list: unknown, owner: string) => (Array.isArray(list) ? list.map((n) => swap(n, owner)) : list);
+  const inputs = (list: unknown, owner: string) =>
+    each(list, (i) => ("tool" in i ? { ...i, tool: swap(i.tool, owner) } : i));
+  const out: { tasks?: unknown; task_groups?: unknown } = {};
+  if ("tasks" in agent) {
+    out.tasks = each(agent.tasks, (t) => {
+      const owner = `task ${String(t.name)}`;
+      const task: Rec = { ...t };
+      if ("tools" in t) task.tools = names(t.tools, owner);
+      if ("via" in t) task.via = names(t.via, owner);
+      if ("inputs" in t) task.inputs = inputs(t.inputs, owner);
+      if ("finish" in t) task.finish = each(t.finish, (f) => ({ ...f, tool: swap(f.tool, owner) }));
+      return task;
+    });
+  }
+  if ("task_groups" in agent) {
+    out.task_groups = each(agent.task_groups, (g) =>
+      "inputs" in g ? { ...g, inputs: inputs(g.inputs, `group ${String(g.name)}`) } : g,
+    );
+  }
+  return out;
+}
+
+/** Name to attachment_id, for the names exactly one resolved reference carries. */
+function taskToolIds(plan: PushPlan): { ids: Map<string, string>; ambiguous: Set<string> } {
+  const ids = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const [name, id] of [
+    ...plan.refs.map((r) => [r.name, r.attachmentId] as const),
+    ...plan.mcpRefs.map((r) => [r.toolName, r.attachmentId] as const),
+  ]) {
+    if (ids.has(name)) ambiguous.add(name);
+    ids.set(name, id);
+  }
+  return { ids, ambiguous };
+}
+
+/**
+ * A task naming a tool this push cannot turn into one attachment_id. A name the
+ * package's own refs declare but that failed to resolve is left out: its ref
+ * already carries the blocker, and saying it twice hides the one fix.
+ */
+export function taskToolBlocker(pkg: LoadedPackage, plan: PushPlan): Blocker | undefined {
+  const { ids, ambiguous } = taskToolIds(plan);
+  const declared = new Set<unknown>([
+    ...(pkg.agent.tool_refs ?? []).map((r) => r.tool),
+    ...(pkg.agent.mcp_refs ?? []).map((r) => r.tool_name),
+  ]);
+  const items = new Set<string>();
+  mapTaskTools(pkg.agent, (name, owner) => {
+    if (ambiguous.has(String(name))) items.add(`${owner}: ${String(name)} — more than one attached tool has this name`);
+    else if (!ids.has(String(name)) && !declared.has(name)) {
+      items.add(`${owner}: ${String(name)} — not attached to the agent`);
+    }
+    return name;
+  });
+  if (!items.size) return undefined;
+  return {
+    kind: "task_tool_unresolved",
+    items: [...items],
+    detail:
+      "a task names its tools by the name the agent's tool_refs use (tool_name for an MCP tool). " +
+      "attach the tool to the agent, or fix the name in the task.",
+  };
+}
+
 /** The agent create/replace body: the package, with every name resolved. */
 export function buildAgentBody(pkg: LoadedPackage, plan: PushPlan): Record<string, unknown> {
   const { tool_refs: _refs, mcp_refs: _mcp, ...rest } = pkg.agent;
+  const { ids } = taskToolIds(plan);
   return {
     ...rest,
+    ...mapTaskTools(pkg.agent, (name) => ids.get(String(name)) ?? name),
     // This used to be a hardcoded `[]`, harmless only because the blocker made
     // the path unreachable. The write is a PUT — replace, not merge — so with
     // the blocker gone that literal would have silently deleted every MCP
@@ -1307,6 +1365,7 @@ const KIND_TITLE: Record<BlockerKind, string> = {
   mcp_unresolved: "unresolved MCP reference",
   mcp_stale: "MCP capability snapshot is stale",
   agent_ambiguous: "more than one agent has this name",
+  task_tool_unresolved: "a task names a tool the agent does not attach",
   organisation_mismatch: "--expect-org does not match the confirmed organisation",
   authored_tool_body: "authored tool bodies are not allowed under --require-resolved",
   tool_version_unavailable: "checked tool version is no longer available",
@@ -1595,7 +1654,10 @@ async function runResolvedPush(dir: string, opts: ResolvedOpts): Promise<void> {
     // No live write and no discovery in this branch, whatever else was asked
     // for (--run-samples is meaningless here: this mode ships no tool bodies).
     // Still names the selected agent id/action, even when blocked.
-    const doc = { ok: !blocked, dry_run: true, changed: false, resolution_contract: 1, ...planJson(plan) };
+    // task_tools says this push writes attachment ids into tasks, so a caller
+    // whose package has tasks can refuse an older CLI before it writes. Its own
+    // field, not resolution_contract: 2, because callers match that exactly.
+    const doc = { ok: !blocked, dry_run: true, changed: false, resolution_contract: 1, task_tools: 1, ...planJson(plan) };
     if (opts.json) {
       printJson(doc);
     } else {
