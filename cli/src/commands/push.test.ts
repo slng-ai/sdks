@@ -746,6 +746,10 @@ interface StubOpts {
   toolVersionsById?: Record<string, Record<string, unknown>>;
   /** --require-resolved: GET /v1/me for the organisation confirmation. Defaults to org-1/Acme. */
   me?: Record<string, unknown> | number;
+  /** GET /v1/agents/model-catalog: the body, or an HTTP status to fail with. */
+  modelCatalog?: Record<string, unknown> | number;
+  /** GET /v1/agents/client-models: the org's BYOK model names. */
+  clientModels?: string[];
 }
 
 async function runCli(
@@ -837,6 +841,13 @@ async function runCli(
             );
       }
       if (path === "/v1/agents/secrets") return ok(stub.secrets ?? []);
+      if (path === "/v1/agents/model-catalog" && stub.modelCatalog !== undefined) {
+        if (typeof stub.modelCatalog === "number") return ok({ detail: "boom" }, stub.modelCatalog);
+        return ok(stub.modelCatalog);
+      }
+      if (path === "/v1/agents/client-models" && stub.clientModels) {
+        return ok({ items: stub.clientModels.map((model_name) => ({ model_name })), meta: {} });
+      }
 
       const version = path.match(/^\/v1\/agents\/([^/]+)\/versions$/);
       if (version) {
@@ -1115,6 +1126,86 @@ test("the pushed body carries resolved ids and no bare tool name", async () => {
   expect(refs[0]).toMatchObject({ tool_id: "tool-org", version: 3, invocation: "model" });
   expect(refs[0]).not.toHaveProperty("tool");
   expect(typeof refs[0]!.attachment_id).toBe("string");
+});
+
+// --- models and voices are checked against the live catalog ---------------
+
+const modelCatalog = {
+  regions: [
+    {
+      region: "eu-central",
+      languages: [
+        {
+          language: "en",
+          stt_options: [{ model_code: "slng/deepgram/nova:3-en", service_type: "stt", region: "eu-central", language: "en" }],
+          llm_options: [{ model_code: "groq/openai/gpt-oss-120b", service_type: "llm", region: "eu-central", language: "en" }],
+          tts_options: [
+            {
+              model_code: "slng/deepgram/aura:2-en",
+              service_type: "tts",
+              region: "eu-central",
+              language: "en",
+              voices: [{ voice_id: "aura-2-thalia-en", label: "Thalia" }],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const agentModels = (models: Record<string, unknown> = {}) => ({
+  region: "eu-central",
+  language: "en",
+  models: {
+    stt: "slng/deepgram/nova:3-en",
+    llm: "groq/openai/gpt-oss-120b",
+    tts: "slng/deepgram/aura:2-en",
+    tts_voice: "aura-2-thalia-en",
+    ...models,
+  },
+});
+
+test("a voice the catalog does not offer blocks the push before anything is written", async () => {
+  const dir = writePackage({
+    agent: agentModels({ tts_voice: "thalia" }),
+    tools: [{ name: "end_call", tool_type: "end_call" }],
+  });
+  const r = await runCli(["agents", "push", dir], { tools: [], modelCatalog });
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("model or voice not available");
+  expect(r.stderr).toContain('models.tts_voice "thalia"');
+  expect(r.stderr).toContain("aura-2-thalia-en");
+  expect(r.stderr).toContain("voiceai models list --region eu-central --language en");
+  expect(mutating(r.calls)).toEqual([]);
+});
+
+test("models the catalog offers push cleanly", async () => {
+  const dir = writePackage({ agent: agentModels() });
+  const r = await runCli(["agents", "push", dir], { tools: [orgTool], versionsAfter: 1, modelCatalog });
+  expect(r.code).toBe(0);
+  expect(r.unstubbed).toEqual([]);
+  expect(r.calls.find((c) => c.path === "/v1/agents/model-catalog")).toBeDefined();
+});
+
+test("an LLM outside the catalog passes when it is one of the org's BYOK models", async () => {
+  const dir = writePackage({ agent: agentModels({ llm: "acme-llm" }) });
+  const r = await runCli(["agents", "push", dir], {
+    tools: [orgTool],
+    versionsAfter: 1,
+    modelCatalog,
+    clientModels: ["acme-llm"],
+  });
+  expect(r.code).toBe(0);
+  expect(r.unstubbed).toEqual([]);
+});
+
+test("an unreadable catalog warns and leaves the check to the platform", async () => {
+  const dir = writePackage({ agent: agentModels({ tts_voice: "thalia" }) });
+  const r = await runCli(["agents", "push", dir], { tools: [orgTool], versionsAfter: 1, modelCatalog: 503 });
+  expect(r.code).toBe(0);
+  expect(r.stderr).toContain("could not check models against the catalog");
+  expect(r.calls.some((c) => c.method === "POST" && c.path === "/v1/agents")).toBe(true);
 });
 
 // --- T034: the platform's own error survives (FR-035) ----------------------

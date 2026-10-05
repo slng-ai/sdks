@@ -17,6 +17,7 @@ import {
   type PackageToolBody,
   type PackageToolRef,
 } from "../lib/package";
+import { checkAgentModels, fetchModelCatalog } from "../lib/model-catalog";
 import { verifyApiKey } from "../lib/verify";
 import {
   connectServer,
@@ -52,6 +53,7 @@ export type BlockerKind =
   | "mcp_stale"
   | "agent_ambiguous"
   | "task_tool_unresolved"
+  | "model_unavailable"
   // --require-resolved only, below this line.
   | "organisation_mismatch"
   | "authored_tool_body"
@@ -643,7 +645,52 @@ export async function planPush(
     organisation,
     agentIdOverride: opts.agentId,
   });
+  const models = await modelBlocker(pkg, liveAgent);
+  if (models) plan.blockers.push(models);
   return { plan, pkg };
+}
+
+/**
+ * Check the package's models and voices against the live catalog, so a typo
+ * blocks the push before any tool is written rather than after. Advisory when
+ * the catalog cannot be read: the platform checks again on write.
+ */
+async function modelBlocker(pkg: LoadedPackage, liveAgent?: AgentRow): Promise<Blocker | undefined> {
+  const models = pkg.agent.models as Record<string, unknown> | undefined;
+  if (!models || typeof models !== "object") return undefined;
+  const pick = (k: string) => {
+    const v = pkg.agent[k] ?? liveAgent?.[k];
+    return typeof v === "string" && v ? v : undefined;
+  };
+  const agent = { region: pick("region"), language: pick("language"), models };
+
+  const res = await fetchModelCatalog({ language: agent.language });
+  if (!res.ok || !res.data) {
+    note(`could not check models against the catalog (${formatAgentsError(res)}). the platform will check them on write.`);
+    return undefined;
+  }
+  let problems = checkAgentModels(agent, res.data);
+  // An LLM outside the catalog may be one of the org's own (BYOK) client
+  // models, which the platform accepts by name. Only asked when it matters.
+  if (problems.some((p) => p.path.includes(".llm"))) {
+    // ponytail: first 200 client models only; page through if an org ever has more.
+    const own = await agentsRequest<{ items?: { model_name?: string }[] }>("GET", "/v1/agents/client-models", {
+      query: { page_size: 200 },
+    });
+    const names = new Set((own.data?.items ?? []).map((m) => m.model_name).filter((n): n is string => Boolean(n)));
+    problems = checkAgentModels(agent, res.data, names);
+  }
+  if (!problems.length) return undefined;
+
+  const filter = [
+    agent.region && agent.region !== "any" ? `--region ${agent.region}` : "",
+    agent.language ? `--language ${agent.language}` : "",
+  ].filter(Boolean);
+  return {
+    kind: "model_unavailable",
+    items: problems.map((p) => p.message),
+    detail: `pick one from \`${["voiceai models list", ...filter].join(" ")}\`.`,
+  };
 }
 
 /**
@@ -1052,6 +1099,8 @@ export async function planResolvedPush(
     getToolVersion: fetchToolVersion,
     getMcpServer: getServerById,
   });
+  const models = await modelBlocker(pkg, liveAgent);
+  if (models) plan.blockers.push(models);
   return { plan, pkg, orgConfirmed: true };
 }
 
@@ -1366,6 +1415,7 @@ const KIND_TITLE: Record<BlockerKind, string> = {
   mcp_stale: "MCP capability snapshot is stale",
   agent_ambiguous: "more than one agent has this name",
   task_tool_unresolved: "a task names a tool the agent does not attach",
+  model_unavailable: "model or voice not available",
   organisation_mismatch: "--expect-org does not match the confirmed organisation",
   authored_tool_body: "authored tool bodies are not allowed under --require-resolved",
   tool_version_unavailable: "checked tool version is no longer available",
