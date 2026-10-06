@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { basename, dirname } from "node:path";
 import ora from "ora";
 import { agentsRequest, formatAgentsError, type AgentsResult } from "../lib/agents";
-import { requireApiKey } from "../lib/config";
 import { printJson } from "../lib/output";
 import {
   isManagedSingleton,
@@ -53,7 +52,6 @@ export type BlockerKind =
   | "agent_ambiguous"
   | "task_tool_unresolved"
   // --require-resolved only, below this line.
-  | "organisation_mismatch"
   | "authored_tool_body"
   | "tool_version_unavailable"
   | "mcp_hash_changed";
@@ -678,52 +676,6 @@ async function resolveOrganisation(
   return { id };
 }
 
-interface OrgConfirmation {
-  ok: boolean;
-  /** The confirmed id, when one could be read — even on a mismatch. */
-  id: string;
-  name?: string;
-  /** Why confirmation failed. Present iff !ok. */
-  reason?: string;
-}
-
-/**
- * `--require-resolved`'s gate, called before anything else: confirm
- * `--expect-org` against the credential's REAL account, not a matching
- * profile name (data-model.md, "Deployment context"). Unlike
- * `resolveOrganisation`, this never falls back to an id inferred from agents,
- * secrets, or a live agent — an org that cannot be confirmed this way is a
- * refusal in this mode, never a pass.
- */
-async function confirmOrganisation(expectOrg: string): Promise<OrgConfirmation> {
-  let apiKey: string;
-  try {
-    apiKey = requireApiKey();
-  } catch (e) {
-    return { ok: false, id: "", reason: (e as Error).message };
-  }
-  const probe = await verifyApiKey(apiKey);
-  if (!probe.ok || !probe.account?.org_id) {
-    return {
-      ok: false,
-      id: "",
-      reason: probe.error
-        ? `could not confirm an organisation for this credential: ${probe.error}`
-        : `could not confirm an organisation for this credential (status ${probe.status ?? "unknown"}).`,
-    };
-  }
-  const id = probe.account.org_id;
-  if (id !== expectOrg) {
-    return {
-      ok: false,
-      id,
-      name: probe.account.org_name,
-      reason: `--expect-org ${expectOrg} does not match the confirmed organisation ${id}.`,
-    };
-  }
-  return { ok: true, id, name: probe.account.org_name };
-}
-
 // --- guarded resolved plan (--require-resolved) ----------------------------
 //
 // Ordinary buildPlan resolves references by NAME against an already-fetched
@@ -759,6 +711,8 @@ export async function buildResolvedPlan(input: ResolvedPlanInputs): Promise<Push
   const blockers: Blocker[] = [];
   const mint = input.mintId ?? randomUUID;
   const now = input.now ?? new Date();
+  // Empty when no org was given or found. The scope checks then pass: the key
+  // can only read its own organisation's rows and global ones.
   const orgId = input.organisation.id;
 
   const identity = resolveAgentIdentity(pkg.agent.name, input.agents, input.agentIdOverride);
@@ -817,7 +771,7 @@ export async function buildResolvedPlan(input: ResolvedPlanInputs): Promise<Push
       toolInvalid.push(`${label} (${rawId}) — tool id not found: ${formatAgentsError(detail)}`);
       continue;
     }
-    const scoped = !detail.data.organisation_id || detail.data.organisation_id === orgId;
+    const scoped = !orgId || !detail.data.organisation_id || detail.data.organisation_id === orgId;
     if (!scoped) {
       toolInvalid.push(`${label} (${rawId}) — belongs to a different organisation`);
       continue;
@@ -895,7 +849,7 @@ export async function buildResolvedPlan(input: ResolvedPlanInputs): Promise<Push
       mcpInvalid.push(`${label}/${toolLabel} (${rawServerId}) — server id not found: ${formatAgentsError(detail)}`);
       continue;
     }
-    const scoped = !detail.data.organisation_id || detail.data.organisation_id === orgId;
+    const scoped = !orgId || !detail.data.organisation_id || detail.data.organisation_id === orgId;
     if (!scoped) {
       mcpInvalid.push(`${label}/${toolLabel} (${rawServerId}) — belongs to a different organisation`);
       continue;
@@ -993,41 +947,18 @@ export async function buildResolvedPlan(input: ResolvedPlanInputs): Promise<Push
 }
 
 /**
- * The `--require-resolved` counterpart to `planPush`: confirms the account
- * before anything else, and only then reads what's needed to check every
- * staged reference. Read-only — the same guarantee planPush makes.
+ * The `--require-resolved` counterpart to `planPush`: reads what's needed to
+ * check every staged reference. Read-only — the same guarantee planPush makes.
+ *
+ * There is no organisation to confirm: the key decides it, and every call in
+ * the push uses that same key. The org is best-effort, for display and the
+ * scope checks, and may be empty.
  */
 export async function planResolvedPush(
   dir: string,
-  opts: { agentId?: string; expectOrg: string },
-): Promise<{ plan: PushPlan; pkg: LoadedPackage; orgConfirmed: boolean }> {
+  opts: { agentId?: string },
+): Promise<{ plan: PushPlan; pkg: LoadedPackage }> {
   const pkg = loadPackage(dir);
-
-  const orgCheck = await confirmOrganisation(opts.expectOrg);
-  if (!orgCheck.ok) {
-    return {
-      pkg,
-      orgConfirmed: false,
-      plan: {
-        organisation: { id: orgCheck.id || opts.expectOrg, name: orgCheck.name },
-        packagePath: pkg.location.agentBody,
-        agent: { name: pkg.agent.name, action: "create" },
-        tools: [],
-        refs: [],
-        mcpRefs: [],
-        removals: [],
-        mcpRemovals: [],
-        overwrites: [],
-        blockers: [
-          {
-            kind: "organisation_mismatch",
-            items: [orgCheck.reason ?? "organisation could not be confirmed."],
-            detail: "confirm the credential and --expect-org, then push again. nothing was read or changed.",
-          },
-        ],
-      },
-    };
-  }
 
   const agents = await must<AgentRow[]>(agentsRequest("GET", "/v1/agents"));
   const secrets = (await listSecrets()).map(redact) as VaultEntry[];
@@ -1046,13 +977,13 @@ export async function planResolvedPush(
     agents,
     secrets,
     liveAgent,
-    organisation: { id: orgCheck.id, name: orgCheck.name },
+    organisation: await resolveOrganisation(agents, secrets, liveAgent),
     agentIdOverride: opts.agentId,
     getTool: fetchToolDetail,
     getToolVersion: fetchToolVersion,
     getMcpServer: getServerById,
   });
-  return { plan, pkg, orgConfirmed: true };
+  return { plan, pkg };
 }
 
 // --- apply ----------------------------------------------------------------
@@ -1425,7 +1356,6 @@ const KIND_TITLE: Record<BlockerKind, string> = {
   mcp_stale: "MCP capability snapshot is stale",
   agent_ambiguous: "more than one agent has this name",
   task_tool_unresolved: "a task names a tool the agent does not attach",
-  organisation_mismatch: "--expect-org does not match the confirmed organisation",
   authored_tool_body: "authored tool bodies are not allowed under --require-resolved",
   tool_version_unavailable: "checked tool version is no longer available",
   mcp_hash_changed: "checked MCP schema hash is no longer current",
@@ -1676,7 +1606,6 @@ interface ResolvedOpts {
   agentId?: string;
   label?: string;
   json?: boolean;
-  expectOrg?: string;
 }
 
 /**
@@ -1691,19 +1620,15 @@ function resolvedRefsJson(plan: PushPlan): { refs: unknown; mcp_refs: unknown } 
 }
 
 async function runResolvedPush(dir: string, opts: ResolvedOpts): Promise<void> {
-  if (!opts.expectOrg) {
-    fail(opts.json, "--require-resolved needs --expect-org <organisation-id>.", { resolution_contract: 1 });
-  }
-
   const spinner = spin("checking package");
   let plan: PushPlan;
   let pkg: LoadedPackage;
   try {
-    ({ plan, pkg } = await planResolvedPush(dir, { agentId: opts.agentId, expectOrg: opts.expectOrg }));
+    ({ plan, pkg } = await planResolvedPush(dir, { agentId: opts.agentId }));
   } catch (e) {
     spinner?.stop();
     const message = e instanceof PackageError ? e.message : (e as Error).message;
-    fail(opts.json, message, { changed: false, resolution_contract: 1 });
+    fail(opts.json, message, { changed: false, resolution_contract: 1, org_optional: 1 });
   }
   spinner?.stop();
 
@@ -1716,7 +1641,16 @@ async function runResolvedPush(dir: string, opts: ResolvedOpts): Promise<void> {
     // task_tools says this push writes attachment ids into tasks, so a caller
     // whose package has tasks can refuse an older CLI before it writes. Its own
     // field, not resolution_contract: 2, because callers match that exactly.
-    const doc = { ok: !blocked, dry_run: true, changed: false, resolution_contract: 1, task_tools: 1, ...planJson(plan) };
+    // org_optional says this release takes no --expect-org, for the same reason.
+    const doc = {
+      ok: !blocked,
+      dry_run: true,
+      changed: false,
+      resolution_contract: 1,
+      task_tools: 1,
+      org_optional: 1,
+      ...planJson(plan),
+    };
     if (opts.json) {
       printJson(doc);
     } else {
@@ -1728,7 +1662,7 @@ async function runResolvedPush(dir: string, opts: ResolvedOpts): Promise<void> {
   }
 
   if (blocked) {
-    const doc = { ok: false, changed: false, resolution_contract: 1, ...planJson(plan) };
+    const doc = { ok: false, changed: false, resolution_contract: 1, org_optional: 1, ...planJson(plan) };
     if (opts.json) printJson(doc);
     else process.stderr.write(`${renderBlockers(plan.blockers)}\n`);
     process.exit(1);
@@ -1752,6 +1686,7 @@ async function runResolvedPush(dir: string, opts: ResolvedOpts): Promise<void> {
         ok: false,
         changed: true,
         resolution_contract: 1,
+        org_optional: 1,
         error: message,
         organisation: plan.organisation,
         ...resolvedRefsJson(plan),
@@ -1771,6 +1706,7 @@ async function runResolvedPush(dir: string, opts: ResolvedOpts): Promise<void> {
         ok: false,
         changed: true,
         resolution_contract: 1,
+        org_optional: 1,
         error: message,
         organisation: plan.organisation,
         ...resolvedRefsJson(plan),
@@ -1789,6 +1725,7 @@ async function runResolvedPush(dir: string, opts: ResolvedOpts): Promise<void> {
     printJson({
       ok: true,
       resolution_contract: 1,
+      org_optional: 1,
       organisation: plan.organisation,
       ...resolvedRefsJson(plan),
       ...outcome,
@@ -1812,7 +1749,6 @@ export function pushCommand(): Command {
       "--require-resolved",
       "Guarded mode: attach only the exact tool_id/version and MCP server_id/hash the staged package carries",
     )
-    .option("--expect-org <id>", "Confirm this organisation before any write (required with --require-resolved)")
     .option("--json", "Output JSON")
     .addHelpText(
       "afterAll",
@@ -1822,8 +1758,8 @@ EXAMPLES
   $ voiceai agents push build/slng --dry-run               check without changing anything
   $ voiceai agents push . --run-samples                    also execute each tool's sample
   $ voiceai agents push . --json | jq -r '.agent.id'       scriptable
-  $ voiceai agents push staged/ --require-resolved --expect-org org_abc --dry-run --json
-  $ voiceai agents push staged/ --require-resolved --expect-org org_abc --json
+  $ voiceai agents push staged/ --require-resolved --dry-run --json
+  $ voiceai agents push staged/ --require-resolved --json
 
 NOTES
   The directory may be the package root or the compiled build/slng directory.
@@ -1844,11 +1780,11 @@ NOTES
   --require-resolved is a different mode, for a caller (such as unmute) that has
   already resolved every reference to an exact tool_id/version or MCP server_id/hash
   and wants those honoured EXACTLY — never re-resolved by name, never the first
-  same-name record, never refreshed. It refuses authored tool bodies, confirms
-  --expect-org against the real credential before any write, discovery or tool
-  operation, and never runs a sample. The JSON document carries the explicit marker
-  \`resolution_contract: 1\` so a caller can tell a supporting release apart from an
-  older CLI that would otherwise ignore the flag or reject it outright.
+  same-name record, never refreshed. It refuses authored tool bodies and never runs
+  a sample. The API key decides the organisation. The JSON document carries the
+  explicit marker \`resolution_contract: 1\` so a caller can tell a supporting
+  release apart from an older CLI that would otherwise ignore the flag or reject it
+  outright. \`org_optional: 1\` marks a release that takes no --expect-org.
 `,
     )
     .action(async (dir: string, opts) => {

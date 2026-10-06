@@ -747,8 +747,11 @@ interface StubOpts {
   toolDetailsById?: Record<string, Record<string, unknown>>;
   /** --require-resolved: GET /v1/agents/tools/{id}/versions/{n}, keyed by `${id}:${n}`. */
   toolVersionsById?: Record<string, Record<string, unknown>>;
-  /** --require-resolved: GET /v1/me for the organisation confirmation. Defaults to org-1/Acme. */
-  me?: Record<string, unknown> | number;
+  /**
+   * GET /v1/me, the best-effort identity probe. Defaults to org-1/Acme.
+   * "unreachable" points VOICEAI_BASE_URL at a closed port, like a host that no longer resolves.
+   */
+  me?: Record<string, unknown> | "unreachable";
 }
 
 async function runCli(
@@ -780,7 +783,6 @@ async function runCli(
 
       // main host — identity probe
       if (path === "/v1/me") {
-        if (typeof stub.me === "number") return ok({ detail: "unauthorized" }, stub.me);
         return ok(stub.me ?? { org_id: "org-1", org_name: "Acme" });
       }
 
@@ -885,7 +887,7 @@ async function runCli(
       env: {
         ...process.env,
         VOICEAI_AGENTS_BASE_URL: `http://localhost:${server.port}`,
-        VOICEAI_BASE_URL: `http://localhost:${server.port}`,
+        VOICEAI_BASE_URL: stub.me === "unreachable" ? "http://127.0.0.1:1" : `http://localhost:${server.port}`,
         VOICEAI_API_KEY: "slng_test_key",
       },
       stdin: opts.stdin ?? "ignore",
@@ -1673,7 +1675,7 @@ test("the platform error is printed once, and a traceback stays inside its item"
 // Unlike ordinary push, every reference already carries the exact identity
 // (tool_id/version, or server_id/observed_schema_hash) a caller such as
 // unmute resolved beforehand. This mode's whole job is to use EXACTLY that,
-// never re-derive it by name, and confirm --expect-org before anything else.
+// never re-derive it by name.
 // ---------------------------------------------------------------------------
 
 const RESOLVED_TOOL_ID = "tool-checked-1";
@@ -1759,7 +1761,7 @@ function resolvedServer(over: Record<string, unknown> = {}): Record<string, unkn
 test("--require-resolved --dry-run reports the exact staged tool id/version and mcp id/hash, marked resolution_contract: 1", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--dry-run", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--dry-run", "--json"],
     resolvedStub(),
   );
   expect(r.code).toBe(0);
@@ -1773,108 +1775,65 @@ test("--require-resolved --dry-run reports the exact staged tool id/version and 
   expect(mutating(r.calls)).toEqual([]);
 });
 
-test("--require-resolved needs --expect-org and calls nothing", async () => {
+// The key decides the organisation, so the push never needs the main API host:
+// /v1/me is unreachable in these tests.
+test("--require-resolved --dry-run works when /v1/me is unreachable", async () => {
   const dir = resolvedPackage();
-  const r = await runCli(["agents", "push", dir, "--require-resolved", "--json"], resolvedStub());
-  expect(r.code).toBe(1);
+  const r = await runCli(
+    ["agents", "push", dir, "--require-resolved", "--dry-run", "--json"],
+    resolvedStub({ me: "unreachable" }),
+  );
+  expect(r.code).toBe(0);
   const doc = JSON.parse(r.stdout);
+  expect(doc.ok).toBe(true);
   expect(doc.resolution_contract).toBe(1);
+  expect(doc.task_tools).toBe(1);
+  expect(doc.org_optional).toBe(1);
+  // No org was found, yet the org-1 tool and MCP server passed the scope checks.
+  expect(doc.organisation.id).toBe("");
+  expect(doc.refs[0]).toMatchObject({ tool_id: RESOLVED_TOOL_ID, version: 5 });
+  expect(doc.mcp_refs[0]).toMatchObject({ server_id: RESOLVED_SERVER_ID, observed_schema_hash: RESOLVED_HASH });
   expect(mutating(r.calls)).toEqual([]);
 });
 
-test("a wrong account is refused before any write, and nothing beyond the identity probe is called", async () => {
+test("--require-resolved pushes when /v1/me is unreachable", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
-    resolvedStub({ me: { org_id: "org-2", org_name: "Someone Else" } }),
+    ["agents", "push", dir, "--require-resolved", "--json"],
+    resolvedStub({ me: "unreachable" }),
+  );
+  expect(r.code).toBe(0);
+  const doc = JSON.parse(r.stdout);
+  expect(doc.ok).toBe(true);
+  expect(doc.org_optional).toBe(1);
+  const write = mutating(r.calls).find((c) => c.path === "/v1/agents");
+  const body = write?.body as { tool_refs: Record<string, unknown>[] };
+  expect(body.tool_refs[0]).toMatchObject({ tool_id: RESOLVED_TOOL_ID, version: 5 });
+});
+
+test("a tool from another org than the one the agents host names is refused", async () => {
+  const dir = resolvedPackage();
+  const r = await runCli(
+    ["agents", "push", dir, "--require-resolved", "--dry-run", "--json"],
+    resolvedStub({
+      me: "unreachable",
+      agents: [{ id: "a-other", name: "other", organisation_id: "org-1" }],
+      toolDetailsById: {
+        [RESOLVED_TOOL_ID]: { id: RESOLVED_TOOL_ID, name: "check_order", tool_type: "code", organisation_id: "org-2" },
+      },
+    }),
   );
   expect(r.code).toBe(1);
   const doc = JSON.parse(r.stdout);
-  expect(doc.blockers[0].kind).toBe("organisation_mismatch");
-  expect(doc.resolution_contract).toBe(1);
-  expect(r.calls.map((c) => c.path)).toEqual(["/v1/me"]);
-});
-
-test("an organisation that cannot be confirmed at all is a refusal, never a pass", async () => {
-  const dir = resolvedPackage();
-  const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
-    resolvedStub({ me: 401 }),
-  );
-  expect(r.code).toBe(1);
-  expect(JSON.parse(r.stdout).blockers[0].kind).toBe("organisation_mismatch");
-  expect(r.calls.map((c) => c.path)).toEqual(["/v1/me"]);
-});
-
-// Adapted from runCliCapturingStderrAtFirstWrite: rather than sample stderr at
-// the first write, this races process exit against a write ever reaching the
-// server at all — the strongest proof available that no write is attempted.
-async function runResolvedCliProvingNoWriteBeforeExit(
-  args: string[],
-  stub: StubOpts,
-): Promise<{ code: number; writeAttempted: boolean }> {
-  let signalWrite: () => void = () => {};
-  const firstWrite = new Promise<void>((r) => (signalWrite = r));
-  let releaseGate: () => void = () => {};
-  const gate = new Promise<void>((r) => (releaseGate = r));
-
-  const server = Bun.serve({
-    port: 0,
-    async fetch(req) {
-      const path = new URL(req.url).pathname;
-      const ok = (v: unknown, status = 200) =>
-        new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });
-      if (req.method !== "GET") {
-        signalWrite();
-        await gate; // held open; the test only cares whether this was ever reached
-      }
-      if (path === "/v1/me") {
-        if (typeof stub.me === "number") return ok({ detail: "unauthorized" }, stub.me);
-        return ok(stub.me ?? { org_id: "org-1", org_name: "Acme" });
-      }
-      return ok({}, 200);
-    },
-  });
-
-  try {
-    const proc = Bun.spawn(["bun", "run", "src/index.ts", ...args], {
-      cwd: CLI_DIR,
-      env: {
-        ...process.env,
-        VOICEAI_AGENTS_BASE_URL: `http://localhost:${server.port}`,
-        VOICEAI_BASE_URL: `http://localhost:${server.port}`,
-        VOICEAI_API_KEY: "slng_test_key",
-      },
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exited = proc.exited.then((code) => ({ kind: "exit" as const, code }));
-    const wrote = firstWrite.then(() => ({ kind: "write" as const }));
-    const first = await Promise.race([exited, wrote]);
-    releaseGate();
-    const code = await proc.exited;
-    return { code, writeAttempted: first.kind === "write" };
-  } finally {
-    releaseGate();
-    server.stop(true);
-  }
-}
-
-test("a wrong account exits before a write could even be attempted (race-proof)", async () => {
-  const dir = resolvedPackage();
-  const r = await runResolvedCliProvingNoWriteBeforeExit(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1"],
-    { me: { org_id: "org-2" } },
-  );
-  expect(r.writeAttempted).toBe(false);
-  expect(r.code).toBe(1);
+  expect(doc.org_optional).toBe(1);
+  expect(doc.organisation.id).toBe("org-1");
+  expect(JSON.stringify(doc.blockers)).toContain("belongs to a different organisation");
 });
 
 test("a real push sends the exact staged tool_id/version and mcp hash, never a catalogue-derived one", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--json"],
     resolvedStub({
       // A DIFFERENT row exists in the name catalogue under the same name, with
       // a different id/version. Ordinary buildPlan would resolve to THIS by
@@ -1889,6 +1848,7 @@ test("a real push sends the exact staged tool_id/version and mcp hash, never a c
   expect(body.mcp_refs[0]).toMatchObject({ server_id: RESOLVED_SERVER_ID, observed_schema_hash: RESOLVED_HASH });
   const doc = JSON.parse(r.stdout);
   expect(doc.resolution_contract).toBe(1);
+  expect(doc.org_optional).toBe(1);
   expect(doc.ok).toBe(true);
   // The returned success document agrees with the supplied resolution too —
   // not just the request body the platform received.
@@ -1901,7 +1861,7 @@ test("a real push sends the exact staged tool_id/version and mcp hash, never a c
 test("an authored tool body is refused outright, even when every reference resolves cleanly", async () => {
   const dir = resolvedPackage({}, [{ name: "check_order", tool_type: "code" }]);
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--json"],
     resolvedStub(),
   );
   expect(r.code).toBe(1);
@@ -1916,7 +1876,7 @@ test("a tool reference with no explicit tool_id is refused, never resolved by na
     mcp_refs: [],
   });
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--json"],
     resolvedStub({ tools: [toolRow({ name: "check_order" })] }),
   );
   expect(r.code).toBe(1);
@@ -1932,7 +1892,7 @@ test("an mcp reference with no explicit server_id/hash is refused, never resolve
     mcp_refs: [{ server: "docs", tool_name: "search" }],
   });
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--json"],
     resolvedStub(),
   );
   expect(r.code).toBe(1);
@@ -1943,7 +1903,7 @@ test("an mcp reference with no explicit server_id/hash is refused, never resolve
 test("a checked tool version that is no longer available is refused, not silently replaced with latest", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--json"],
     resolvedStub({ toolVersionsById: {} }),
   );
   expect(r.code).toBe(1);
@@ -1953,7 +1913,7 @@ test("a checked tool version that is no longer available is refused, not silentl
 test("a tool_id belonging to a different organisation is refused, not attached", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--json"],
     resolvedStub({
       toolDetailsById: {
         [RESOLVED_TOOL_ID]: {
@@ -1972,7 +1932,7 @@ test("a tool_id belonging to a different organisation is refused, not attached",
 test("a tool_id resolving to a different name than declared is refused as conflicting", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--json"],
     resolvedStub({
       toolDetailsById: {
         [RESOLVED_TOOL_ID]: {
@@ -1993,7 +1953,7 @@ test("a tool_id resolving to a different name than declared is refused as confli
 test("a changed mcp schema hash is refused rather than silently refreshed and attached unchecked", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--json"],
     resolvedStub({
       mcpServers: [
         resolvedServer({ capabilities: { tools: [{ name: "search", schema_hash: "a-changed-hash" }] } }),
@@ -2027,13 +1987,14 @@ test.each(UNUSABLE_RECORDS)(
     const dir = resolvedPackage();
     for (const mode of [["--dry-run"], []]) {
       const r = await runCli(
-        ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", ...mode, "--json"],
+        ["agents", "push", dir, "--require-resolved", ...mode, "--json"],
         resolvedStub({ mcpServers: [resolvedServer(patch)] }),
       );
       expect(r.code).toBe(1);
       const doc = JSON.parse(r.stdout);
       expect(doc.ok).toBe(false);
       expect(doc.resolution_contract).toBe(1);
+      expect(doc.org_optional).toBe(1);
       expect(doc.blockers.map((b: { kind: string }) => b.kind)).toEqual(["mcp_stale"]);
       expect(doc.blockers[0].items[0]).toContain(RESOLVED_SERVER_ID);
       expect(mutating(r.calls)).toEqual([]);
@@ -2045,7 +2006,7 @@ test.each(UNUSABLE_RECORDS)(
 test("--require-resolved never retries a capability-unavailable rejection: no connect, exactly one write attempt", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1"],
+    ["agents", "push", dir, "--require-resolved", "--json"],
     resolvedStub({
       agentWriteFailsOnce: {
         detail: "capabilities unavailable",
@@ -2054,6 +2015,8 @@ test("--require-resolved never retries a capability-unavailable rejection: no co
     }),
   );
   expect(r.code).toBe(1);
+  // The partial-failure document carries the marker too.
+  expect(JSON.parse(r.stdout).org_optional).toBe(1);
   expect(r.calls.some((c) => c.path.endsWith("/connect"))).toBe(false);
   expect(mutating(r.calls).filter((c) => c.path === "/v1/agents" && c.method === "POST")).toHaveLength(1);
 });
@@ -2066,8 +2029,6 @@ test("--run-samples has no effect under --require-resolved: no /run call is ever
       "push",
       dir,
       "--require-resolved",
-      "--expect-org",
-      "org-1",
       "--run-samples",
       "--dry-run",
       "--json",
@@ -2081,7 +2042,7 @@ test("--run-samples has no effect under --require-resolved: no /run call is ever
 test("--dry-run stays read-only even when blocked, and still names the selected agent", async () => {
   const dir = resolvedPackage({ tool_refs: [{ tool: "x" }], mcp_refs: [] });
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--dry-run", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--dry-run", "--json"],
     resolvedStub({ agents: [{ id: "agent-1", name: "slng", organisation_id: "org-1" }] }),
   );
   expect(r.code).toBe(1);
@@ -2094,7 +2055,7 @@ test("--dry-run stays read-only even when blocked, and still names the selected 
 test("an existing attachment for the same tool_id is reused, not replaced with a new one", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--dry-run", "--json"],
+    ["agents", "push", dir, "--require-resolved", "--dry-run", "--json"],
     resolvedStub({
       agents: [{ id: "agent-1", name: "slng", organisation_id: "org-1" }],
       liveAgent: {
@@ -2121,8 +2082,6 @@ test("--agent-id disambiguates two same-named agents under --require-resolved to
       "push",
       dir,
       "--require-resolved",
-      "--expect-org",
-      "org-1",
       "--agent-id",
       "a2",
       "--dry-run",
