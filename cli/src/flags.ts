@@ -28,7 +28,7 @@ EXAMPLES
   $ voiceai whoami                                       check that your API key is valid
   $ voiceai agents list                                  list your voice agents
   $ voiceai agents push examples/slng-support            push a compiled package
-  $ voiceai agents push staged/ --require-resolved --expect-org org_abc --json
+  $ voiceai agents push staged/ --require-resolved --json
   $ voiceai tool list                                    list tools your agents can call
   $ voiceai tool get api_request                         show one tool by name
   $ voiceai tool run check_order --confirm-side-effects  execute one tool for real
