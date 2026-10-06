@@ -1091,11 +1091,11 @@ export async function applyPush(
   const before = plan.agent.existingId ? await newestVersion(plan.agent.existingId) : null;
   const writeAgent = () => {
     const body = buildAgentBody(pkg, plan);
-    return plan.agent.existingId
-      ? must<AgentRow>(
-          agentsRequest("PUT", `/v1/agents/${encodeURIComponent(plan.agent.existingId)}`, { body }),
-        )
-      : must<AgentRow>(agentsRequest("POST", "/v1/agents", { body }));
+    return writeAgentWhenPrepared(() =>
+      plan.agent.existingId
+        ? agentsRequest("PUT", `/v1/agents/${encodeURIComponent(plan.agent.existingId)}`, { body })
+        : agentsRequest("POST", "/v1/agents", { body }),
+    );
   };
   let agentId: string;
   try {
@@ -1119,6 +1119,10 @@ export async function applyPush(
     }
     agentId = written.id;
     outcome.agent = { id: agentId, action: plan.agent.action };
+    if (typeof written.runtime_dispatch_metadata_last_error === "string") {
+      // Saved, but inbound calls are not served until this is fixed.
+      note(`inbound calls are not ready: ${written.runtime_dispatch_metadata_last_error}`);
+    }
   } catch (e) {
     outcome.failedAt = "agent";
     throw Object.assign(new Error((e as Error).message), { outcome });
@@ -1140,6 +1144,61 @@ export async function applyPush(
     outcome.version = "unchanged";
   }
   return outcome;
+}
+
+/** The answer to an agent write while its code tools' dependencies are prepared. */
+interface PreparationResult {
+  state: "preparing" | "failed" | "ready";
+  retry_after_seconds?: number | null;
+  issue?: { code: string; message: string; remediation?: string | null } | null;
+}
+
+export const PREPARATION_WAIT_MS = 10 * 60_000;
+
+/**
+ * Write the agent, waiting out code-dependency preparation.
+ *
+ * While the platform prepares the dependencies of the agent's code tools it
+ * answers the write with 202 and the preparation state instead of the agent,
+ * and saves nothing; repeating the same write is the retry. A 200 whose state
+ * is "failed" saved nothing either. Both used to read as success, so a push
+ * reported "unchanged" while the old configuration stayed live.
+ */
+export async function writeAgentWhenPrepared(
+  write: () => Promise<AgentsResult<AgentRow | PreparationResult>>,
+  opts: { sleep?: (ms: number) => Promise<void>; waitMs?: number; now?: () => number } = {},
+): Promise<AgentRow> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = opts.now ?? Date.now;
+  const deadline = now() + (opts.waitMs ?? PREPARATION_WAIT_MS);
+  let announced = false;
+  for (;;) {
+    const res = await write();
+    if (!res.ok) throw new Error(formatAgentsError(res));
+    const body = res.data as Partial<AgentRow> & Partial<PreparationResult>;
+    if (typeof body?.id === "string") return body as AgentRow;
+    if (body?.state === "failed") {
+      const issue = body.issue;
+      const parts = [`code dependencies could not be prepared: ${issue?.message ?? "preparation failed"}`];
+      if (issue?.remediation) parts.push(issue.remediation);
+      if (issue?.code) parts.push(issue.code);
+      throw new Error(`${parts.join(" · ")}; the agent was not saved`);
+    }
+    if (body?.state !== "preparing") {
+      throw new Error("the platform answered the agent write without an agent; nothing was saved");
+    }
+    if (now() >= deadline) {
+      throw new Error(
+        "code dependencies are still being prepared and the agent is not saved yet; push again in a few minutes",
+      );
+    }
+    if (!announced) {
+      note("preparing code dependencies; the agent is saved once they are ready");
+      announced = true;
+    }
+    const seconds = Number(res.retryAfter ?? body.retry_after_seconds ?? 5);
+    await sleep(Math.min(Math.max(Number.isFinite(seconds) ? seconds : 5, 1), 60) * 1000);
+  }
 }
 
 /**

@@ -25,6 +25,7 @@ import {
   renderOutcome,
   renderPartial,
   renderPlan,
+  writeAgentWhenPrepared,
   type PlanInputs,
 } from "./push";
 import type { McpServerDetail } from "./mcp";
@@ -740,6 +741,8 @@ interface StubOpts {
   mcpServers?: Record<string, unknown>[];
   /** Reject the first agent write with this body, then accept the second. */
   agentWriteFailsOnce?: unknown;
+  /** Answer the first agent write 202 with this preparation body, then accept the second. */
+  agentWritePreparingOnce?: unknown;
   /** --require-resolved: GET /v1/agents/tools/{id} responses, keyed by id. */
   toolDetailsById?: Record<string, Record<string, unknown>>;
   /** --require-resolved: GET /v1/agents/tools/{id}/versions/{n}, keyed by `${id}:${n}`. */
@@ -786,6 +789,9 @@ async function runCli(
         if (stub.agentWriteStatus) return ok(stub.agentWriteBody, stub.agentWriteStatus);
         if (stub.agentWriteFailsOnce && agentWriteAttempts++ === 0) {
           return ok(stub.agentWriteFailsOnce, 409);
+        }
+        if (stub.agentWritePreparingOnce && agentWriteAttempts++ === 0) {
+          return ok(stub.agentWritePreparingOnce, 202);
         }
         agentWritten = true;
         return ok({ id: "agent-new", name: "slng", organisation_id: "org-1" });
@@ -1132,6 +1138,34 @@ test("a rejected body surfaces the platform's message and the field it names", a
   expect(r.code).toBe(1);
   expect(r.stderr).toContain("models.stt");
   expect(r.stderr).toContain("eu-central");
+});
+
+test("a write answered 202 while dependencies prepare is repeated, not reported as done", async () => {
+  const dir = writePackage();
+  const r = await runCli(["agents", "push", dir, "--json"], {
+    tools: [orgTool],
+    versionsAfter: 1,
+    agentWritePreparingOnce: { state: "preparing", retry_after_seconds: 1 },
+  });
+  expect(r.code).toBe(0);
+  expect(r.calls.filter((c) => c.path === "/v1/agents" && c.method === "POST")).toHaveLength(2);
+  expect(r.stderr).toContain("preparing code dependencies");
+  expect(JSON.parse(r.stdout).agent.id).toBe("agent-new");
+});
+
+test("a 200 with failed preparation fails the push instead of reporting unchanged", async () => {
+  const dir = writePackage();
+  const r = await runCli(["agents", "push", dir], {
+    tools: [orgTool],
+    agentWriteStatus: 200,
+    agentWriteBody: {
+      state: "failed",
+      issue: { code: "DEPENDENCY_LOCK_FAILED", message: "no matching distribution" },
+    },
+  });
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("no matching distribution");
+  expect(r.stderr).toContain("the agent was not saved");
 });
 
 // --- T046/T047: consent and abort (research D6, FR-018) --------------------
@@ -2188,4 +2222,53 @@ test("the same task names are not overwrites, even though live tools are ids", (
   const dir = writePackage({ agent: { tasks: [{ name: "verify", instructions: "x", when: "y", tools: ["end_call"] }] } });
   const live = { id: "a1", name: "slng", tool_refs: [], tasks: [{ name: "verify", tools: ["live-att"] }] };
   expect(planFor({ pkgDir: dir, liveAgent: live }).overwrites).not.toContain("tasks");
+});
+
+// --- agent write while code dependencies are prepared ----------------------
+
+const preparing = { state: "preparing", retry_after_seconds: 3 };
+
+test("a write answered with 202 preparing is repeated until the agent comes back", async () => {
+  const answers = [
+    { ok: true, status: 202, data: preparing, retryAfter: "2" },
+    { ok: true, status: 202, data: preparing },
+    { ok: true, status: 200, data: { id: "agent-1", name: "a" } },
+  ];
+  const slept: number[] = [];
+  let writes = 0;
+  const written = await writeAgentWhenPrepared(async () => answers[writes++] as never, {
+    sleep: async (ms) => void slept.push(ms),
+  });
+  expect(written.id).toBe("agent-1");
+  expect(writes).toBe(3);
+  expect(slept).toEqual([2000, 3000]);
+});
+
+test("a 200 whose preparation failed is a failed push, not an unchanged one", async () => {
+  const failed = {
+    state: "failed",
+    issue: { code: "DEPENDENCY_LOCK_FAILED", message: "no matching distribution", remediation: "Pin an existing version." },
+  };
+  await expect(
+    writeAgentWhenPrepared(async () => ({ ok: true, status: 200, data: failed }) as never),
+  ).rejects.toThrow(
+    "code dependencies could not be prepared: no matching distribution · Pin an existing version. · DEPENDENCY_LOCK_FAILED; the agent was not saved",
+  );
+});
+
+test("a 2xx without an agent is never reported as success", async () => {
+  await expect(
+    writeAgentWhenPrepared(async () => ({ ok: true, status: 200, data: {} }) as never),
+  ).rejects.toThrow("nothing was saved");
+});
+
+test("preparation that outlasts the wait fails and says nothing was saved", async () => {
+  let clock = 0;
+  await expect(
+    writeAgentWhenPrepared(async () => ({ ok: true, status: 202, data: preparing }) as never, {
+      waitMs: 10_000,
+      now: () => clock,
+      sleep: async (ms) => void (clock += ms),
+    }),
+  ).rejects.toThrow("the agent is not saved yet");
 });
