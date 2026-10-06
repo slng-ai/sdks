@@ -747,8 +747,11 @@ interface StubOpts {
   toolDetailsById?: Record<string, Record<string, unknown>>;
   /** --require-resolved: GET /v1/agents/tools/{id}/versions/{n}, keyed by `${id}:${n}`. */
   toolVersionsById?: Record<string, Record<string, unknown>>;
-  /** --require-resolved: GET /v1/me for the organisation confirmation. Defaults to org-1/Acme. */
-  me?: Record<string, unknown> | number;
+  /**
+   * --require-resolved: GET /v1/me for the organisation confirmation. Defaults to org-1/Acme.
+   * "unreachable" points VOICEAI_BASE_URL at a closed port, like a host that no longer resolves.
+   */
+  me?: Record<string, unknown> | number | "unreachable";
 }
 
 async function runCli(
@@ -885,7 +888,7 @@ async function runCli(
       env: {
         ...process.env,
         VOICEAI_AGENTS_BASE_URL: `http://localhost:${server.port}`,
-        VOICEAI_BASE_URL: `http://localhost:${server.port}`,
+        VOICEAI_BASE_URL: stub.me === "unreachable" ? "http://127.0.0.1:1" : `http://localhost:${server.port}`,
         VOICEAI_API_KEY: "slng_test_key",
       },
       stdin: opts.stdin ?? "ignore",
@@ -1773,13 +1776,59 @@ test("--require-resolved --dry-run reports the exact staged tool id/version and 
   expect(mutating(r.calls)).toEqual([]);
 });
 
-test("--require-resolved needs --expect-org and calls nothing", async () => {
+// The key decides the organisation, so --expect-org is optional. Without it the
+// push never needs the main API host: /v1/me is unreachable in both tests.
+test("--require-resolved --dry-run works without --expect-org when /v1/me is unreachable", async () => {
   const dir = resolvedPackage();
-  const r = await runCli(["agents", "push", dir, "--require-resolved", "--json"], resolvedStub());
+  const r = await runCli(
+    ["agents", "push", dir, "--require-resolved", "--dry-run", "--json"],
+    resolvedStub({ me: "unreachable" }),
+  );
+  expect(r.code).toBe(0);
+  const doc = JSON.parse(r.stdout);
+  expect(doc.ok).toBe(true);
+  expect(doc.resolution_contract).toBe(1);
+  expect(doc.task_tools).toBe(1);
+  expect(doc.org_optional).toBe(1);
+  // No org was found, yet the org-1 tool and MCP server passed the scope checks.
+  expect(doc.organisation.id).toBe("");
+  expect(doc.refs[0]).toMatchObject({ tool_id: RESOLVED_TOOL_ID, version: 5 });
+  expect(doc.mcp_refs[0]).toMatchObject({ server_id: RESOLVED_SERVER_ID, observed_schema_hash: RESOLVED_HASH });
+  expect(mutating(r.calls)).toEqual([]);
+});
+
+test("--require-resolved pushes without --expect-org when /v1/me is unreachable", async () => {
+  const dir = resolvedPackage();
+  const r = await runCli(
+    ["agents", "push", dir, "--require-resolved", "--json"],
+    resolvedStub({ me: "unreachable" }),
+  );
+  expect(r.code).toBe(0);
+  const doc = JSON.parse(r.stdout);
+  expect(doc.ok).toBe(true);
+  expect(doc.org_optional).toBe(1);
+  const write = mutating(r.calls).find((c) => c.path === "/v1/agents");
+  const body = write?.body as { tool_refs: Record<string, unknown>[] };
+  expect(body.tool_refs[0]).toMatchObject({ tool_id: RESOLVED_TOOL_ID, version: 5 });
+});
+
+test("without --expect-org, a tool from an org the agents host names is still refused", async () => {
+  const dir = resolvedPackage();
+  const r = await runCli(
+    ["agents", "push", dir, "--require-resolved", "--dry-run", "--json"],
+    resolvedStub({
+      me: "unreachable",
+      agents: [{ id: "a-other", name: "other", organisation_id: "org-1" }],
+      toolDetailsById: {
+        [RESOLVED_TOOL_ID]: { id: RESOLVED_TOOL_ID, name: "check_order", tool_type: "code", organisation_id: "org-2" },
+      },
+    }),
+  );
   expect(r.code).toBe(1);
   const doc = JSON.parse(r.stdout);
-  expect(doc.resolution_contract).toBe(1);
-  expect(mutating(r.calls)).toEqual([]);
+  expect(doc.org_optional).toBe(1);
+  expect(doc.organisation.id).toBe("org-1");
+  expect(JSON.stringify(doc.blockers)).toContain("belongs to a different organisation");
 });
 
 test("a wrong account is refused before any write, and nothing beyond the identity probe is called", async () => {
@@ -1792,6 +1841,7 @@ test("a wrong account is refused before any write, and nothing beyond the identi
   const doc = JSON.parse(r.stdout);
   expect(doc.blockers[0].kind).toBe("organisation_mismatch");
   expect(doc.resolution_contract).toBe(1);
+  expect(doc.org_optional).toBe(1);
   expect(r.calls.map((c) => c.path)).toEqual(["/v1/me"]);
 });
 
@@ -1889,6 +1939,7 @@ test("a real push sends the exact staged tool_id/version and mcp hash, never a c
   expect(body.mcp_refs[0]).toMatchObject({ server_id: RESOLVED_SERVER_ID, observed_schema_hash: RESOLVED_HASH });
   const doc = JSON.parse(r.stdout);
   expect(doc.resolution_contract).toBe(1);
+  expect(doc.org_optional).toBe(1);
   expect(doc.ok).toBe(true);
   // The returned success document agrees with the supplied resolution too —
   // not just the request body the platform received.
@@ -2034,6 +2085,7 @@ test.each(UNUSABLE_RECORDS)(
       const doc = JSON.parse(r.stdout);
       expect(doc.ok).toBe(false);
       expect(doc.resolution_contract).toBe(1);
+      expect(doc.org_optional).toBe(1);
       expect(doc.blockers.map((b: { kind: string }) => b.kind)).toEqual(["mcp_stale"]);
       expect(doc.blockers[0].items[0]).toContain(RESOLVED_SERVER_ID);
       expect(mutating(r.calls)).toEqual([]);
@@ -2045,7 +2097,7 @@ test.each(UNUSABLE_RECORDS)(
 test("--require-resolved never retries a capability-unavailable rejection: no connect, exactly one write attempt", async () => {
   const dir = resolvedPackage();
   const r = await runCli(
-    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1"],
+    ["agents", "push", dir, "--require-resolved", "--expect-org", "org-1", "--json"],
     resolvedStub({
       agentWriteFailsOnce: {
         detail: "capabilities unavailable",
@@ -2054,6 +2106,8 @@ test("--require-resolved never retries a capability-unavailable rejection: no co
     }),
   );
   expect(r.code).toBe(1);
+  // The partial-failure document carries the marker too.
+  expect(JSON.parse(r.stdout).org_optional).toBe(1);
   expect(r.calls.some((c) => c.path.endsWith("/connect"))).toBe(false);
   expect(mutating(r.calls).filter((c) => c.path === "/v1/agents" && c.method === "POST")).toHaveLength(1);
 });
