@@ -364,7 +364,8 @@ function webSessionsCommand(): Command {
     .option("--json", "Output JSON")
     .action(async (agentIdArg: string | undefined, opts) => {
       const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
-      const body = opts.file ? readJsonInput(opts.file) : undefined;
+      // The API requires a body, even an empty one.
+      const body = opts.file ? readJsonInput(opts.file) : {};
       const data = await send<Record<string, unknown>>(
         opts.json,
         `creating web session for ${agentId}`,
