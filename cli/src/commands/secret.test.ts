@@ -28,7 +28,6 @@ function entry(over: Partial<VaultEntry> = {}): VaultEntry {
     id: over.id ?? "00000000-0000-0000-0000-000000000000",
     organisation_id: "org-1",
     name: over.name ?? "A_SECRET",
-    kind: over.kind ?? "secret",
     description: over.description ?? null,
     value: over.value ?? null,
     has_value: over.has_value ?? true,
@@ -59,17 +58,17 @@ function stub(bodies: unknown[], status = 200): { urls: string[] } {
 
 // --- redaction (FR-008) ----------------------------------------------------
 
-test("redact removes a variable's plaintext value", () => {
-  const v = entry({ name: "REGION", kind: "variable", value: SENTINEL });
+test("redact removes a plaintext value", () => {
+  const v = entry({ name: "REGION", value: SENTINEL });
   const out = redact(v);
   expect("value" in out).toBe(false);
   expect(JSON.stringify(out)).not.toContain(SENTINEL);
   expect(out.name).toBe("REGION");
 });
 
-test("redact is unconditional — it does not branch on kind", () => {
-  expect("value" in redact(entry({ kind: "secret", value: null }))).toBe(false);
-  expect("value" in redact(entry({ kind: "variable", value: SENTINEL }))).toBe(false);
+test("redact is unconditional — it strips value whether or not it is set", () => {
+  expect("value" in redact(entry({ value: null }))).toBe(false);
+  expect("value" in redact(entry({ value: SENTINEL }))).toBe(false);
 });
 
 // --- listSecrets (FR-002, research D4) -------------------------------------
@@ -141,10 +140,10 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
     headers: { "content-type": "application/json", ...headers },
   });
 
-/** One secret plus one variable carrying the sentinel plaintext. */
+/** Two entries, one carrying the sentinel plaintext that must never print. */
 const vault = [
   entry({ name: "FIRECRAWL_API_KEY", description: "scraper" }),
-  entry({ name: "REGION", kind: "variable", value: SENTINEL, description: null }),
+  entry({ name: "REGION", value: SENTINEL, description: null }),
 ];
 
 function vaultServer(rows: VaultEntry[]) {
@@ -365,8 +364,9 @@ test("no output on any path contains the API key (FR-013)", async () => {
 
 // ---------------------------------------------------------------------------
 // SC-005. The load-bearing test: no vault value reaches any stream, from any
-// command, in any output mode. `kind: "variable"` really does return decrypted
-// plaintext from the platform, so this is a leak check, not a formality.
+// command, in any output mode. The vault used to return decrypted plaintext for
+// variables, and redaction must hold if any value ever comes back again, so
+// this is a leak check, not a formality.
 // Do not delete it.
 // ---------------------------------------------------------------------------
 
@@ -479,31 +479,38 @@ test("create --overwrite POSTs the new ones and PATCHes the existing ones", asyn
   );
   expect(r.code).toBe(0);
   expect(v.writes).toEqual([
-    { method: "POST", path: "/v1/agents/secrets", body: { name: "BRAND_NEW", kind: "secret", value: "x" } },
+    { method: "POST", path: "/v1/agents/secrets", body: { name: "BRAND_NEW", value: "x" } },
     { method: "PATCH", path: "/v1/agents/secrets/FIRECRAWL_API_KEY", body: { value: "rotated" } },
   ]);
   expect(r.stdout).toContain("BRAND_NEW\tcreated");
   expect(r.stdout).toContain("FIRECRAWL_API_KEY\toverwritten");
 });
 
-test("create --kind variable is carried on the create body", async () => {
+// The live route rejects `kind` with 422 extra_forbidden, for every value.
+test("create --kind secret is still accepted, and sends no kind field", async () => {
   const v = writableVault([]);
-  await runCli(
+  const r = await runCli(
+    ["secret", "create", "--secrets-file", envFile("API_KEY=x\n"), "--kind", "secret"],
+    v.handler,
+  );
+  expect(r.code).toBe(0);
+  expect(v.writes[0]?.body).toEqual({ name: "API_KEY", value: "x" });
+});
+
+test("create refuses --kind variable before any request", async () => {
+  const v = writableVault([]);
+  const r = await runCli(
     ["secret", "create", "--secrets-file", envFile("REGION=eu\n"), "--kind", "variable"],
     v.handler,
   );
-  expect(v.writes[0]?.body).toEqual({ name: "REGION", kind: "variable", value: "eu" });
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("the vault stores secrets only");
+  expect(v.writes).toEqual([]);
 });
 
-test("create rejects an unknown --kind before any request", async () => {
-  const v = writableVault([]);
-  const r = await runCli(
-    ["secret", "create", "--secrets-file", envFile("A=1"), "--kind", "nonsense"],
-    v.handler,
-  );
-  expect(r.code).toBe(1);
-  expect(r.stderr).toContain("Allowed choices are secret, variable");
-  expect(v.writes).toEqual([]);
+test("create --help no longer offers --kind", async () => {
+  const r = await runCli(["secret", "create", "--help"], vaultServer([]));
+  expect(r.stdout).not.toContain("--kind");
 });
 
 test("create reports an empty file rather than writing nothing silently", async () => {
@@ -536,7 +543,7 @@ test("create <name> reads a piped value and never echoes it", async () => {
       new Response(proc.stderr).text(),
     ]);
     expect(await proc.exited).toBe(0);
-    expect(v.writes[0]?.body).toEqual({ name: "NEW_KEY", kind: "secret", value: SENTINEL });
+    expect(v.writes[0]?.body).toEqual({ name: "NEW_KEY", value: SENTINEL });
     // The value reaches the API and nowhere else.
     expect(stdout).not.toContain(SENTINEL);
     expect(stderr).not.toContain(SENTINEL);
