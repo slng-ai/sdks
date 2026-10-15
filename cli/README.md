@@ -128,9 +128,9 @@ Text:     Hello from Voiceai
           (enter to synthesize)
 ```
 
-Slng-hosted models float to the top of the picker with a yellow ★. Per-model
-voice catalogs include name, gender, tone, and language so you're not
-picking from a wall of UUIDs.
+The pickers read the live catalog and list only the models your API region
+serves. Slng-hosted models float to the top with a yellow ★. Each voice shows
+its name, gender, tone and language, and `p` plays its sample.
 
 **STT flow**
 

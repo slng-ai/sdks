@@ -6,7 +6,7 @@
 // `name` fields like "Brooke - Big Sister" — users will obviously type
 // `brooke`, not the UUID. Both cases need name → voiceId resolution.
 
-import { voicesFor, type Voice } from "./models";
+import { voicesFor, type Voice } from "./catalog";
 
 export interface ResolveResult {
   ok: boolean;
@@ -17,11 +17,14 @@ export interface ResolveResult {
   message?: string;
 }
 
-/** Match by exact voiceId, then exact name, then case-insensitive substring of name. */
-export function resolveVoice(model: string, query: string): ResolveResult {
-  const voices = voicesFor(model);
+/**
+ * Match by exact voiceId, then exact name, then case-insensitive substring of name.
+ * Only an ambiguous name is refused. No match passes the value through as an id.
+ */
+export async function resolveVoice(model: string, query: string): Promise<ResolveResult> {
+  const voices = await voicesFor(model).catch(() => []);
   if (voices.length === 0) {
-    // Unknown model in our catalog — pass through verbatim and let the API decide.
+    // Unknown model, or the catalog can't be read: pass through and let the API decide.
     return { ok: true, voiceId: query };
   }
 
@@ -71,9 +74,11 @@ export function resolveVoice(model: string, query: string): ResolveResult {
     };
   }
 
+  // The catalog lists curated voices, but providers accept more (cloned voices, for one).
   return {
-    ok: false,
-    message: `no voice matching "${query}" for ${model}. Try \`voiceai voices --model ${model}\` to list options.`,
+    ok: true,
+    voiceId: query,
+    message: `"${query}" is not a listed voice for ${model}. sending it as a voice id.`,
   };
 }
 

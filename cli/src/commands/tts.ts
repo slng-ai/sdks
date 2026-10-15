@@ -46,13 +46,13 @@ export function ttsCommand(): Command {
     .addHelpText("afterAll", TTS_EPILOGUE)
     .action(async (text: string, opts) => {
       // Resolve --voice against the catalog (accepts voiceId OR friendly name).
-      const resolved = resolveVoice(opts.model, opts.voice);
+      const resolved = await resolveVoice(opts.model, opts.voice);
       if (!resolved.ok) {
         process.stderr.write(`${resolved.message}\n`);
         process.exit(1);
       }
       const voiceId = resolved.voiceId!;
-      if (resolved.message && voiceId !== opts.voice) {
+      if (resolved.message) {
         process.stderr.write(`${resolved.message}\n`);
       }
 

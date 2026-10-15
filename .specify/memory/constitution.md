@@ -1,5 +1,22 @@
 <!--
 Sync Impact Report
+Version change: 1.0.0 → 1.1.0
+Rationale: The CLI reads models and voices live from the public catalog
+(GET /v1/catalog/models). The bundled live-models and voice-catalog snapshots
+and their sync scripts are gone. MINOR: an obligation is removed, no principle
+is redefined.
+
+Modified principles:
+  II. Generated Code Is Never Hand-Edited: the compile-time list now holds only
+      streaming/ts/messages.ts.
+
+Modified sections:
+  Development Workflow: the `bun run sync-models:check` merge gate is removed.
+  "voice manifests" is dropped from the regen trigger list.
+
+Follow-up TODOs: none
+
+Previous report (1.0.0)
 Version change: (none) → 1.0.0
 Rationale: Initial ratification. Template placeholders replaced with concrete,
 repo-derived governance. MAJOR bump from unversioned scaffold to adopted document.
@@ -39,8 +56,7 @@ A local edit silently forks that contract and the next sync destroys it.
 Stainless-generated SDK sources and every `*.generated.ts`, `streaming/ts/messages.ts`,
 and `streaming/python/messages.py` file are outputs, not sources. Fixes MUST be made in
 the spec or in the generator under `scripts/`, then re-emitted with `bun run regen`.
-Generated files that CI needs at compile time (`cli/src/lib/live-models.generated.ts`,
-`cli/src/lib/voice-catalog.generated.ts`, `streaming/ts/messages.ts`) MUST be committed
+Generated files that CI needs at compile time (`streaming/ts/messages.ts`) MUST be committed
 and MUST be regenerated in the same commit as the spec change that affects them.
 
 Rationale: hand-edits to generated files survive exactly until the next `regen` and then
@@ -91,11 +107,10 @@ compromise of everyone who ran `brew install voiceai`.
 
 ## Development Workflow
 
-- After any change to `specs/`, voice manifests, or a generator in `scripts/`, run
+- After any change to `specs/` or a generator in `scripts/`, run
   `bun run regen` and commit the resulting diff in the same commit.
 - `bun test` (covering `streaming/` and `cli/`) MUST pass before merge. Changes to
   streaming protocol handling, argument parsing, or release scripting MUST land with a test.
-- `bun run sync-models:check` MUST pass; a drifting model catalog blocks merge.
 - PRs MUST state which principle any exception relies on and why. "It's faster this way" is
   not a justification.
 
@@ -115,4 +130,4 @@ Reviewers MUST verify compliance with these principles before approving. Complex
 violates a principle is allowed only with an explicit, written justification in the PR
 description; an unjustified violation is a blocking review comment.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-26
+**Version**: 1.1.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-15

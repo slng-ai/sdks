@@ -4,23 +4,22 @@ import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import Spinner from "ink-spinner";
 import {
-  TTS_MODELS,
+  allLanguages,
+  languageLabel,
+  listMyModels,
+  modelLabel,
+  modelsForLanguage,
+  voiceLabel,
   voicesFor,
   voicesForLanguage,
-  voiceLabel,
-  allLanguages,
-  ttsModelsForLanguage,
-  languageLabel,
-  isSlngHosted,
-  type TtsModel,
-} from "../lib/models";
+} from "../lib/catalog";
 import { SlngFirstItem } from "./SlngFirstItem";
 import { makeClients } from "../lib/sdk";
 import { synthesize, TTS_SAMPLE_RATE, wav } from "../lib/bridge";
 import { playBytes, sniffExt } from "../lib/audio";
 import { previewVoice } from "../lib/preview";
 import { CodeSample } from "./CodeSample";
-import { KeyHints } from "./resourceKit";
+import { ErrorView, KeyHints, Loading, useLoad } from "./resourceKit";
 import { load } from "../lib/config";
 import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -59,6 +58,9 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string>("");
   const [usingDefaults] = useState<boolean>(initial.step !== "pick-language");
+  const catalog = useLoad(() => listMyModels("tts"), []);
+  const models = catalog.data?.models ?? [];
+  const where = catalog.data?.region ? ` in ${catalog.data.region}` : "";
 
   useInput((_input, key) => {
     if (key.escape) {
@@ -96,13 +98,21 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
         <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       )}
 
-      {step === "pick-language" && (
+      {(step === "pick-language" || step === "pick-model") && catalog.error && <ErrorView message={catalog.error} />}
+      {(step === "pick-language" || step === "pick-model") && !catalog.data && !catalog.error && (
+        <Loading label="Loading models…" />
+      )}
+      {(step === "pick-language" || step === "pick-model") && catalog.data && models.length === 0 && (
+        <Text color="yellow">No TTS models are served{where}.</Text>
+      )}
+
+      {step === "pick-language" && models.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <Text>Language:</Text>
           <SelectInput
             items={[
               { label: "Any / multilingual", value: "" },
-              ...allLanguages().map((lang) => ({ label: languageLabel(lang), value: lang })),
+              ...allLanguages(models).map((lang) => ({ label: languageLabel(lang), value: lang })),
             ]}
             limit={8}
             onSelect={(item) => {
@@ -113,31 +123,18 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
         </Box>
       )}
 
-      {step === "pick-model" && (
+      {step === "pick-model" && models.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <Text>
-            Model {language && <Text dimColor>({languageLabel(language)})</Text>}:
+            Model{where} {language && <Text dimColor>({languageLabel(language)})</Text>}:
           </Text>
           <SelectInput
-            items={ttsModelsForLanguage(language).map((m: TtsModel) => {
-              const display = m.name ? `${m.name} (${m.id})` : m.id;
-              return {
-                label: isSlngHosted(m.id) ? `★ ${display}` : `  ${display}`,
-                value: m.id,
-              };
-            })}
+            items={modelsForLanguage(models, language).map((m) => ({ label: modelLabel(m), value: m.id }))}
             limit={8}
             itemComponent={SlngFirstItem}
             onSelect={(item) => {
               setModel(item.value);
-              const v = voicesFor(item.value);
-              if (v.length > 0) {
-                setVoice(v[0]!.voiceId);
-                setStep("pick-voice");
-              } else {
-                setVoice("default");
-                setStep("enter-text");
-              }
+              setStep("pick-voice");
             }}
           />
         </Box>
@@ -308,13 +305,15 @@ interface VoicePickerProps {
 }
 
 function VoicePicker({ model, language, onPick }: VoicePickerProps): React.ReactElement {
-  const voices = voicesForLanguage(model, language);
-  const totalUnfiltered = voicesFor(model).length;
-  const [hoveredId, setHoveredId] = useState<string>(voices[0]?.voiceId ?? "");
+  const loaded = useLoad(() => voicesFor(model), [model]);
+  const all = loaded.data ?? [];
+  const voices = voicesForLanguage(all, language);
+  const totalUnfiltered = all.length;
+  const [hoveredId, setHoveredId] = useState<string>("");
   const [previewing, setPreviewing] = useState<string>("");
   const [previewError, setPreviewError] = useState<string>("");
 
-  const hovered = voices.find((v) => v.voiceId === hoveredId);
+  const hovered = voices.find((v) => v.voiceId === hoveredId) ?? voices[0];
 
   const [lastSource, setLastSource] = useState<string>("");
 
@@ -333,11 +332,14 @@ function VoicePicker({ model, language, onPick }: VoicePickerProps): React.React
     }
   });
 
+  if (!loaded.data && !loaded.error) return <Loading label={`Loading voices for ${model}…`} />;
+
   if (voices.length === 0) {
     return (
       <Box flexDirection="column" marginTop={1}>
+        {loaded.error && <Text color="red">✗ {loaded.error}</Text>}
         <Text color="yellow">
-          No voice catalog for <Text bold>{model}</Text>. Press enter to use the provider default.
+          No voices listed for <Text bold>{model}</Text>. Press enter to use the provider default.
         </Text>
         <SelectInput
           items={[{ label: "(use provider default)", value: "default" }]}

@@ -6,8 +6,7 @@ import Spinner from "ink-spinner";
 import { existsSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { STT_MODELS, isSlngHosted } from "../lib/models";
-import { SlngFirstItem } from "./SlngFirstItem";
+import { ModelPicker } from "./ModelPicker";
 import { KeyHints } from "./resourceKit";
 import { makeClients } from "../lib/sdk";
 import { decodeToPcm, openTranscriber } from "../lib/bridge";
@@ -263,23 +262,14 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
       )}
 
       {step === "pick-model" && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text>Model:</Text>
-          <SelectInput
-            items={STT_MODELS.map((m) => {
-              const display = m.name ? `${m.name} (${m.id})` : m.id;
-              return {
-                label: isSlngHosted(m.id) ? `★ ${display}` : `  ${display}`,
-                value: m.id,
-              };
-            })}
-            itemComponent={SlngFirstItem}
-            onSelect={(item) => {
-              setModel(item.value);
-              setStep("pick-mode");
-            }}
-          />
-        </Box>
+        <ModelPicker
+          type="stt"
+          title="Model"
+          onSelect={(m) => {
+            setModel(m);
+            setStep("pick-mode");
+          }}
+        />
       )}
 
       {step === "pick-mode" && (
