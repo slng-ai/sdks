@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import ora from "ora";
 import { agentsRequest, agentsBaseUrl, formatAgentsError, type AgentsResult } from "../lib/agents";
 import { checkAgentBody } from "../lib/model-catalog";
+import { createInterface } from "node:readline/promises";
 import { printJson } from "../lib/output";
-import { pushCommand } from "./push";
+import { pushCommand, writeAgentWhenPrepared } from "./push";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -113,6 +114,11 @@ COMMANDS
   calls get <id> <call_id>               show one call
   web-sessions create <id>               create a browser session (LiveKit details)
   push <dir>                             push an unmute-compiled agent package
+  config <id> [--version <n>]            download an agent's full config (JSON)
+  import --file <f> [--trunk <id>]       create an agent from a downloaded config
+  versions list <id>                     list an agent's config versions
+  versions get <id> <n>                  show one version and its config
+  versions restore <id> <n>              preview, confirm, then restore a version
 
 EXAMPLES
   $ voiceai agents list
@@ -121,6 +127,7 @@ EXAMPLES
   $ voiceai agents calls dispatch <id> --phone +15551234567
   $ voiceai agents calls list <id> --json | jq '.items[].status'
   $ voiceai agents push examples/slng-support --dry-run
+  $ voiceai agents config <id> > agent.json && voiceai agents import --file agent.json
 
 NOTES
   • IDs can be positional or named flags: \`agents calls get a1 c2\` == \`--agent-id a1 --call-id c2\`.
@@ -269,10 +276,179 @@ NOTES
       }
     });
 
+  // config <agent_id> [--version n]
+  cmd
+    .command("config [agent_id]")
+    .description("Download an agent's full config as JSON (the file `import` takes)")
+    .option("--version <n>", "A past version instead of the current one")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
+      const path = opts.version
+        ? `/v1/agents/${agentId}/versions/${positiveInt("--version", opts.version)}/config`
+        : `/v1/agents/${agentId}/config`;
+      // Always JSON: the body is the config document itself. Errors go to stderr, never into a redirect.
+      printJson(await send(false, `downloading config of agent ${agentId}`, agentsRequest("GET", path)));
+    });
+
+  // import --file [--trunk]
+  cmd
+    .command("import")
+    .description("Create an agent from a config downloaded with `agents config`")
+    .requiredOption("-f, --file <path>", 'Config JSON file ("-" for stdin)')
+    .option("--trunk <id>", "Outbound SIP trunk to attach to the new agent")
+    .option("--json", "Output JSON")
+    .action(async (opts) => {
+      const body = readJsonInput(opts.file);
+      await refuseUnavailableModels(body);
+      const query = opts.trunk ? { sip_outbound_trunk_id: String(opts.trunk) } : undefined;
+      let agent: Record<string, unknown>;
+      try {
+        agent = (await writeAgentWhenPrepared(() =>
+          agentsRequest("POST", "/v1/agents/import", { body, query }),
+        )) as unknown as Record<string, unknown>;
+      } catch (e) {
+        process.stderr.write(`import failed: ${(e as Error).message}\n`);
+        process.exit(1);
+      }
+      if (opts.json) return printJson(agent);
+      console.log(`imported agent ${agent.id ?? ""}`);
+      printAgent(agent);
+    });
+
   cmd.addCommand(callsCommand());
   cmd.addCommand(webSessionsCommand());
   cmd.addCommand(pushCommand());
+  cmd.addCommand(versionsCommand());
   return cmd;
+}
+
+/** Parse a flag or positional that must be a whole number of 1 or more. */
+function positiveInt(what: string, v: string): number {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) {
+    process.stderr.write(`${what} must be a whole number of 1 or more, got "${v}".\n`);
+    process.exit(1);
+  }
+  return n;
+}
+
+// --- agents versions -------------------------------------------------------
+
+interface RestorePreview {
+  state: "ready" | "preparing" | "failed";
+  target_version: number;
+  current_version: number | null;
+  candidate_config_hash?: string | null;
+  acceptance_hash?: string | null;
+  changed_fields?: string[];
+  issues?: { code?: string; message?: string; remediation?: string | null }[];
+  preparation?: { resource_hash?: string; dependency_hash?: string | null; retry_after_seconds?: number | null } | null;
+}
+
+function versionsCommand(): Command {
+  const versions = new Command("versions").description("List, inspect and restore an agent's config versions");
+
+  versions
+    .command("list [agent_id]")
+    .description("List config versions, newest first")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
+    .option("--page <n>", "Page number", "1")
+    .option("--page-size <n>", "Items per page")
+    .option("--json", "Output JSON")
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
+      const query: Record<string, number> = { page: positiveInt("--page", opts.page) };
+      if (opts.pageSize) query.page_size = positiveInt("--page-size", opts.pageSize);
+      const data = await send<{ items?: Record<string, unknown>[] }>(
+        opts.json,
+        `listing versions of agent ${agentId}`,
+        agentsRequest("GET", `/v1/agents/${agentId}/versions`, { query }),
+      );
+      if (opts.json) return; // send() printed it
+      console.log(row(["VERSION", "SOURCE", "CHANGED", "LABEL", "CREATED"]));
+      for (const v of data?.items ?? []) {
+        const changed = Array.isArray(v.changed_fields) ? v.changed_fields.join(",") : "";
+        const source = v.restored_from_version ? `${v.source} (from ${v.restored_from_version})` : v.source;
+        console.log(row([v.version_number as number, source as string, changed, v.label as string, v.created_at as string]));
+      }
+    });
+
+  versions
+    .command("get [agent_id] [version]")
+    .description("Show one version, including its full config")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
+    .action(async (agentIdArg: string | undefined, versionArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
+      const n = positiveInt("version", resolveId("version", "the second positional", versionArg));
+      printJson(await send(false, `reading version ${n}`, agentsRequest("GET", `/v1/agents/${agentId}/versions/${n}`)));
+    });
+
+  versions
+    .command("restore [agent_id] [version]")
+    .description("Make a past version current again: preview, confirm, accept")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
+    .option("--restore-name", "Also restore the agent name the version had")
+    .option("-y, --yes", "Skip the confirmation prompt (required when stdin is not a terminal)")
+    .option("--json", "Output JSON")
+    .action(async (agentIdArg: string | undefined, versionArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
+      const n = positiveInt("version", resolveId("version", "the second positional", versionArg));
+      if (!opts.yes && !process.stdin.isTTY) {
+        process.stderr.write("refusing to restore without a prompt: pass --yes to confirm non-interactively.\n");
+        process.exit(1);
+      }
+      const options = { restore_historical_name: Boolean(opts.restoreName) };
+      const base = `/v1/agents/${agentId}/versions/${n}/restore`;
+      const preview = await send<RestorePreview>(
+        false,
+        `previewing restore of version ${n}`,
+        agentsRequest("POST", `${base}/preview`, { body: options }),
+      );
+      if (!preview) process.exit(1);
+      const issues = (preview.issues ?? []).map((i) => `  - ${[i.message, i.remediation, i.code].filter(Boolean).join(" · ")}`);
+      if (preview.state === "preparing") {
+        const wait = preview.preparation?.retry_after_seconds ?? 5;
+        process.stderr.write(`version ${n}'s code dependencies are still being prepared. try again in about ${wait}s.\n`);
+        process.exit(1);
+      }
+      if (preview.state === "failed" || !preview.acceptance_hash || !preview.candidate_config_hash || !preview.preparation?.resource_hash) {
+        process.stderr.write(`version ${n} cannot be restored:\n${issues.join("\n") || "  - the platform gave no reason"}\n`);
+        process.exit(1);
+      }
+      const changed = preview.changed_fields ?? [];
+      process.stderr.write(
+        `restore version ${n} over version ${preview.current_version ?? "-"}. changes: ${changed.length ? changed.join(", ") : "none"}\n`,
+      );
+      if (issues.length) process.stderr.write(`warnings:\n${issues.join("\n")}\n`);
+      if (!opts.yes) {
+        const rl = createInterface({ input: process.stdin, output: process.stderr });
+        const answer = (await rl.question("restore? [y/N] ")).trim().toLowerCase();
+        rl.close();
+        if (answer !== "y" && answer !== "yes") {
+          process.stderr.write("not restored.\n");
+          process.exit(1);
+        }
+      }
+      const agent = await send<Record<string, unknown>>(
+        opts.json,
+        `restoring version ${n}`,
+        agentsRequest("POST", `${base}/accept`, {
+          body: {
+            ...options,
+            acceptance_hash: preview.acceptance_hash,
+            candidate_hash: preview.candidate_config_hash,
+            resource_hash: preview.preparation.resource_hash,
+            dependency_hash: preview.preparation.dependency_hash ?? null,
+          },
+        }),
+      );
+      if (opts.json) return; // send() printed it
+      console.log(`restored version ${n} of agent ${agentId}`);
+      if (agent) printAgent(agent);
+    });
+
+  return versions;
 }
 
 // --- agents calls ----------------------------------------------------------

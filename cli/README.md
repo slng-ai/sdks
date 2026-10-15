@@ -262,6 +262,15 @@ voiceai agents calls dispatch <agent_id> --phone +15551234567 --file args.json
 voiceai agents calls list <agent_id> --page 1 --page-size 20
 voiceai agents calls get <agent_id> <call_id>
 
+# Config versions
+voiceai agents versions list <agent_id>
+voiceai agents versions get <agent_id> 3                  # one version, with its full config
+voiceai agents versions restore <agent_id> 3              # shows the changes, asks, then restores
+
+# Download a config, and create an agent from it (same org or another)
+voiceai agents config <agent_id> > agent.json             # --version 3 for a past one
+voiceai agents import --file agent.json --trunk <trunk_id>
+
 # Web sessions (returns LiveKit connection details)
 voiceai agents web-sessions create <agent_id>
 ```
