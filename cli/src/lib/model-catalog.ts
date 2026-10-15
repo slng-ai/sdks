@@ -144,9 +144,13 @@ export function checkAgentModels(
 
   const regions = region ? catalog.regions.filter((r) => r.region === region) : catalog.regions;
   if (region && !regions.length) {
+    // A renamed region keeps its old code as a prefix (eu-central → eu-central-livekit).
+    const near = catalog.regions.map((r) => r.region).filter((r) => r.startsWith(`${region}-`));
     return [{
       path: "region",
-      message: `region "${region}": no models are offered there${suggest(catalog.regions.map((r) => r.region))}`,
+      message: near.length
+        ? `region "${region}" is not offered. did you mean ${near.join(" or ")}?`
+        : `region "${region}": no models are offered there${suggest(catalog.regions.map((r) => r.region))}`,
     }];
   }
   const langs = regions.flatMap((r) => r.languages).filter((l) => !agent.language || l.language === agent.language);

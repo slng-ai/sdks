@@ -6,7 +6,7 @@ import TextInput from "ink-text-input";
 import Link from "ink-link";
 import { agentsRequest, formatAgentsError } from "../lib/agents";
 import { BrandSpinner } from "./BrandSpinner";
-import { KeyHints } from "./resourceKit";
+import { KeyHints, OrgNote } from "./resourceKit";
 
 const DASHBOARD_URL = "https://app.slng.ai";
 
@@ -250,6 +250,7 @@ export function AgentsFlow({ onExit }: Props): React.ReactElement {
             </Link>
           </Text>
         </Box>
+        <OrgNote what="agent" />
         <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
       </Box>
     );

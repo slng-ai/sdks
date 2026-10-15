@@ -157,7 +157,7 @@ Browse your voice agents and run quick actions without leaving the terminal.
   Attio CRM Lead Intake         English   Phone      15d
 
   Lovable Travel Agent (demo)
-  language: en · region: eu-central · created: 2026-05-28 14:06
+  language: en · region: eu-west · created: 2026-05-28 14:06
   ❯ 📞  Dispatch a call
     📋  View calls
     🌐  Test in browser (dashboard)

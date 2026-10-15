@@ -95,6 +95,16 @@ test("an unknown region or language is one problem, not one per model", () => {
   expect(l.map((x) => x.path)).toEqual(["language"]);
 });
 
+test("a renamed region names the catalog regions that start with its old code", () => {
+  const renamed = (codes: string[]): ModelCatalog => ({ regions: codes.map((region) => ({ region, languages: [] })) });
+  const one = checkAgentModels({ region: "eu-central", models: GOOD }, renamed(["eu-central-livekit", "eu-west"]));
+  expect(one).toEqual([{ path: "region", message: 'region "eu-central" is not offered. did you mean eu-central-livekit?' }]);
+  const two = checkAgentModels({ region: "us-east", models: GOOD }, renamed(["us-east-livekit", "us-east-slng", "eu-west"]));
+  expect(two[0]!.message).toContain("did you mean us-east-livekit or us-east-slng?");
+  const none = checkAgentModels({ region: "mars", models: GOOD }, renamed(["eu-west"]));
+  expect(none[0]!.message).toBe('region "mars": no models are offered there. try eu-west');
+});
+
 test("flatten merges a model's regions and voices into one entry", () => {
   const flat = flattenCatalog(CATALOG);
   expect(flat.map((m) => `${m.type} ${m.id}`)).toEqual([

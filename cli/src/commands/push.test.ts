@@ -1196,6 +1196,15 @@ test("a voice the catalog does not offer blocks the push before anything is writ
   expect(mutating(r.calls)).toEqual([]);
 });
 
+test("an agent region the catalog renamed blocks the push and names the new code", async () => {
+  const dir = writePackage({ agent: agentModels(), tools: [{ name: "end_call", tool_type: "end_call" }] });
+  const renamed = { regions: [{ ...modelCatalog.regions[0]!, region: "eu-central-livekit" }] };
+  const r = await runCli(["agents", "push", dir], { tools: [], modelCatalog: renamed });
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain('region "eu-central" is not offered. did you mean eu-central-livekit?');
+  expect(mutating(r.calls)).toEqual([]);
+});
+
 test("models the catalog offers push cleanly", async () => {
   const dir = writePackage({ agent: agentModels() });
   const r = await runCli(["agents", "push", dir], { tools: [orgTool], versionsAfter: 1, modelCatalog });

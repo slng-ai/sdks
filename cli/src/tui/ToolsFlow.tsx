@@ -11,7 +11,7 @@ import {
   type ToolListItem,
   type ToolDetail,
 } from "../commands/tool";
-import { DetailPanel, ErrorView, KeyHints, Loading, pad, type Badge, type Field } from "./resourceKit";
+import { DetailPanel, ErrorView, KeyHints, Loading, OrgNote, pad, type Badge, type Field } from "./resourceKit";
 
 interface Props {
   onExit: () => void;
@@ -306,6 +306,7 @@ export function ToolsFlow({ onExit }: Props): React.ReactElement {
           ]}
           note={`voiceai tool get ${String(tool.id)} --id --json  ·  full detail`}
         />
+        {url && <OrgNote what="tool" />}
       </Box>
     );
   }
