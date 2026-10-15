@@ -79,7 +79,7 @@ export async function previewVoice(
   if (!synthIfMissing) {
     throw new Error(`no sample for ${voiceId} and synthIfMissing=false`);
   }
-  const { http } = makeClients();
+  const { http } = await makeClients();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await (http as any).textToSpeech.create(model, {
     text: PREVIEW_TEXT(voice.name ?? voiceId),

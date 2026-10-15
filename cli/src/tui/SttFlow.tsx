@@ -112,7 +112,7 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
   const startMic = async (modelId: string, device: string) => {
     setStep("recording");
     try {
-      const { streaming } = makeClients();
+      const { streaming } = await makeClients();
       const session = await streaming.connectStt(modelId);
 
       session.send({
@@ -221,7 +221,7 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
     setFileError("");
     setStep("transcribing");
     try {
-      const { http } = makeClients();
+      const { http } = await makeClients();
       const bytes = readFileSync(path);
       const ext = sniffExt(new Uint8Array(bytes.subarray(0, 32)));
       const mime =

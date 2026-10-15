@@ -47,7 +47,7 @@ EXAMPLES
 ENVIRONMENT
   VOICEAI_PROFILE            Select a named profile (overridden by --profile).
   VOICEAI_API_KEY            Bearer token. Overrides the active profile's key.
-  VOICEAI_BASE_URL           Override the API base URL (e.g. staging).
+  VOICEAI_BASE_URL           Override the API base URL. Default: the gateway that accepts your key.
   VOICEAI_AGENTS_BASE_URL    Override the agents API base URL (used by \`agents\`).
 
   Env vars override anything in ~/.config/voiceai/config.json.

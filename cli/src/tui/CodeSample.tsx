@@ -18,11 +18,13 @@ interface Props {
   text: string;
   region?: string;
   worldPart?: string;
+  /** The gateway this key uses. The SDK's built-in default host no longer resolves. */
+  baseUrl: string;
 }
 
 /** Self-contained component that renders an executable snippet for the
  *  current TTS selection in TS, Python, or curl. Press `tab` to cycle. */
-export function CodeSample({ modelVariant, voice, text, region, worldPart }: Props): React.ReactElement {
+export function CodeSample({ modelVariant, voice, text, region, worldPart, baseUrl }: Props): React.ReactElement {
   const [lang, setLang] = useState<Lang>("typescript");
 
   useInput((input, key) => {
@@ -31,7 +33,7 @@ export function CodeSample({ modelVariant, voice, text, region, worldPart }: Pro
     }
   });
 
-  const sample = render(lang, { modelVariant, voice, text, region, worldPart });
+  const sample = render(lang, { modelVariant, voice, text, region, worldPart, baseUrl });
 
   return (
     <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
@@ -56,7 +58,7 @@ function escapeQuotes(s: string): string {
 }
 
 function render(lang: Lang, p: Props): string {
-  const { modelVariant, voice, text, region, worldPart } = p;
+  const { modelVariant, voice, text, region, worldPart, baseUrl } = p;
   const body: string[] = [`voice: "${escapeQuotes(voice)}"`, `text: "${escapeQuotes(text)}"`];
   if (region) body.push(`region: "${region}"`);
   if (worldPart) body.push(`"world-part": "${worldPart}"`);
@@ -64,7 +66,7 @@ function render(lang: Lang, p: Props): string {
   if (lang === "typescript") {
     return `import Slng from "voiceai-sdk";
 
-const client = new Slng({ apiKey: process.env.VOICEAI_API_KEY! });
+const client = new Slng({ apiKey: process.env.VOICEAI_API_KEY!, baseURL: "${baseUrl}" });
 const response = await client.textToSpeech.create(
   "${modelVariant}",
   {
@@ -81,7 +83,7 @@ const audio = new Uint8Array(await (await response.blob()).arrayBuffer());`;
     return `import os
 from voiceai_sdk import Slng
 
-client = Slng(api_key=os.environ["VOICEAI_API_KEY"])
+client = Slng(api_key=os.environ["VOICEAI_API_KEY"], base_url="${baseUrl}")
 response = client.text_to_speech.create(
     model_variant="${modelVariant}",
     ${pyBody.join(",\n    ")},
@@ -99,7 +101,7 @@ response.write_to_file("out.mp3")`;
   if (worldPart) query.push(`world-part=${worldPart}`);
   const qs = query.length ? `?${query.join("&")}` : "";
   const jsonBody = JSON.stringify({ voice, text }, null, 2);
-  return `curl -X POST "https://api.slng.ai/v1/bridges/unmute/tts/${modelVariant}${qs}" \\
+  return `curl -X POST "${baseUrl}/v1/bridges/unmute/tts/${modelVariant}${qs}" \\
   ${headers} \\
   -d '${jsonBody}' \\
   --output out.mp3`;

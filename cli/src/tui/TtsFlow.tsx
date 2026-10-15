@@ -57,6 +57,7 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
   const [voice, setVoice] = useState<string>(initial.voice);
   const [region, setRegion] = useState<string>("");
   const [text, setText] = useState<string>("");
+  const [baseUrl, setBaseUrl] = useState<string>("");
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string>("");
   const [usingDefaults] = useState<boolean>(initial.step !== "pick-language");
@@ -86,7 +87,8 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
   const synth = async (finalText: string) => {
     setStep("synth");
     try {
-      const { http } = makeClients();
+      const { http, baseUrl: base } = await makeClients();
+      setBaseUrl(base);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const params: any = { text: finalText, voice };
       if (region) params.region = region;
@@ -221,6 +223,7 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
           modelVariant={model}
           voice={voice}
           text={text}
+          baseUrl={baseUrl}
           onRestart={() => {
             setText("");
             setBytes(null);
@@ -244,11 +247,12 @@ interface DonePaneProps {
   modelVariant: string;
   voice: string;
   text: string;
+  baseUrl: string;
   onRestart: () => void;
 }
 
 /** Synthesis-success pane. Keys: enter = redo · c = code sample · s = save to file · esc = back. */
-function DonePane({ bytes, modelVariant, voice, text, onRestart }: DonePaneProps): React.ReactElement {
+function DonePane({ bytes, modelVariant, voice, text, baseUrl, onRestart }: DonePaneProps): React.ReactElement {
   const [showCode, setShowCode] = useState(false);
   const [savingPath, setSavingPath] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -310,7 +314,7 @@ function DonePane({ bytes, modelVariant, voice, text, onRestart }: DonePaneProps
       )}
 
       {showCode && (
-        <CodeSample modelVariant={modelVariant} voice={voice} text={text} />
+        <CodeSample modelVariant={modelVariant} voice={voice} text={text} baseUrl={baseUrl} />
       )}
     </Box>
   );

@@ -41,7 +41,7 @@ export function sttCommand(): Command {
 }
 
 async function httpTranscribe(file: string, opts: { model: string }): Promise<void> {
-  const { http } = makeClients();
+  const { http } = await makeClients();
   const bytes = readFileSync(file);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await (http as any).speechToText.create(opts.model, {
@@ -51,7 +51,7 @@ async function httpTranscribe(file: string, opts: { model: string }): Promise<vo
 }
 
 async function streamTranscribe(opts: { model: string; source: string }): Promise<void> {
-  const { streaming } = makeClients();
+  const { streaming } = await makeClients();
   const session = await streaming.connectStt(opts.model);
 
   // Read incoming messages in the background.

@@ -70,7 +70,7 @@ export function ttsCommand(): Command {
         process.stderr.write(`${resolved.message}\n`);
       }
 
-      const { http } = makeClients();
+      const { http } = await makeClients();
       const params: Record<string, unknown> = { text, voice: voiceId };
       if (opts.region) params.region = opts.region;
       if (opts.worldPart) params["world-part"] = opts.worldPart;
@@ -143,7 +143,7 @@ async function streamTts(text: string, opts: any): Promise<void> {
   }
   const voiceId = resolved.voiceId!;
 
-  const { streaming } = makeClients();
+  const { streaming } = await makeClients();
   const spinner = process.stderr.isTTY
     ? ora({ stream: process.stderr, text: `streaming via WebSocket · ${opts.model} · ${voiceId}` }).start()
     : null;

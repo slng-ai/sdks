@@ -18,7 +18,7 @@ const CONFIG_EPILOGUE = `
 KEYS
   apiKey              Bearer token (slng_cu_…). Get one at https://app.slng.ai/api-keys.
                       Overridden by VOICEAI_API_KEY env.
-  baseUrl             Override the API base URL. Default: https://api.slng.ai.
+  baseUrl             Override the API base URL. Default: the gateway that accepts your key.
                       Overridden by VOICEAI_BASE_URL env.
   agentsBaseUrl       Voice Agents API base URL (used by \`voiceai agents …\`).
                       Default: https://api.agents.slng.ai. Overridden by VOICEAI_AGENTS_BASE_URL.

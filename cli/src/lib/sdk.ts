@@ -2,18 +2,24 @@
 
 import Slng from "voiceai-sdk";
 import { StreamingClient } from "../../../streaming/ts/client";
-import { load, requireApiKey } from "./config";
+import { requireApiKey } from "./config";
+import { resolveBaseUrl } from "./verify";
 
 export interface Clients {
   http: InstanceType<typeof Slng>;
   streaming: StreamingClient;
   apiKey: string;
+  baseUrl: string;
 }
 
-export function makeClients(): Clients {
+/**
+ * Both clients always get an explicit host. Their built-in default
+ * (api.slng.ai) no longer resolves, and a key works only at its own gateway.
+ */
+export async function makeClients(): Promise<Clients> {
   const apiKey = requireApiKey();
-  const cfg = load();
-  const http = new Slng({ apiKey, baseURL: cfg.baseUrl });
-  const streaming = new StreamingClient({ apiKey, baseUrl: cfg.baseUrl });
-  return { http, streaming, apiKey };
+  const baseUrl = await resolveBaseUrl(apiKey);
+  const http = new Slng({ apiKey, baseURL: baseUrl });
+  const streaming = new StreamingClient({ apiKey, baseUrl });
+  return { http, streaming, apiKey, baseUrl };
 }
