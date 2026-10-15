@@ -199,12 +199,22 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
           setStep("error");
         }
       })();
+      // Runs once: esc on the recording screen, esc on the done pane and
+      // unmount all call it, and by then the server may have closed the session.
+      let stopped = false;
       stopRef.current = () => {
+        if (stopped) return;
+        stopped = true;
         rec.stop();
-        session.send({ type: "finalize" } as never);
-        session.send({ type: "close" } as never);
+        try {
+          session.send({ type: "finalize" } as never);
+          session.send({ type: "close" } as never);
+        } catch {
+          // The server already closed the session; nothing left to finalize.
+        }
       };
       for await (const frame of rec.frames) {
+        if (stopped) break;
         if (!sendingRef.current) continue;
         session.sendAudio(frame);
         setBytesSent((n) => n + frame.length);
