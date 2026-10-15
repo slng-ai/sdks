@@ -9,10 +9,7 @@ info:
 servers:
   - url: https://api.slng.ai
     description: Production
-    x-api-token: slng_cu_your_api_key_here
-  - url: https://stageapi.slng.ai
-    description: Staging
-    x-api-token: slng_cu_your_api_key_here
+    x-api-token: zpka_your_api_key_here
 security:
   - BearerAuth: []
 paths:
@@ -21,12 +18,10 @@ paths:
       pathMode: url-pattern
     parameters:
       - $ref: "#/components/parameters/SttModelVariantPath"
-      - $ref: "#/components/parameters/RegionQuery"
-      - $ref: "#/components/parameters/WorldPartQuery"
     post:
       operationId: unmute-stt-http
       summary: Unmute STT Bridge
-      description: Transcribe audio via SLNG's native WebSocket protocol bridge. The model_variant path parameter specifies the target STT model (e.g., deepgram/nova:3, slng/openai/whisper:large-v3).
+      description: Transcribe a recorded file through the Unmute bridge over HTTP. The model_variant path parameter selects the target STT model (e.g., deepgram/nova:3, slng/deepgram/nova:3-en), and the gateway forwards the request to that model's HTTP API.
       tags:
         - "Type: Bridges"
         - "Provider: Unmute (SLNG official)"
@@ -37,9 +32,24 @@ paths:
           multipart/form-data:
             schema:
               $ref: "#/components/schemas/UnmuteSttRequest"
+            examples:
+              binary:
+                summary: Binary audio upload
+                value:
+                  audio: <binary>
+                  language: en
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UnmuteSttRequest"
+            examples:
+              url:
+                summary: URL-based transcription
+                value:
+                  url: https://docs.slng.ai/audio/hello.wav
+                  language: en
       responses:
         "200":
-          $ref: "#/components/responses/CognigyTranscriptionSuccess"
+          $ref: "#/components/responses/UnmuteSttHttpSuccess"
         "400":
           $ref: "#/components/responses/ProviderBadRequest"
         "401":
@@ -68,12 +78,10 @@ paths:
       pathMode: url-pattern
     parameters:
       - $ref: "#/components/parameters/TtsModelVariantPath"
-      - $ref: "#/components/parameters/RegionQuery"
-      - $ref: "#/components/parameters/WorldPartQuery"
     post:
       operationId: unmute-tts-http
       summary: Unmute TTS Bridge
-      description: Synthesize speech via SLNG's native WebSocket protocol bridge. The model_variant path parameter specifies the target TTS model (e.g., deepgram/aura:2).
+      description: Synthesize speech through the Unmute bridge over HTTP. The model_variant path parameter selects the target TTS model (e.g., deepgram/aura:2), and the gateway maps `voice`, `text`, and `language` to that model's HTTP request fields. Models that only stream over SSE return 400 on this route; use the WebSocket channel instead.
       tags:
         - "Type: Bridges"
         - "Provider: Unmute (SLNG official)"
@@ -90,10 +98,10 @@ paths:
                 value:
                   voice: aura-2-thalia-en
                   text: Hello, this is a test of text to speech synthesis.
-              orpheus:
-                summary: Orpheus
+              fish:
+                summary: SLNG-hosted Fish Audio S2.1 Pro
                 value:
-                  voice: tara
+                  voice: 16cabdb7f8d240569aff36c9e480d783
                   text: Hello, this is a test of text to speech synthesis.
       responses:
         "200":
@@ -123,9 +131,9 @@ paths:
       x-slng-provider-name: Unmute (SLNG official)
 tags:
   - name: Unmute STT Bridge
-    description: SLNG native WebSocket STT protocol bridge.
+    description: SLNG native STT protocol bridge, over HTTP and WebSocket.
   - name: Unmute TTS Bridge
-    description: SLNG native WebSocket TTS protocol bridge.
+    description: SLNG native TTS protocol bridge, over HTTP and WebSocket.
   - name: "Type: Bridges"
     description: Grouping by service type (Bridges).
   - name: "Provider: Unmute (SLNG official)"
@@ -180,12 +188,21 @@ components:
               value:
                 error: Validation error
                 details: "Missing required field: text"
-    CognigyTranscriptionSuccess:
-      description: Transcription successful.
+    UnmuteSttHttpSuccess:
+      description: Transcription successful. The body is the target model's native HTTP transcription response, returned unchanged.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/CognigySTTTranscriptionResponse"
+            $ref: "#/components/schemas/UnmuteSttHttpResponse"
+          examples:
+            deepgram-nova:
+              summary: Deepgram Nova 3 response (abridged)
+              value:
+                results:
+                  channels:
+                    - alternatives:
+                        - transcript: Hello from sunny Barcelona!
+                          confidence: 0.99
   schemas:
     AudioBinary:
       type: string
@@ -193,14 +210,35 @@ components:
       description: Binary audio data.
     UnmuteTtsRequest:
       type: object
-      description: Unmute TTS request.
+      description: Unmute TTS request. The gateway maps `voice`, `text`, and `language` to the target model's field names and forwards any other field to that model's HTTP API unchanged.
+      additionalProperties: true
       properties:
         voice:
           type: string
-          description: Voice identifier.
+          description: Voice identifier for the selected model.
         text:
           type: string
           description: Text to synthesize.
+        language:
+          type: string
+          description: Optional language hint; models with automatic or voice-selected language ignore it.
+        pronunciation:
+          type: object
+          description: Optional pronunciation rewrite, applied where the selected model supports it. `mode` is always `rewrite`; supply exactly one of `name` (a dictionary name, 1–128 characters) or `dictionary_id`.
+          required:
+            - mode
+          properties:
+            mode:
+              type: string
+              enum:
+                - rewrite
+            name:
+              type: string
+              minLength: 1
+              maxLength: 128
+            dictionary_id:
+              type: string
+              minLength: 1
       required:
         - text
     ProviderErrorResponse:
@@ -222,7 +260,7 @@ components:
           description: |
             Detailed error message from the provider. For TTS errors, this typically includes
             the specific validation failure (e.g., invalid speaker ID for the selected model/language).
-          example: "Rime TTS API error: 400 Bad Request - Invalid argument: Invalid speaker: aurelie"
+          example: "Upstream provider error: 400 Bad Request - Invalid voice"
       required:
         - error
     ErrorResponse:
@@ -240,51 +278,22 @@ components:
           description: HTTP status code.
       required:
         - error
-    CognigySTTTranscriptionResponse:
+    UnmuteSttHttpResponse:
       type: object
-      description: Cognigy STT transcription response.
-      properties:
-        type:
-          type: string
-          description: Response type.
-          enum:
-            - transcription
-        is_final:
-          type: boolean
-          description: Whether this is a final transcription.
-        alternatives:
-          type: array
-          description: Transcription alternatives.
-          items:
-            $ref: "#/components/schemas/CognigyTranscriptionAlternative"
-        channel:
-          type: integer
-          description: Audio channel number.
-        language:
-          type: string
-          description: Detected language code.
-      required:
-        - type
-        - is_final
-        - alternatives
-    CognigyTranscriptionAlternative:
-      type: object
-      description: Transcription alternative.
-      properties:
-        confidence:
-          type: number
-          description: Confidence score.
-        transcript:
-          type: string
-          description: Transcribed text.
+      description: The target model's native HTTP transcription response, passed through unchanged. For example, Deepgram Nova returns `results.channels[].alternatives[]`. See the direct endpoint of the selected model for its exact shape.
+      additionalProperties: true
     UnmuteSttRequest:
       type: object
-      description: Unmute STT request.
+      description: Unmute STT request. Provide either `audio` (multipart upload) or `url` (publicly accessible HTTPS URL).
       properties:
         audio:
           type: string
           format: binary
-          description: Audio file to transcribe.
+          description: Audio file (multipart) or base64-encoded audio (JSON).
+        url:
+          type: string
+          description: Publicly accessible audio URL.
+          example: https://docs.slng.ai/audio/hello.wav
         language:
           type: string
           description: Language code for recognition.
@@ -305,37 +314,10 @@ components:
             - linear16
             - mp3
             - opus
-        enable_vad:
-          type: boolean
-          description: Enable voice activity detection.
         enable_partials:
           type: boolean
           description: Enable partial transcription results.
-      required:
-        - audio
   parameters:
-    RegionQuery:
-      name: region
-      in: query
-      required: false
-      description: Target region override. Auto-selected if not provided. Equivalent to the `X-Region-Override` header; the header takes precedence when both are set.
-      schema:
-        type: string
-        enum:
-          - ap-southeast-2
-          - eu-north-1
-          - us-east-1
-    WorldPartQuery:
-      name: world-part
-      in: query
-      required: false
-      description: Target world part override. Auto-selected if not provided. Equivalent to the `X-World-Part-Override` header; the header takes precedence when both are set.
-      schema:
-        type: string
-        enum:
-          - ap
-          - eu
-          - na
     TtsModelVariantPath:
       name: model_variant
       in: path
@@ -345,35 +327,25 @@ components:
         type: string
         enum:
           - cartesia/sonic:3
+          - cartesia/sonic:3.5
           - deepgram/aura:2
-          - elevenlabs/eleven-flash:2
-          - elevenlabs/eleven-flash:2.5
-          - elevenlabs/eleven-multilingual:2
-          - elevenlabs/eleven:3
-          - kugelaudio/kugel:1
-          - kugelaudio/kugel:1-turbo
+          - fish/tts:drama-3
+          - fish/tts:s2-pro
+          - fish/tts:s2.1-pro
+          - gradium/tts:default
           - kugelaudio/kugel:2
           - murf/murftts:falcon
           - sarvam/bulbul:v3
-          - slng/canopylabs/orpheus:en
           - slng/deepgram/aura:2-en
-          - slng/deepgram/aura:2-es
-          - slng/rime/arcana:3-en
-          - slng/rime/arcana:3-hi
-          - slng/rime/arcana:ar
-          - slng/rime/arcana:de
-          - slng/rime/arcana:en
-          - slng/rime/arcana:es
-          - slng/rime/arcana:fr
-          - slng/rime/coda:0-id
+          - slng/fish/tts:s2.1-pro
           - soniox/tts-rt:v1
       examples:
         deepgramAura:
           summary: Deepgram Aura 2
           value: deepgram/aura:2
-        orpheus:
-          summary: SLNG-hosted Orpheus English
-          value: slng/canopylabs/orpheus:en
+        slngFishS21Pro:
+          summary: SLNG-hosted Fish Audio S2.1 Pro
+          value: slng/fish/tts:s2.1-pro
     SttModelVariantPath:
       name: model_variant
       in: path
@@ -382,27 +354,26 @@ components:
       schema:
         type: string
         enum:
-          - deepgram/nova:2
           - deepgram/nova:3
           - deepgram/nova:3-medical
+          - gradium/stt:default
           - reson8/reson8stt:v1
+          - sarvam/saaras:v3
           - slng/deepgram/nova:3-en
-          - slng/deepgram/nova:3-es
           - slng/deepgram/nova:3-hi
+          - slng/deepgram/nova:3-id
           - slng/deepgram/nova:3-kn
           - slng/deepgram/nova:3-mr
-          - slng/deepgram/nova:3-multi
-          - slng/deepgram/nova:3-ta
           - slng/deepgram/nova:3-te
-          - slng/openai/whisper:large-v3
-          - soniox/speech-ai:rt-v4
+          - slng/speechmatics/realtime:v2
+          - soniox/speech-ai:rt-v5
       examples:
         deepgramNova3:
           summary: Deepgram Nova 3
           value: deepgram/nova:3
-        slngWhisper:
-          summary: SLNG-hosted Whisper Large v3
-          value: slng/openai/whisper:large-v3
+        slngNova3En:
+          summary: SLNG-hosted Deepgram Nova 3 (English)
+          value: slng/deepgram/nova:3-en
   securitySchemes:
     BearerAuth:
       type: http

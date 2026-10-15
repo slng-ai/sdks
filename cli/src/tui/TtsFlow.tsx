@@ -17,6 +17,7 @@ import {
 } from "../lib/models";
 import { SlngFirstItem } from "./SlngFirstItem";
 import { makeClients } from "../lib/sdk";
+import { synthesize, TTS_SAMPLE_RATE, wav } from "../lib/bridge";
 import { playBytes, sniffExt } from "../lib/audio";
 import { previewVoice } from "../lib/preview";
 import { CodeSample } from "./CodeSample";
@@ -87,15 +88,10 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
   const synth = async (finalText: string) => {
     setStep("synth");
     try {
-      const { http, baseUrl: base } = await makeClients();
+      const { baseUrl: base } = await makeClients();
       setBaseUrl(base);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const params: any = { text: finalText, voice };
-      if (region) params.region = region;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await (http as any).textToSpeech.create(model, params);
-      const blob = await response.blob();
-      const arr = new Uint8Array(await blob.arrayBuffer());
+      const pcm = await synthesize(model, voice, finalText, { query: region ? { region } : {} });
+      const arr = wav(pcm, TTS_SAMPLE_RATE);
       setBytes(arr);
       await playBytes(arr);
       setStep("done");

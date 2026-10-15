@@ -81,21 +81,34 @@ export class StreamingClient {
   }
 }
 
+/** TTS audio. The bridge sends it as raw binary frames, not JSON. */
+export interface BinaryAudio {
+  type: "binary";
+  bytes: Uint8Array;
+}
+
+/** What a session yields: a JSON control message or a binary audio frame. */
+export type StreamingEvent = UnmuteWsMessage | BinaryAudio;
+
 /**
  * One open WebSocket. Send typed messages with `send()`, receive them by
  * iterating with `for await (const msg of session)`. Errors and close events
  * terminate the iterator.
  */
-export class StreamingSession implements AsyncIterable<UnmuteWsMessage> {
+export class StreamingSession implements AsyncIterable<StreamingEvent> {
   private readonly ws: WebSocket;
-  private readonly queue: UnmuteWsMessage[] = [];
-  private resolvers: Array<(v: IteratorResult<UnmuteWsMessage>) => void> = [];
+  private readonly queue: StreamingEvent[] = [];
+  private resolvers: Array<(v: IteratorResult<StreamingEvent>) => void> = [];
   private closed = false;
   private closeError: Error | null = null;
 
   constructor(ws: WebSocket) {
     this.ws = ws;
-    ws.on("message", (data) => {
+    ws.on("message", (data, isBinary) => {
+      if (isBinary) {
+        this.push({ type: "binary", bytes: new Uint8Array(data as Buffer) });
+        return;
+      }
       let parsed: UnmuteWsMessage;
       try {
         parsed = JSON.parse(typeof data === "string" ? data : data.toString("utf8"));
@@ -128,7 +141,7 @@ export class StreamingSession implements AsyncIterable<UnmuteWsMessage> {
     if (!this.closed) this.ws.close(code, reason);
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<UnmuteWsMessage> {
+  [Symbol.asyncIterator](): AsyncIterator<StreamingEvent> {
     return {
       next: () => this.next(),
       return: () => {
@@ -138,7 +151,7 @@ export class StreamingSession implements AsyncIterable<UnmuteWsMessage> {
     };
   }
 
-  private next(): Promise<IteratorResult<UnmuteWsMessage>> {
+  private next(): Promise<IteratorResult<StreamingEvent>> {
     if (this.queue.length > 0) {
       return Promise.resolve({ value: this.queue.shift()!, done: false });
     }
@@ -147,7 +160,7 @@ export class StreamingSession implements AsyncIterable<UnmuteWsMessage> {
     return new Promise((r) => this.resolvers.push(r));
   }
 
-  private push(msg: UnmuteWsMessage): void {
+  private push(msg: StreamingEvent): void {
     const r = this.resolvers.shift();
     if (r) r({ value: msg, done: false });
     else this.queue.push(msg);

@@ -3,14 +3,15 @@ import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import Spinner from "ink-spinner";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { existsSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { STT_MODELS, isSlngHosted } from "../lib/models";
 import { SlngFirstItem } from "./SlngFirstItem";
 import { KeyHints } from "./resourceKit";
 import { makeClients } from "../lib/sdk";
-import { recordPcm, listInputs, sniffExt } from "../lib/audio";
+import { decodeToPcm, openTranscriber } from "../lib/bridge";
+import { recordPcm, listInputs } from "../lib/audio";
 import { load, type SttMode } from "../lib/config";
 import { copyToClipboard } from "../lib/clipboard";
 
@@ -142,6 +143,8 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
             /* ignore */
           }
 
+          // utterance_end repeats the final text (Soniox keeps its raw tokens on it).
+          if (m.type === "utterance_end") continue;
           if (m.type === "error" || m.variant === "SchemaError") {
             setError(JSON.stringify(m));
             setStep("error");
@@ -221,27 +224,13 @@ export function SttFlow({ onExit }: Props): React.ReactElement {
     setFileError("");
     setStep("transcribing");
     try {
-      const { http } = await makeClients();
-      const bytes = readFileSync(path);
-      const ext = sniffExt(new Uint8Array(bytes.subarray(0, 32)));
-      const mime =
-        ext === "wav" ? "audio/wav"
-          : ext === "mp3" ? "audio/mpeg"
-          : ext === "ogg" ? "audio/ogg"
-          : ext === "m4a" ? "audio/mp4"
-          : "application/octet-stream";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await (http as any).speechToText.create(model, {
-        audio: new File([bytes], basename(path), { type: mime }),
+      const finals: string[] = [];
+      const stt = await openTranscriber(model, (text, final) => {
+        if (final) finals.push(text);
       });
-      // Response shape varies by provider; pull out a likely text field.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const r = response as any;
-      const text =
-        r?.transcript ??
-        r?.text ??
-        r?.results?.channels?.[0]?.alternatives?.[0]?.transcript ??
-        JSON.stringify(response);
+      stt.sendAudio(await decodeToPcm(path));
+      await stt.end();
+      const text = finals.join(" ");
       setTranscript(typeof text === "string" ? text : JSON.stringify(text));
       setStep("done");
     } catch (e) {
