@@ -13,6 +13,11 @@ on:
 permissions:
   contents: write
 
+# The release's tag. The version comes from it: nobody bumps cli/package.json
+# by hand. A manual run (workflow_dispatch) re-releases an existing tag.
+env:
+  TAG: ${{ inputs.version || github.ref_name }}
+
 jobs:
   # Bun's --compile produces a self-contained binary per target. Most matrix
   # entries run on a native host; darwin-x64 cross-compiles from macos-latest
@@ -39,15 +44,19 @@ jobs:
             asset: voiceai-linux-arm64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
-      - name: assert version matches tag
+      # The binary reads its --version from cli/package.json at compile time.
+      - name: set version from tag
+        shell: bash
         run: |
-          pkg_version=$(node -p "require('./cli/package.json').version")
-          tag_version="${GITHUB_REF_NAME#cli-v}"
-          if [ "$pkg_version" != "$tag_version" ]; then
-            echo "Version mismatch: cli/package.json=$pkg_version tag=$tag_version" >&2
+          version="${TAG#cli-v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "tag $TAG is not cli-v<semver>" >&2
             exit 1
           fi
+          (cd cli && npm pkg set version="$version")
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -73,7 +82,7 @@ jobs:
         # binary can't run here either.
         if: matrix.target != 'bun-linux-arm64' && matrix.target != 'bun-darwin-x64'
         run: |
-          ./${{ matrix.asset }} --version
+          test "$(./${{ matrix.asset }} --version)" = "${TAG#cli-v}"
           # The binary must ignore a .env in the folder it runs in.
           bin="$PWD/${{ matrix.asset }}"
           d=$(mktemp -d)
@@ -93,6 +102,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -102,9 +113,8 @@ jobs:
       - name: compute version
         id: ver
         run: |
-          tag="${GITHUB_REF_NAME:-${{ inputs.version }}}"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "semver=${tag#cli-v}" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "semver=${TAG#cli-v}" >> "$GITHUB_OUTPUT"
 
       - name: create release + upload binaries
         uses: softprops/action-gh-release@v2
@@ -133,6 +143,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - uses: actions/setup-node@v4
         with:
@@ -141,6 +153,10 @@ jobs:
           # can't self-upgrade in CI without hitting a promise-retry crash.
           node-version: 24
           registry-url: https://registry.npmjs.org
+
+      - name: set version from tag
+        working-directory: cli
+        run: npm pkg set version="${TAG#cli-v}"
 
       - name: publish
         working-directory: cli
@@ -162,17 +178,16 @@ jobs:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          version="${tag#cli-v}"
+          version="${TAG#cli-v}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           for asset in voiceai-darwin-arm64 voiceai-darwin-x64 voiceai-linux-arm64 voiceai-linux-x64; do
             sha="$(sha256sum "dist/$asset" | cut -d' ' -f1)"
             echo "sha_${asset//-/_}=$sha" >> "$GITHUB_OUTPUT"
           done
 
-      # The tap's `main` is a protected branch, so we can't push to it directly.
-      # Open a PR instead and let it merge through the tap's normal review/checks.
-      - name: open formula bump PR in tap repo
+      # Commits straight to the tap's main, as unmute's release does. The token
+      # needs Contents: write on slng-ai/homebrew-tap, and nothing else.
+      - name: commit the formula to the tap
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         run: |
@@ -242,22 +257,5 @@ jobs:
             exit 0
           fi
 
-          branch="voiceai-${version}"
-          git checkout -b "$branch"
           git commit -m "voiceai ${version}"
-          # Force in case a previous run left a stale branch for this version.
-          git push --force origin "$branch"
-
-          # Open a PR only if one doesn't already exist for this branch. Don't
-          # swallow `gh pr create` failures — a permissions error (the tap token
-          # needs `pull_requests: write`) must fail the job, not pass silently.
-          if gh pr view "$branch" --repo slng-ai/homebrew-tap >/dev/null 2>&1; then
-            echo "PR for $branch already exists; updated the branch in place."
-          else
-            gh pr create \
-              --repo slng-ai/homebrew-tap \
-              --base main \
-              --head "$branch" \
-              --title "voiceai ${version}" \
-              --body "Automated formula bump for voiceai ${version}, released from slng-ai/sdks at \`cli-v${version}\`."
-          fi
+          git push origin HEAD:main
