@@ -64,7 +64,7 @@ paths:
                   system_prompt: You are a friendly appointment reminder for {{clinic_name}}. Confirm the patient's upcoming visit or help them reschedule. Keep responses to one or two sentences.
                   greeting: Hi {{patient_name}}, this is a reminder from {{clinic_name}} about your upcoming appointment.
                   language: en
-                  region: eu-central
+                  region: eu-west
                   models:
                     stt: slng/deepgram/nova:3-en
                     llm: groq/openai/gpt-oss-120b
@@ -80,7 +80,7 @@ paths:
                   system_prompt: You help callers schedule appointments for {{practice_name}}. Use the current date and time tool before offering slots, and always read dates and times in natural speech.
                   greeting: Hi {{patient_name}}, this is Ava from {{practice_name}}. I'm calling to help you find a convenient appointment time.
                   language: en
-                  region: eu-central
+                  region: eu-west
                   models:
                     stt: slng/deepgram/nova:3-en
                     llm: groq/openai/gpt-oss-120b
@@ -113,7 +113,7 @@ paths:
                   system_prompt: You help callers with order questions for {{brand_name}}. Use tools to look up order status and transfer urgent billing or cancellation cases to a human.
                   greeting: Hi, thanks for calling {{brand_name}} support. How can I help you today?
                   language: en
-                  region: eu-central
+                  region: eu-west
                   models:
                     stt: slng/deepgram/nova:3-en
                     llm: groq/openai/gpt-oss-120b
@@ -154,7 +154,7 @@ paths:
                   system_prompt: You are a calm and professional payment follow-up assistant for {{company_name}}. Verify identity, explain the outstanding balance, and offer next steps without sounding aggressive.
                   greeting: Hi, this is Mia calling from {{company_name}} about your account. Is now an okay time to talk for a moment?
                   language: en
-                  region: eu-central
+                  region: eu-west
                   models:
                     stt: slng/deepgram/nova:3-en
                     llm: groq/openai/gpt-oss-120b
@@ -216,7 +216,7 @@ paths:
                   system_prompt: You are the phone host for {{restaurant_name}}. Use the current date and time before offering same-day options, collect party size and preferred time, and use the reservation tool to check availability.
                   greeting: Thanks for calling {{restaurant_name}}. This is Elena speaking. How can I help with your reservation today?
                   language: en
-                  region: eu-central
+                  region: eu-west
                   models:
                     stt: slng/deepgram/nova:3-en
                     llm: groq/openai/gpt-oss-120b
@@ -287,7 +287,7 @@ paths:
                       template: hangup
                   template_defaults:
                     clinic_name: Greenfield Family Medicine
-                  region: eu-central
+                  region: eu-west
                   sip_outbound_trunk_id: 550e8400-e29b-41d4-a716-446655440101
       responses:
         "201":
@@ -343,7 +343,7 @@ paths:
                 deployment-not-found:
                   summary: No runtime is configured for this region
                   value:
-                    detail: "No runtime is configured for region 'us-east'"
+                    detail: "No runtime is configured for region 'eu-west'"
         "409":
           description: Conflict.
           content:
@@ -1842,11 +1842,8 @@ components:
           maxLength: 10
         region:
           type: string
-          enum:
-            - us-east
-            - eu-central
-            - ap-south
-          description: Region where the agent runs.
+          pattern: "^(?:any|[a-z0-9]+(?:-[a-z0-9]+)*)$"
+          description: An agent region code, such as `eu-west` or `eu-central-livekit`, or `any` to let the platform choose. Read the list from `GET /v1/agents/model-catalog`.
         models:
           $ref: "#/components/schemas/ModelsConfig"
         idle_nudges:
@@ -1904,11 +1901,8 @@ components:
         region:
           type: string
           nullable: true
-          enum:
-            - us-east
-            - eu-central
-            - ap-south
-          description: Change the region where the agent runs.
+          pattern: "^(?:any|[a-z0-9]+(?:-[a-z0-9]+)*)$"
+          description: "Change the agent's region. An agent region code, such as `eu-west` or `eu-central-livekit`, or `any` to let the platform choose. Read the list from `GET /v1/agents/model-catalog`."
         models:
           $ref: "#/components/schemas/ModelsConfig"
         idle_nudges:

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import Link from "ink-link";
 import { BrandSpinner } from "./BrandSpinner";
+import { requireApiKey } from "../lib/config";
+import { verifyApiKey } from "../lib/verify";
 
 // Shared presentational primitives for the Platform-resources browsers
 // (Tools / MCP / Secrets / Trunks). Lifted from AgentsFlow so the four flows
@@ -26,6 +28,21 @@ export function useLoad<T>(load: () => Promise<T>, deps: React.DependencyList): 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   return state;
+}
+
+/**
+ * Names the API key's organisation under a dashboard link. The dashboard opens a
+ * link in the organisation selected there, so a resource from another one is
+ * "not found". Renders nothing until the name is known.
+ */
+export function OrgNote({ what }: { what: string }): React.ReactElement | null {
+  const { data: org } = useLoad(() => verifyApiKey(requireApiKey()).then((r) => r.account?.org_name), []);
+  if (!org) return null;
+  return (
+    <Text dimColor>
+      This {what} is in <Text bold>{org}</Text>. If the dashboard can't find it, switch to that organisation there.
+    </Text>
+  );
 }
 
 export function Loading({ label }: { label: string }): React.ReactElement {
