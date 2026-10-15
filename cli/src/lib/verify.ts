@@ -8,11 +8,13 @@
 
 import { load } from "./config";
 
+// The 13 regional gateways listed at docs.slng.ai "Region availability".
+// LiveKit Cloud's agent regions have no gateway, so they are not here.
 // ponytail: fixed list, it drifts when world parts are added or retired.
 // Replace with a backend route that returns a key's gateway once one exists.
-export const GATEWAYS = ["eu-west", "eu-north", "us-east", "us-west", "in"].map(
-  (w) => `https://${w}.api.slng.ai`,
-);
+export const GATEWAYS = [
+  "eu-north", "eu-west", "us-east", "us-west", "au", "br", "gb", "id", "il", "in", "jp", "sg", "za",
+].map((w) => `https://${w}.api.slng.ai`);
 
 const PROBE_TIMEOUT_MS = 10_000;
 
