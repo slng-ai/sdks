@@ -9,7 +9,9 @@
 //   bun run sync-models:check     # exit 1 if the committed file is stale
 //
 // Env:
-//   SLNG_API_BASE_URL  override the API base (default https://api.slng.ai)
+//   SLNG_API_BASE_URL  override the API base (default https://eu-west.api.slng.ai;
+//                      api.slng.ai no longer resolves, and every regional gateway
+//                      serves the same public catalog)
 //   SLNG_API_KEY       optional bearer token (anonymous returns the public set)
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -18,7 +20,7 @@ import { join } from "node:path";
 const CHECK = process.argv.slice(2).includes("--check");
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const OUT = join(REPO_ROOT, "cli/src/lib/live-models.generated.ts");
-const API_BASE = process.env.SLNG_API_BASE_URL ?? "https://api.slng.ai";
+const API_BASE = process.env.SLNG_API_BASE_URL ?? "https://eu-west.api.slng.ai";
 const API_KEY = process.env.SLNG_API_KEY;
 const PAGE_SIZE = 100;
 
