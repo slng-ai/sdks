@@ -3,6 +3,7 @@ import { createInterface } from "node:readline/promises";
 import {
   addProfile,
   currentProfile,
+  envApiKey,
   listProfiles,
   load,
   profileExists,
@@ -17,7 +18,7 @@ import { printJson } from "../lib/output";
 const CONFIG_EPILOGUE = `
 KEYS
   apiKey              Bearer token (slng_cu_…). Get one at https://app.slng.ai/api-keys.
-                      Overridden by VOICEAI_API_KEY env.
+                      Overridden by VOICEAI_API_KEY, then SLNG_API_KEY env.
   baseUrl             Override the API base URL. Default: the gateway that accepts your key.
                       Overridden by VOICEAI_BASE_URL env.
   agentsBaseUrl       Voice Agents API base URL (used by \`voiceai agents …\`).
@@ -177,8 +178,8 @@ export function configCommand(): Command {
       const result = reset({ all: opts.all });
       for (const p of result.removed) console.log(`removed: ${p}`);
       for (const p of result.skipped) console.log(`skipped (not present): ${p}`);
-      if (process.env.VOICEAI_API_KEY) {
-        console.log("\nnote: VOICEAI_API_KEY is set in your env — `unset VOICEAI_API_KEY` to see the first-run prompt.");
+      if (envApiKey()) {
+        console.log("\nnote: VOICEAI_API_KEY or SLNG_API_KEY is set in your env — unset it to see the first-run prompt.");
       }
     });
 

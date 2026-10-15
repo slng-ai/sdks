@@ -6,7 +6,7 @@ import { type Account, verifyApiKey } from "../lib/verify";
 
 export function whoamiCommand(): Command {
   return new Command("whoami")
-    .description("Check that VOICEAI_API_KEY is valid (lightweight auth probe, no TTS/STT credits used)")
+    .description("Check that your API key is valid (lightweight auth probe, no TTS/STT credits used)")
     .option("--json", "Output JSON")
     .addHelpText("afterAll", `
 EXAMPLES

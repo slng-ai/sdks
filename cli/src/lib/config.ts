@@ -179,6 +179,14 @@ function readProfile(name: string): ProfileConfig {
  * Load the active config (selected profile flattened + env overrides applied).
  * If `profile` is provided it overrides every other source for this call only.
  */
+/**
+ * The key from the environment. VOICEAI_API_KEY wins, because callers such as
+ * unmute set it on purpose; SLNG_API_KEY is the name the SDK and docs use.
+ */
+export function envApiKey(): string | undefined {
+  return process.env.VOICEAI_API_KEY ?? process.env.SLNG_API_KEY;
+}
+
 export function load(profile?: string): Config {
   migrateLegacy();
   const file = readConfigFile();
@@ -186,7 +194,7 @@ export function load(profile?: string): Config {
   const fromFile = file.profiles?.[name] ?? {};
   return {
     ...fromFile,
-    apiKey: process.env.VOICEAI_API_KEY ?? fromFile.apiKey,
+    apiKey: envApiKey() ?? fromFile.apiKey,
     baseUrl: process.env.VOICEAI_BASE_URL ?? fromFile.baseUrl,
     agentsBaseUrl: process.env.VOICEAI_AGENTS_BASE_URL ?? fromFile.agentsBaseUrl,
   };
@@ -222,7 +230,7 @@ export function save(updates: Partial<ProfileConfig>, opts: SaveOptions = {}): C
   writeConfigFile(nextFile);
   return {
     ...merged,
-    apiKey: process.env.VOICEAI_API_KEY ?? merged.apiKey,
+    apiKey: envApiKey() ?? merged.apiKey,
     baseUrl: process.env.VOICEAI_BASE_URL ?? merged.baseUrl,
     agentsBaseUrl: process.env.VOICEAI_AGENTS_BASE_URL ?? merged.agentsBaseUrl,
   };
@@ -303,7 +311,7 @@ export function requireApiKey(profile?: string): string {
   const { apiKey } = load(profile);
   if (!apiKey) {
     throw new Error(
-      "no VOICEAI_API_KEY set. Run `voiceai login`, `voiceai config set apiKey <token>`, or set VOICEAI_API_KEY in your env.",
+      "no API key set. Run `voiceai login`, `voiceai config set apiKey <token>`, or set SLNG_API_KEY (or VOICEAI_API_KEY) in your env.",
     );
   }
   return apiKey;

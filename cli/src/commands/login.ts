@@ -24,7 +24,7 @@ EXAMPLES
 `)
     .action(async (opts: { profile?: string; verify?: boolean }) => {
       if (!process.stdin.isTTY) {
-        console.error("voiceai login: refusing to run non-interactively. Use `config set apiKey <token>` or set VOICEAI_API_KEY instead.");
+        console.error("voiceai login: refusing to run non-interactively. Use `config set apiKey <token>` or set SLNG_API_KEY instead.");
         process.exit(1);
       }
 
