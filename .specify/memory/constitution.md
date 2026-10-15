@@ -1,5 +1,18 @@
 <!--
 Sync Impact Report
+Version change: 1.1.0 → 1.2.0
+Rationale: The release workflow writes the tag's version into cli/package.json
+before it builds and publishes, so nobody bumps the version by hand. The
+guarantee is unchanged: the binary, npm package and formula carry the tag's
+version, and the smoke step checks the binary. MINOR: the obligation moves
+from contributors to the workflow.
+
+Modified principles:
+  IV. Releases Are Tag-Driven and Version-Locked: the version comes from the tag.
+
+Follow-up TODOs: none
+
+Previous report (1.1.0)
 Version change: 1.0.0 → 1.1.0
 Rationale: The CLI reads models and voices live from the public catalog
 (GET /v1/catalog/models). The bundled live-models and voice-catalog snapshots
@@ -74,8 +87,10 @@ install-time breakage, and shipping it inside a compiled binary makes it unfixab
 
 ### IV. Releases Are Tag-Driven and Version-Locked
 
-CLI releases happen only by pushing a `cli-v*` tag. The version in `cli/package.json`
-MUST match the tag suffix — the release workflow asserts this and fails otherwise.
+CLI releases happen only by pushing a `cli-v<semver>` tag. The tag is the version: the
+release workflow writes it into `cli/package.json` before it builds and publishes, and
+fails when the built binary reports anything else. Contributors MUST NOT bump the
+version by hand. The committed version stays `0.0.0-dev`.
 Before tagging, `bun run regen` MUST have been run and any resulting diff committed.
 Release artifacts (binaries, npm package, Homebrew formula) are produced by
 `release-cli.yml` only; MUST NOT be published by hand from a developer machine.
@@ -130,4 +145,4 @@ Reviewers MUST verify compliance with these principles before approving. Complex
 violates a principle is allowed only with an explicit, written justification in the PR
 description; an unjustified violation is a blocking review comment.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-15
+**Version**: 1.2.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-15
