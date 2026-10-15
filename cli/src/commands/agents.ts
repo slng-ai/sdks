@@ -89,6 +89,8 @@ COMMANDS
   calls dispatch <id> --phone <e164>     start an outbound call
   calls list <id>                        list an agent's calls
   calls get <id> <call_id>               show one call
+  calls export <id>                      all calls as CSV, on stdout
+  calls live-view <id> <call_id>         listen-only LiveKit join for a live call
   web-sessions create <id>               create a browser session (LiveKit details)
   push <dir>                             push an unmute-compiled agent package
 
@@ -325,6 +327,56 @@ function callsCommand(): Command {
         console.log(row(["ID", "DIRECTION", "STATUS", "PHONE", "DURATION_MS"]));
         console.log(row([data.id as string, data.call_direction as string, data.status as string, data.phone_number as string, data.call_duration_ms as number]));
       }
+    });
+
+  // calls export <agent_id> [filters]
+  calls
+    .command("export [agent_id]")
+    .description("Export an agent's calls as CSV to stdout")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
+    .option("--status <status>", "Only calls with this status")
+    .option("--channel <direction>", "Only inbound or outbound calls")
+    .option("--from <time>", "Only calls started at or after this ISO time")
+    .option("--to <time>", "Only calls started at or before this ISO time")
+    .option("--duration <bucket>", "none | under_1_min | 1_to_5_min | over_5_min")
+    .action(async (agentIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
+      // ponytail: the whole CSV is buffered; stream it if exports ever get too big for memory.
+      const csv = await send<string>(
+        false,
+        `exporting calls of agent ${agentId}`,
+        agentsRequest("GET", `/v1/agents/${agentId}/calls/export`, {
+          query: {
+            status: opts.status,
+            channel: opts.channel,
+            date_from: opts.from,
+            date_to: opts.to,
+            duration_bucket: opts.duration,
+          },
+        }),
+      );
+      process.stdout.write(typeof csv === "string" ? csv : "");
+    });
+
+  // calls live-view <agent_id> <call_id>
+  calls
+    .command("live-view [agent_id] [call_id]")
+    .description("Get a listen-only LiveKit join to follow an in-progress call (transcript and tool events, no audio)")
+    .option("--agent-id <id>", "Agent id (alternative to the positional)")
+    .option("--call-id <id>", "Call id (alternative to the positional)")
+    .option("--json", "Output JSON")
+    .action(async (agentIdArg: string | undefined, callIdArg: string | undefined, opts) => {
+      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
+      const callId = resolveId("call id", "--call-id", callIdArg, opts.callId);
+      const data = await send<Record<string, unknown>>(
+        opts.json,
+        `opening live view of call ${callId}`,
+        agentsRequest("POST", `/v1/agents/${agentId}/calls/${callId}/live-view`),
+      );
+      if (opts.json || !data) return;
+      console.log(`room:  ${data.room_name ?? ""}`);
+      console.log(`url:   ${data.livekit_url ?? ""}`);
+      console.log(`token: ${data.livekit_token ?? ""}`);
     });
 
   return calls;

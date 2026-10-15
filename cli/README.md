@@ -257,6 +257,8 @@ voiceai agents calls dispatch <agent_id> --phone +15551234567
 voiceai agents calls dispatch <agent_id> --phone +15551234567 --file args.json
 voiceai agents calls list <agent_id> --page 1 --page-size 20
 voiceai agents calls get <agent_id> <call_id>
+voiceai agents calls export <agent_id> --channel outbound --from 2026-10-01 > calls.csv
+voiceai agents calls live-view <agent_id> <call_id>   # listen-only LiveKit join, no audio
 
 # Web sessions (returns LiveKit connection details)
 voiceai agents web-sessions create <agent_id>
