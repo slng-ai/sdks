@@ -17,5 +17,13 @@ if (args.length === 0 && stdinIsTty && stdoutIsTty) {
   const { runTui } = await import("./tui");
   await runTui();
 } else {
-  await runFlagMode(args);
+  try {
+    await runFlagMode(args);
+  } catch (e) {
+    // A thrown Error is a message for the user (no key, unknown region, …), not a crash.
+    // VOICEAI_LOG=debug keeps the stack for debugging.
+    if (process.env.VOICEAI_LOG === "debug" || !(e instanceof Error)) throw e;
+    process.stderr.write(`error: ${e.message}\n`);
+    process.exit(1);
+  }
 }

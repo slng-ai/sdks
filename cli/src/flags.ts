@@ -48,7 +48,8 @@ ENVIRONMENT
   VOICEAI_PROFILE            Select a named profile (overridden by --profile).
   VOICEAI_API_KEY            Bearer token. Overrides the active profile's key.
   SLNG_API_KEY               Same, used when VOICEAI_API_KEY is unset.
-  VOICEAI_BASE_URL           Override the API base URL. Default: the gateway that accepts your key.
+  VOICEAI_REGION             API region, e.g. eu-west. Default: found from the key.
+  VOICEAI_BASE_URL           Full API base URL (staging, stubs). Beats VOICEAI_REGION.
   VOICEAI_AGENTS_BASE_URL    Override the agents API base URL (used by \`agents\`).
 
   Env vars override anything in ~/.config/voiceai/config.json.

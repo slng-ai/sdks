@@ -6,8 +6,7 @@ import ora from "ora";
 import { synthesize, TTS_SAMPLE_RATE, wav } from "../lib/bridge";
 import { playBytes } from "../lib/audio";
 import { resolveVoice } from "../lib/voice-resolve";
-import { allRegions, allWorldParts } from "../lib/models";
-import { load } from "../lib/config";
+import { load, REGIONS } from "../lib/config";
 
 const TTS_EPILOGUE = `
 EXAMPLES
@@ -27,8 +26,6 @@ NOTES
 
 export function ttsCommand(): Command {
   const cfg = load();
-  const liveRegions = allRegions();
-  const liveWorldParts = allWorldParts();
   const cmd = new Command("tts");
   cmd
     .description("Synthesize speech over the bridge WebSocket")
@@ -44,14 +41,7 @@ export function ttsCommand(): Command {
       cfg.defaultTtsVoice ?? "aura-2-thalia-en",
     )
     .option("-o, --out <file>", "Write a WAV file instead of a temp file")
-    .option(
-      "--region <region>",
-      `Force region (auto if unset). Available: ${liveRegions.join(" | ")}`,
-    )
-    .option(
-      "--world-part <wp>",
-      `Force world part (auto if unset). Available: ${liveWorldParts.join(" | ")}`,
-    )
+    .option("--region <code>", `API region to use (default: found from the key). One of: ${REGIONS.join(", ")}`)
     .option("--stream", "Write raw PCM to stdout as it arrives (good for long text or piping)")
     .addHelpText("afterAll", TTS_EPILOGUE)
     .action(async (text: string, opts) => {
@@ -66,9 +56,6 @@ export function ttsCommand(): Command {
         process.stderr.write(`${resolved.message}\n`);
       }
 
-      const query: Record<string, string> = {};
-      if (opts.region) query.region = opts.region;
-      if (opts.worldPart) query["world-part"] = opts.worldPart;
       const raw = Boolean(opts.stream) && !opts.out;
 
       // Show a spinner only when stderr is interactive (don't pollute pipes/CI).
@@ -79,7 +66,7 @@ export function ttsCommand(): Command {
       let pcm: Uint8Array;
       try {
         pcm = await synthesize(opts.model, voiceId, text, {
-          query,
+          region: opts.region,
           onChunk: raw ? (c) => process.stdout.write(c) : undefined,
         });
         spinner?.succeed(`got ${pcm.length} bytes (~${(pcm.length / 2 / TTS_SAMPLE_RATE).toFixed(1)}s)`);

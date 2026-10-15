@@ -3,9 +3,11 @@ import { createInterface } from "node:readline/promises";
 import ora from "ora";
 import {
   addProfile,
+  apiBaseUrl,
   currentProfile,
   load,
   profileExists,
+  regionOf,
   save,
   useProfile,
   DEFAULT_PROFILE,
@@ -62,13 +64,18 @@ EXAMPLES
         // Quietly check the key works before we hand back to the prompt.
         const cfg = load(name);
         const spinner = ora({ text: "Checking your key", color: "yellow", spinner: "line" }).start();
-        const result = await verifyApiKey(cfg.apiKey ?? apiKey, cfg.baseUrl);
+        const chosen = apiBaseUrl();
+        const result = await verifyApiKey(cfg.apiKey ?? apiKey);
         if (result.ok) {
           const account = result.account ?? {};
           const detail = account.name
             ? ` Signed in as ${account.name}${account.org_name ? `, ${account.org_name}` : ""}.`
             : "";
-          spinner.succeed(`Key verified.${detail}`);
+          // Remember the region the probe found, so later runs skip the probe.
+          const region = regionOf(result.baseUrl);
+          if (!chosen && region) save({ region }, { profile: name });
+          const where = region ? ` Region: ${region}${chosen ? "" : " (saved)"}.` : "";
+          spinner.succeed(`Key verified.${detail}${where}`);
         } else if (result.error) {
           spinner.warn("Couldn't reach SLNG to check your key. It's saved; try again when you're back online.");
         } else if (result.status === 401 || result.status === 403) {

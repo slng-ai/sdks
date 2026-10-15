@@ -13,16 +13,16 @@ export const TTS_SAMPLE_RATE = 24_000;
 export const STT_SAMPLE_RATE = 16_000;
 
 export interface SynthOptions {
-  /** Passed through as query parameters on the connect URL (`region`, `world-part`). */
-  query?: Record<string, string>;
+  /** API region whose gateway to use (e.g. eu-west); found from the key when unset. */
+  region?: string;
   /** Called with each audio frame as it arrives. */
   onChunk?: (pcm: Uint8Array) => void;
 }
 
 /** Synthesize `text` and return the whole utterance as raw PCM at TTS_SAMPLE_RATE. */
 export async function synthesize(model: string, voice: string, text: string, opts: SynthOptions = {}): Promise<Uint8Array> {
-  const { streaming } = await makeClients();
-  const session = await streaming.connectTts(model, { query: opts.query });
+  const { streaming } = await makeClients(opts.region);
+  const session = await streaming.connectTts(model);
   session.send({ type: "init", voice, config: { encoding: "linear16", sample_rate: TTS_SAMPLE_RATE } });
   session.send({ type: "text", text });
   session.send({ type: "flush" });
@@ -102,8 +102,9 @@ export interface Transcriber {
 export async function openTranscriber(
   model: string,
   onText: (text: string, final: boolean) => void,
+  region?: string,
 ): Promise<Transcriber> {
-  const { streaming } = await makeClients();
+  const { streaming } = await makeClients(region);
   const session = await streaming.connectStt(model);
   session.send({
     type: "init",

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import ora from "ora";
-import { currentProfile, load, requireApiKey } from "../lib/config";
+import { currentProfile, regionOf, requireApiKey } from "../lib/config";
 import { printJson } from "../lib/output";
 import { type Account, verifyApiKey } from "../lib/verify";
 
@@ -15,7 +15,6 @@ EXAMPLES
 `)
     .action(async (opts) => {
       const apiKey = requireApiKey();
-      const { baseUrl } = load();
       const profile = currentProfile();
       const masked = maskKey(apiKey);
 
@@ -24,7 +23,8 @@ EXAMPLES
           ? ora({ text: "Checking your key", color: "yellow", spinner: "line" }).start()
           : null;
 
-      const result = await verifyApiKey(apiKey, baseUrl);
+      const result = await verifyApiKey(apiKey);
+      const region = regionOf(result.baseUrl);
 
       if (result.error) {
         if (opts.json) {
@@ -39,9 +39,9 @@ EXAMPLES
       if (result.ok) {
         const account = result.account ?? {};
         if (opts.json) {
-          printJson({ ok: true, status: 200, profile, masked_key: masked, account }, false);
+          printJson({ ok: true, status: 200, profile, region, masked_key: masked, account }, false);
         } else {
-          const line = formatAccount(account, profile, masked);
+          const line = formatAccount(account, profile, masked, region);
           spinner ? spinner.succeed(line) : console.log(line);
         }
         return;
@@ -50,9 +50,10 @@ EXAMPLES
       // The gateway may return 401; /v1/me itself returns 403 for a bad key.
       if (result.status === 401 || result.status === 403) {
         if (opts.json) {
-          printJson({ ok: false, status: result.status, masked_key: masked, profile }, false);
+          printJson({ ok: false, status: result.status, masked_key: masked, profile, region }, false);
         } else {
-          const msg = `That key didn't work for profile "${profile}". It may be invalid or revoked.`;
+          const at = region ? ` at region ${region}` : "";
+          const msg = `That key didn't work${at} for profile "${profile}". It may be invalid, revoked, or from another region.`;
           spinner ? spinner.fail(msg) : console.error(msg);
         }
         process.exit(1);
@@ -68,7 +69,7 @@ EXAMPLES
     });
 }
 
-function formatAccount(account: Account, profile: string, masked: string): string {
+function formatAccount(account: Account, profile: string, masked: string, region?: string): string {
   const who = account.email
     ? `${account.name ?? "?"} <${account.email}>`
     : account.name ?? masked;
@@ -77,6 +78,7 @@ function formatAccount(account: Account, profile: string, masked: string): strin
     parts.push(account.tier ? `${account.org_name} (${account.tier})` : account.org_name);
   }
   if (account.api_key_label) parts.push(`key "${account.api_key_label}"`);
+  if (region) parts.push(`region: ${region}`);
   parts.push(`profile: ${profile}`);
   return parts.join(" · ");
 }

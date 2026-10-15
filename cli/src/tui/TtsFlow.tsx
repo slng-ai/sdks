@@ -11,7 +11,6 @@ import {
   allLanguages,
   ttsModelsForLanguage,
   languageLabel,
-  regionsFor,
   isSlngHosted,
   type TtsModel,
 } from "../lib/models";
@@ -31,7 +30,6 @@ type Step =
   | "pick-language"
   | "pick-model"
   | "pick-voice"
-  | "pick-region"
   | "enter-text"
   | "synth"
   | "done"
@@ -56,7 +54,6 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
   const [language, setLanguage] = useState<string>(initial.language);
   const [model, setModel] = useState<string>(initial.model);
   const [voice, setVoice] = useState<string>(initial.voice);
-  const [region, setRegion] = useState<string>("");
   const [text, setText] = useState<string>("");
   const [baseUrl, setBaseUrl] = useState<string>("");
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
@@ -67,30 +64,18 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
     if (key.escape) {
       if (step === "pick-voice") setStep("pick-model");
       else if (step === "pick-model") setStep("pick-language");
-      else if (step === "pick-region") setStep("pick-voice");
-      else if (step === "enter-text") setStep(regionsFor(model).length > 1 ? "pick-region" : "pick-voice");
+      else if (step === "enter-text") setStep("pick-voice");
       else onExit();
     }
   });
 
-  // After voice is picked: skip to text input when there's nothing meaningful to pick.
-  const advancePastVoice = (modelId: string) => {
-    const regions = regionsFor(modelId);
-    if (regions.length > 1) {
-      setRegion(""); // default to auto
-      setStep("pick-region");
-    } else {
-      setRegion(regions[0] ?? "");
-      setStep("enter-text");
-    }
-  };
 
   const synth = async (finalText: string) => {
     setStep("synth");
     try {
       const { baseUrl: base } = await makeClients();
       setBaseUrl(base);
-      const pcm = await synthesize(model, voice, finalText, { query: region ? { region } : {} });
+      const pcm = await synthesize(model, voice, finalText);
       const arr = wav(pcm, TTS_SAMPLE_RATE);
       setBytes(arr);
       await playBytes(arr);
@@ -164,28 +149,9 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
           language={language}
           onPick={(v) => {
             setVoice(v);
-            advancePastVoice(model);
+            setStep("enter-text");
           }}
         />
-      )}
-
-      {step === "pick-region" && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text>
-            Region for <Text bold>{model}</Text>:{" "}
-            <Text dimColor>(this model is deployed in {regionsFor(model).length} regions)</Text>
-          </Text>
-          <SelectInput
-            items={[
-              { label: "Auto (let Slng pick)", value: "" },
-              ...regionsFor(model).map((r) => ({ label: r, value: r })),
-            ]}
-            onSelect={(item) => {
-              setRegion(item.value);
-              setStep("enter-text");
-            }}
-          />
-        </Box>
       )}
 
       {step === "enter-text" && (
@@ -197,7 +163,6 @@ export function TtsFlow({ onExit }: Props): React.ReactElement {
           {!usingDefaults && (
             <Text dimColor>
               {model} · {voice}
-              {region ? ` · ${region}` : ""}
             </Text>
           )}
           <Text>Text (enter to synthesize):</Text>

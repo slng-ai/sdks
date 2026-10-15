@@ -2,19 +2,13 @@
 // the TUI key-entry screens so the validation logic stays in one place.
 //
 // It also finds the main-API host. There is no global host any more: a key
-// works only at its own world part's gateway, and the others answer 401. So
-// with no configured base URL, the probe asks every gateway and keeps the one
-// that answers 200.
+// works only at its own region's gateway, and the others answer 401. So with
+// no base URL or region chosen (see apiBaseUrl), the probe asks every
+// region's gateway and keeps the one that answers 200.
 
-import { load } from "./config";
+import { apiBaseUrl, gatewayUrl, REGIONS } from "./config";
 
-// The 13 regional gateways listed at docs.slng.ai "Region availability".
-// LiveKit Cloud's agent regions have no gateway, so they are not here.
-// ponytail: fixed list, it drifts when world parts are added or retired.
-// Replace with a backend route that returns a key's gateway once one exists.
-export const GATEWAYS = [
-  "eu-north", "eu-west", "us-east", "us-west", "au", "br", "gb", "id", "il", "in", "jp", "sg", "za",
-].map((w) => `https://${w}.api.slng.ai`);
+export const GATEWAYS = REGIONS.map(gatewayUrl);
 
 const PROBE_TIMEOUT_MS = 10_000;
 
@@ -42,13 +36,13 @@ let found: { apiKey: string; baseUrl: string } | undefined;
 
 /**
  * Probe `GET {base}/v1/me` with the given key. No TTS/STT credits used.
- * `baseUrl` falls back to the active profile's baseUrl. With neither, every
- * gateway is probed and the first 200 wins. Otherwise the result is the most
+ * `baseUrl` falls back to the chosen base URL or region (apiBaseUrl). With
+ * neither, every gateway is probed and the first 200 wins. Otherwise the result is the most
  * telling failure: an HTTP status before a network error.
  * The gateway returns 401 for a malformed key; /v1/me itself returns 403.
  */
 export async function verifyApiKey(apiKey: string, baseUrl?: string): Promise<VerifyResult> {
-  const base = baseUrl ?? load().baseUrl ?? (found?.apiKey === apiKey ? found.baseUrl : undefined);
+  const base = baseUrl ?? apiBaseUrl() ?? (found?.apiKey === apiKey ? found.baseUrl : undefined);
   if (base) return probe(apiKey, base);
 
   const probes = GATEWAYS.map((g) => probe(apiKey, g));
@@ -64,21 +58,22 @@ export async function verifyApiKey(apiKey: string, baseUrl?: string): Promise<Ve
 }
 
 /**
- * The main-API host for this key: the configured one, or the gateway that
- * accepts it. Throws a message the user can act on when none does.
+ * The main-API host for this key: the chosen one (`region` is a --region
+ * flag), or the gateway that accepts it. Throws a message the user can act
+ * on when none does.
  */
-export async function resolveBaseUrl(apiKey: string): Promise<string> {
-  const configured = load().baseUrl;
+export async function resolveBaseUrl(apiKey: string, region?: string): Promise<string> {
+  const configured = apiBaseUrl(region);
   if (configured) return configured;
   const r = await verifyApiKey(apiKey);
   if (r.ok && r.baseUrl) return r.baseUrl;
   if (r.status === undefined) {
     throw new Error(
-      `could not reach any SLNG gateway (${r.error}). check your connection, or set VOICEAI_BASE_URL.`,
+      `could not reach any SLNG gateway (${r.error}). check your connection, or set VOICEAI_REGION (e.g. eu-west).`,
     );
   }
   throw new Error(
-    `no SLNG gateway accepts this key (status ${r.status}). check the key, or set VOICEAI_BASE_URL to your region's gateway.`,
+    `no SLNG gateway accepts this key (status ${r.status}). check the key, or set VOICEAI_REGION (e.g. eu-west).`,
   );
 }
 

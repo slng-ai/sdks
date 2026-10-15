@@ -70,43 +70,6 @@ function fromLive(m: LiveModel): TtsModel & SttModel {
   };
 }
 
-/** Lookup: regions a TTS or STT model is currently deployed to. Empty if unknown. */
-export function regionsFor(modelId: string): string[] {
-  const m = [...TTS_MODELS, ...STT_MODELS].find((m) => m.id === modelId);
-  return m?.deployments?.regions ?? [];
-}
-
-/** Lookup: world-parts (na/eu/ap) a model is deployed to. Empty if unknown. */
-export function worldPartsFor(modelId: string): string[] {
-  const m = [...TTS_MODELS, ...STT_MODELS].find((m) => m.id === modelId);
-  return m?.deployments?.worldParts ?? [];
-}
-
-/** Static fallbacks (from the OAS spec) used only when the live snapshot is empty. */
-const FALLBACK_REGIONS = ["us-east-1", "eu-north-1", "ap-southeast-2"];
-const FALLBACK_WORLD_PARTS = ["na", "eu", "ap"];
-
-/** Union of all regions any deployed model is reachable in.
- *  Derived from the live admin-API snapshot; refreshes on `bun run sync-live-models`. */
-export function allRegions(): string[] {
-  const set = new Set<string>();
-  for (const m of [...TTS_MODELS, ...STT_MODELS]) {
-    for (const r of m.deployments?.regions ?? []) set.add(r);
-  }
-  if (set.size === 0) FALLBACK_REGIONS.forEach((r) => set.add(r));
-  return [...set].sort();
-}
-
-/** Union of all world-parts across live deployments. */
-export function allWorldParts(): string[] {
-  const set = new Set<string>();
-  for (const m of [...TTS_MODELS, ...STT_MODELS]) {
-    for (const w of m.deployments?.worldParts ?? []) set.add(w);
-  }
-  if (set.size === 0) FALLBACK_WORLD_PARTS.forEach((w) => set.add(w));
-  return [...set].sort();
-}
-
 /** Fallback when LIVE_MODELS is empty: derive from voice catalog keys. */
 function fromVoiceCatalog(): { tts: TtsModel[] } {
   const tts: TtsModel[] = Object.keys(VOICE_CATALOG).map((id) => {
