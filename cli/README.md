@@ -641,7 +641,7 @@ Per-profile keys (env overrides apply to the resolved profile):
 | Key | Env override | Description |
 |---|---|---|
 | `apiKey` | `VOICEAI_API_KEY` | Bearer token (slng_cu_…). |
-| `baseUrl` | `VOICEAI_BASE_URL` | Override the API base URL (e.g. `https://stageapi.slng.ai`). |
+| `baseUrl` | `VOICEAI_BASE_URL` | Override the API base URL. Default: the regional gateway that accepts your key, found on each run. |
 | `agentsBaseUrl` | `VOICEAI_AGENTS_BASE_URL` | Override the Voice Agents API base URL (used by `voiceai agents …`). |
 | `region` | — | Pin every request to a region (auto if unset). |
 | `worldPart` | — | Pin every request to a world-part (auto if unset). |
