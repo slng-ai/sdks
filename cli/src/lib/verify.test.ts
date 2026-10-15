@@ -7,7 +7,7 @@ import { join } from "node:path";
 process.env.HOME = mkdtempSync(join(tmpdir(), "voiceai-verify-"));
 delete process.env.VOICEAI_BASE_URL;
 delete process.env.VOICEAI_REGION;
-const { GATEWAYS, resolveBaseUrl, verifyApiKey } = await import("./verify");
+const { GATEWAYS, resolveBaseUrl, verifyApiKey, wrongRegionHint } = await import("./verify");
 const { apiBaseUrl, REGIONS, gatewayUrl, regionOf } = await import("./config");
 
 const realFetch = globalThis.fetch;
@@ -116,4 +116,26 @@ test("regionOf maps every gateway back to its code", () => {
   for (const r of REGIONS) expect(regionOf(gatewayUrl(r))).toBe(r);
   expect(regionOf("http://localhost:9")).toBeUndefined();
   expect(regionOf(undefined)).toBeUndefined();
+});
+
+// --- naming the right region after a refusal ---------------------------------
+
+test("a key refused at its chosen region gets the region that accepts it", async () => {
+  stub((h) => (h === "https://eu-north.api.slng.ai" ? 200 : 401));
+  expect(await wrongRegionHint("key_seven", "https://eu-west.api.slng.ai")).toBe(
+    "this key belongs to region eu-north, not eu-west. run `voiceai config set region eu-north`, or set VOICEAI_REGION=eu-north.",
+  );
+});
+
+test("no hint when no gateway accepts the key, or the chosen one does", async () => {
+  stub(() => 401);
+  expect(await wrongRegionHint("key_eight", "https://eu-west.api.slng.ai")).toBeUndefined();
+  stub((h) => (h === "https://eu-west.api.slng.ai" ? 200 : 401));
+  expect(await wrongRegionHint("key_nine", "https://eu-west.api.slng.ai")).toBeUndefined();
+});
+
+test("no hint, and no probe, for a custom base URL", async () => {
+  const { hosts } = stub(() => 200);
+  expect(await wrongRegionHint("key_ten", "http://localhost:9")).toBeUndefined();
+  expect(hosts).toEqual([]);
 });

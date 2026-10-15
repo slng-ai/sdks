@@ -2,7 +2,7 @@ import { Command } from "commander";
 import ora from "ora";
 import { currentProfile, regionOf, requireApiKey } from "../lib/config";
 import { printJson } from "../lib/output";
-import { type Account, verifyApiKey } from "../lib/verify";
+import { type Account, verifyApiKey, wrongRegionHint } from "../lib/verify";
 
 export function whoamiCommand(): Command {
   return new Command("whoami")
@@ -49,11 +49,14 @@ EXAMPLES
 
       // The gateway may return 401; /v1/me itself returns 403 for a bad key.
       if (result.status === 401 || result.status === 403) {
+        const hint = await wrongRegionHint(apiKey, result.baseUrl);
         if (opts.json) {
-          printJson({ ok: false, status: result.status, masked_key: masked, profile, region }, false);
+          printJson({ ok: false, status: result.status, masked_key: masked, profile, region, ...(hint ? { hint } : {}) }, false);
         } else {
           const at = region ? ` at region ${region}` : "";
-          const msg = `That key didn't work${at} for profile "${profile}". It may be invalid, revoked, or from another region.`;
+          const msg = hint
+            ? `That key didn't work${at} for profile "${profile}": ${hint}`
+            : `That key didn't work${at} for profile "${profile}". It may be invalid, revoked, or from another region.`;
           spinner ? spinner.fail(msg) : console.error(msg);
         }
         process.exit(1);
