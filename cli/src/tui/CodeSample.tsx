@@ -2,14 +2,15 @@ import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import SyntaxHighlight from "ink-syntax-highlight";
 import { KeyHints } from "./resourceKit";
+import { TTS_SAMPLE_RATE } from "../lib/bridge";
 
-export type Lang = "typescript" | "python" | "curl";
+export type Lang = "typescript" | "python" | "shell";
 
-// cli-highlight uses highlight.js language names; "bash" works well for curl.
+// cli-highlight uses highlight.js language names.
 const HL_LANGUAGE: Record<Lang, string> = {
   typescript: "typescript",
   python: "python",
-  curl: "bash",
+  shell: "bash",
 };
 
 interface Props {
@@ -23,17 +24,17 @@ interface Props {
 }
 
 /** Self-contained component that renders an executable snippet for the
- *  current TTS selection in TS, Python, or curl. Press `tab` to cycle. */
+ *  current TTS selection in TS, Python, or shell. Press `tab` to cycle. */
 export function CodeSample({ modelVariant, voice, text, region, worldPart, baseUrl }: Props): React.ReactElement {
   const [lang, setLang] = useState<Lang>("typescript");
 
   useInput((input, key) => {
     if (key.tab) {
-      setLang((l) => (l === "typescript" ? "python" : l === "python" ? "curl" : "typescript"));
+      setLang((l) => (l === "typescript" ? "python" : l === "python" ? "shell" : "typescript"));
     }
   });
 
-  const sample = render(lang, { modelVariant, voice, text, region, worldPart, baseUrl });
+  const sample = renderSample(lang, { modelVariant, voice, text, region, worldPart, baseUrl });
 
   return (
     <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
@@ -43,7 +44,7 @@ export function CodeSample({ modelVariant, voice, text, region, worldPart, baseU
         <Text dimColor>/</Text>
         <Text color={lang === "python" ? "cyan" : "gray"}> python </Text>
         <Text dimColor>/</Text>
-        <Text color={lang === "curl" ? "cyan" : "gray"}> curl </Text>
+        <Text color={lang === "shell" ? "cyan" : "gray"}> shell </Text>
       </Box>
       <Box marginTop={1}>
         <SyntaxHighlight code={sample} language={HL_LANGUAGE[lang]} />
@@ -53,56 +54,87 @@ export function CodeSample({ modelVariant, voice, text, region, worldPart, baseU
   );
 }
 
-function escapeQuotes(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+/** Single-quote a string for POSIX shells. */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-function render(lang: Lang, p: Props): string {
+/** The bridge connect URL: https:// gateway → wss://, with region/world-part as query params. */
+export function bridgeUrl(baseUrl: string, model: string, region?: string, worldPart?: string): string {
+  const q = new URLSearchParams();
+  if (region) q.set("region", region);
+  if (worldPart) q.set("world-part", worldPart);
+  const qs = q.size ? `?${q}` : "";
+  return `${baseUrl.replace(/\/+$/, "").replace(/^http/, "ws")}/v1/bridges/unmute/tts/${model}${qs}`;
+}
+
+// The bridge is WebSocket only (POST answers 405). Same protocol as synthesize() in lib/bridge.ts.
+// JSON.stringify gives string literals that are valid in both TypeScript and Python.
+export function renderSample(lang: Lang, p: Props): string {
   const { modelVariant, voice, text, region, worldPart, baseUrl } = p;
-  const body: string[] = [`voice: "${escapeQuotes(voice)}"`, `text: "${escapeQuotes(text)}"`];
-  if (region) body.push(`region: "${region}"`);
-  if (worldPart) body.push(`"world-part": "${worldPart}"`);
+  const url = JSON.stringify(bridgeUrl(baseUrl, modelVariant, region, worldPart));
+  const v = JSON.stringify(voice);
+  const t = JSON.stringify(text);
 
   if (lang === "typescript") {
-    return `import Slng from "voiceai-sdk";
+    return `// npm install ws
+import WebSocket from "ws";
+import { writeFileSync } from "node:fs";
 
-const client = new Slng({ apiKey: process.env.VOICEAI_API_KEY!, baseURL: "${baseUrl}" });
-const response = await client.textToSpeech.create(
-  "${modelVariant}",
-  {
-    ${body.join(",\n    ")},
-  },
-);
-const audio = new Uint8Array(await (await response.blob()).arrayBuffer());`;
+const ws = new WebSocket(${url}, {
+  headers: { Authorization: \`Bearer \${process.env.VOICEAI_API_KEY}\` },
+});
+const chunks: Buffer[] = [];
+
+ws.on("open", () => {
+  ws.send(JSON.stringify({ type: "init", voice: ${v}, config: { encoding: "linear16", sample_rate: ${TTS_SAMPLE_RATE} } }));
+  ws.send(JSON.stringify({ type: "text", text: ${t} }));
+  ws.send(JSON.stringify({ type: "flush" }));
+});
+ws.on("message", (data, isBinary) => {
+  if (isBinary) return void chunks.push(data as Buffer); // 16-bit mono PCM
+  const msg = JSON.parse(data.toString());
+  if (msg.type === "audio_end") ws.close();
+  if (msg.type === "error") throw new Error(JSON.stringify(msg));
+});
+// Raw PCM. Play it with: ffplay -f s16le -ar ${TTS_SAMPLE_RATE} -ch_layout mono out.pcm
+ws.on("close", () => writeFileSync("out.pcm", Buffer.concat(chunks)));`;
   }
 
   if (lang === "python") {
-    const pyBody: string[] = [`voice="${escapeQuotes(voice)}"`, `text="${escapeQuotes(text)}"`];
-    if (region) pyBody.push(`region="${region}"`);
-    if (worldPart) pyBody.push(`world_part="${worldPart}"`);
-    return `import os
-from voiceai_sdk import Slng
+    return `# pip install "websockets>=14"
+import asyncio, json, os, wave
+import websockets
 
-client = Slng(api_key=os.environ["VOICEAI_API_KEY"], base_url="${baseUrl}")
-response = client.text_to_speech.create(
-    model_variant="${modelVariant}",
-    ${pyBody.join(",\n    ")},
-)
-response.write_to_file("out.mp3")`;
+async def main():
+    pcm = bytearray()
+    async with websockets.connect(
+        ${url},
+        additional_headers={"Authorization": f"Bearer {os.environ['VOICEAI_API_KEY']}"},
+    ) as ws:
+        await ws.send(json.dumps({"type": "init", "voice": ${v}, "config": {"encoding": "linear16", "sample_rate": ${TTS_SAMPLE_RATE}}}))
+        await ws.send(json.dumps({"type": "text", "text": ${t}}))
+        await ws.send(json.dumps({"type": "flush"}))
+        async for msg in ws:
+            if isinstance(msg, bytes):
+                pcm += msg  # 16-bit mono PCM
+                continue
+            event = json.loads(msg)
+            if event["type"] == "audio_end":
+                break
+            if event["type"] == "error":
+                raise RuntimeError(event)
+    with wave.open("out.wav", "wb") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(${TTS_SAMPLE_RATE})
+        f.writeframes(pcm)
+
+asyncio.run(main())`;
   }
 
-  // curl
-  const headers = [
-    `-H "Authorization: Bearer $VOICEAI_API_KEY"`,
-    `-H "Content-Type: application/json"`,
-  ].join(" \\\n  ");
-  const query: string[] = [];
-  if (region) query.push(`region=${region}`);
-  if (worldPart) query.push(`world-part=${worldPart}`);
-  const qs = query.length ? `?${query.join("&")}` : "";
-  const jsonBody = JSON.stringify({ voice, text }, null, 2);
-  return `curl -X POST "${baseUrl}/v1/bridges/unmute/tts/${modelVariant}${qs}" \\
-  ${headers} \\
-  -d '${jsonBody}' \\
-  --output out.mp3`;
+  const flags = [`-m ${shellQuote(modelVariant)}`, `-v ${shellQuote(voice)}`];
+  if (region) flags.push(`--region ${shellQuote(region)}`);
+  if (worldPart) flags.push(`--world-part ${shellQuote(worldPart)}`);
+  return `voiceai tts ${shellQuote(text)} ${flags.join(" ")} --out out.wav`;
 }
