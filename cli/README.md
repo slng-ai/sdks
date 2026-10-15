@@ -211,12 +211,16 @@ arecord -f S16_LE -r 16000 -c 1 | voiceai stt --stream --source stdin
 ### Catalogs
 
 ```sh
-# All deployed models, both TTS and STT.
-voiceai models
+# Every STT, TTS and LLM model your organisation can use, read live.
+voiceai models list
 
-# Filter by service type and machine-readable output for scripts.
-voiceai models --tts
-voiceai models --json | jq '.tts[] | .id'
+# Filter by type, region and language. --region takes an agent region
+# (eu-central) or a hosting world part (eu-north).
+voiceai models list --type tts --region eu-north
+voiceai models list --type llm --language de --json | jq '.data[] | .id'
+
+# `agents push` checks agent.json's models and voices against this same
+# catalog, and stops before writing anything if one is not available.
 
 # Voices for a specific TTS model. --voice in `tts` accepts the friendly
 # name from this list (case-insensitive).

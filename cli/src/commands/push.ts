@@ -17,6 +17,7 @@ import {
   type PackageToolRef,
 } from "../lib/package";
 import { load } from "../lib/config";
+import { checkAgentBody } from "../lib/model-catalog";
 import { verifyApiKey } from "../lib/verify";
 import {
   connectServer,
@@ -52,6 +53,7 @@ export type BlockerKind =
   | "mcp_stale"
   | "agent_ambiguous"
   | "task_tool_unresolved"
+  | "model_unavailable"
   // --require-resolved only, below this line.
   | "authored_tool_body"
   | "tool_version_unavailable"
@@ -643,7 +645,26 @@ export async function planPush(
     organisation,
     agentIdOverride: opts.agentId,
   });
+  const models = await modelBlocker(pkg, liveAgent);
+  if (models) plan.blockers.push(models);
   return { plan, pkg };
+}
+
+/**
+ * Check the package's models and voices against the live catalog, so a typo
+ * blocks the push before any tool is written rather than after. Advisory when
+ * the catalog cannot be read: the platform checks again on write.
+ */
+async function modelBlocker(pkg: LoadedPackage, liveAgent?: AgentRow): Promise<Blocker | undefined> {
+  const pick = (k: string) => {
+    const v = pkg.agent[k] ?? liveAgent?.[k];
+    return typeof v === "string" && v ? v : undefined;
+  };
+  const models = pkg.agent.models as Record<string, unknown> | undefined;
+  const check = await checkAgentBody({ region: pick("region"), language: pick("language"), models });
+  if (check.unreadable) note(`could not check models against the catalog (${check.unreadable}). the platform will check them on write.`);
+  if (!check.problems.length) return undefined;
+  return { kind: "model_unavailable", items: check.problems, detail: check.hint };
 }
 
 /**
@@ -985,6 +1006,8 @@ export async function planResolvedPush(
     getToolVersion: fetchToolVersion,
     getMcpServer: getServerById,
   });
+  const models = await modelBlocker(pkg, liveAgent);
+  if (models) plan.blockers.push(models);
   return { plan, pkg };
 }
 
@@ -1358,6 +1381,7 @@ const KIND_TITLE: Record<BlockerKind, string> = {
   mcp_stale: "MCP capability snapshot is stale",
   agent_ambiguous: "more than one agent has this name",
   task_tool_unresolved: "a task names a tool the agent does not attach",
+  model_unavailable: "model or voice not available",
   authored_tool_body: "authored tool bodies are not allowed under --require-resolved",
   tool_version_unavailable: "checked tool version is no longer available",
   mcp_hash_changed: "checked MCP schema hash is no longer current",

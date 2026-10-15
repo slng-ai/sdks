@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import ora from "ora";
 import { agentsRequest, agentsBaseUrl, formatAgentsError, type AgentsResult } from "../lib/agents";
+import { checkAgentBody } from "../lib/model-catalog";
 import { printJson } from "../lib/output";
 import { pushCommand } from "./push";
 
@@ -22,6 +23,27 @@ function readJsonInput(file: string): unknown {
     process.stderr.write(`invalid JSON in ${file === "-" ? "stdin" : file}: ${(e as Error).message}\n`);
     process.exit(1);
   }
+}
+
+/**
+ * Refuse a full agent body whose region, language, models or voices the live
+ * catalog does not offer, before it is sent. PATCH bodies are partial, so
+ * update skips this and the platform checks the merged result.
+ */
+async function refuseUnavailableModels(body: unknown): Promise<void> {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  const check = await checkAgentBody({
+    region: str(b.region),
+    language: str(b.language),
+    models: b.models as Record<string, unknown> | undefined,
+  });
+  if (check.unreadable) {
+    process.stderr.write(`note: could not check models against the catalog (${check.unreadable}). the platform will check them on write.\n`);
+  }
+  if (!check.problems.length) return;
+  process.stderr.write(`model or voice not available:\n${check.problems.map((p) => `  - ${p}`).join("\n")}\n${check.hint}\n`);
+  process.exit(1);
 }
 
 /**
@@ -159,6 +181,7 @@ NOTES
     .option("--json", "Output JSON")
     .action(async (opts) => {
       const body = readJsonInput(opts.file);
+      await refuseUnavailableModels(body);
       const data = await send<Record<string, unknown>>(
         opts.json,
         "creating agent",
@@ -201,6 +224,7 @@ NOTES
     .action(async (agentIdArg: string | undefined, opts) => {
       const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
       const body = readJsonInput(opts.file);
+      await refuseUnavailableModels(body);
       const data = await send<Record<string, unknown>>(
         opts.json,
         `replacing agent ${agentId}`,
