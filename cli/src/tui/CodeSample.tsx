@@ -17,15 +17,13 @@ interface Props {
   modelVariant: string;
   voice: string;
   text: string;
-  region?: string;
-  worldPart?: string;
   /** The gateway this key uses. The SDK's built-in default host no longer resolves. */
   baseUrl: string;
 }
 
 /** Self-contained component that renders an executable snippet for the
  *  current TTS selection in TS, Python, or shell. Press `tab` to cycle. */
-export function CodeSample({ modelVariant, voice, text, region, worldPart, baseUrl }: Props): React.ReactElement {
+export function CodeSample({ modelVariant, voice, text, baseUrl }: Props): React.ReactElement {
   const [lang, setLang] = useState<Lang>("typescript");
 
   useInput((input, key) => {
@@ -34,7 +32,7 @@ export function CodeSample({ modelVariant, voice, text, region, worldPart, baseU
     }
   });
 
-  const sample = renderSample(lang, { modelVariant, voice, text, region, worldPart, baseUrl });
+  const sample = renderSample(lang, { modelVariant, voice, text, baseUrl });
 
   return (
     <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
@@ -59,20 +57,16 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-/** The bridge connect URL: https:// gateway → wss://, with region/world-part as query params. */
-export function bridgeUrl(baseUrl: string, model: string, region?: string, worldPart?: string): string {
-  const q = new URLSearchParams();
-  if (region) q.set("region", region);
-  if (worldPart) q.set("world-part", worldPart);
-  const qs = q.size ? `?${q}` : "";
-  return `${baseUrl.replace(/\/+$/, "").replace(/^http/, "ws")}/v1/bridges/unmute/tts/${model}${qs}`;
+/** The bridge connect URL: the key's https:// gateway as wss://. The gateway picks the region. */
+export function bridgeUrl(baseUrl: string, model: string): string {
+  return `${baseUrl.replace(/\/+$/, "").replace(/^http/, "ws")}/v1/bridges/unmute/tts/${model}`;
 }
 
 // The bridge is WebSocket only (POST answers 405). Same protocol as synthesize() in lib/bridge.ts.
 // JSON.stringify gives string literals that are valid in both TypeScript and Python.
 export function renderSample(lang: Lang, p: Props): string {
-  const { modelVariant, voice, text, region, worldPart, baseUrl } = p;
-  const url = JSON.stringify(bridgeUrl(baseUrl, modelVariant, region, worldPart));
+  const { modelVariant, voice, text, baseUrl } = p;
+  const url = JSON.stringify(bridgeUrl(baseUrl, modelVariant));
   const v = JSON.stringify(voice);
   const t = JSON.stringify(text);
 
@@ -133,8 +127,5 @@ async def main():
 asyncio.run(main())`;
   }
 
-  const flags = [`-m ${shellQuote(modelVariant)}`, `-v ${shellQuote(voice)}`];
-  if (region) flags.push(`--region ${shellQuote(region)}`);
-  if (worldPart) flags.push(`--world-part ${shellQuote(worldPart)}`);
-  return `voiceai tts ${shellQuote(text)} ${flags.join(" ")} --out out.wav`;
+  return `voiceai tts ${shellQuote(text)} -m ${shellQuote(modelVariant)} -v ${shellQuote(voice)} --out out.wav`;
 }
