@@ -54,7 +54,9 @@ class StreamingClient:
 
 class StreamingSession:
     """One open WebSocket. ``send`` writes a typed message dict; iterate the
-    instance to receive messages until the server closes the connection."""
+    instance to receive messages until the server closes the connection.
+    JSON frames yield the parsed dict. Binary frames (TTS audio) yield
+    ``{"type": "binary", "bytes": <bytes>}``."""
 
     def __init__(self, ws: ClientConnection) -> None:
         self._ws = ws
@@ -79,6 +81,7 @@ class StreamingSession:
             raw = await self._ws.recv()
         except websockets.ConnectionClosedOK:
             raise StopAsyncIteration
+        # TTS audio arrives as raw binary frames, not JSON.
         if isinstance(raw, bytes):
-            raw = raw.decode("utf-8")
+            return {"type": "binary", "bytes": raw}
         return json.loads(raw)
