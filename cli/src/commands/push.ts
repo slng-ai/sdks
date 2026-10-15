@@ -17,7 +17,7 @@ import {
   type PackageToolRef,
 } from "../lib/package";
 import { load } from "../lib/config";
-import { checkAgentModels, fetchModelCatalog } from "../lib/model-catalog";
+import { checkAgentBody } from "../lib/model-catalog";
 import { verifyApiKey } from "../lib/verify";
 import {
   connectServer,
@@ -656,41 +656,15 @@ export async function planPush(
  * the catalog cannot be read: the platform checks again on write.
  */
 async function modelBlocker(pkg: LoadedPackage, liveAgent?: AgentRow): Promise<Blocker | undefined> {
-  const models = pkg.agent.models as Record<string, unknown> | undefined;
-  if (!models || typeof models !== "object") return undefined;
   const pick = (k: string) => {
     const v = pkg.agent[k] ?? liveAgent?.[k];
     return typeof v === "string" && v ? v : undefined;
   };
-  const agent = { region: pick("region"), language: pick("language"), models };
-
-  const res = await fetchModelCatalog({ language: agent.language });
-  if (!res.ok || !res.data) {
-    note(`could not check models against the catalog (${formatAgentsError(res)}). the platform will check them on write.`);
-    return undefined;
-  }
-  let problems = checkAgentModels(agent, res.data);
-  // An LLM outside the catalog may be one of the org's own (BYOK) client
-  // models, which the platform accepts by name. Only asked when it matters.
-  if (problems.some((p) => p.path.includes(".llm"))) {
-    // ponytail: first 200 client models only; page through if an org ever has more.
-    const own = await agentsRequest<{ items?: { model_name?: string }[] }>("GET", "/v1/agents/client-models", {
-      query: { page_size: 200 },
-    });
-    const names = new Set((own.data?.items ?? []).map((m) => m.model_name).filter((n): n is string => Boolean(n)));
-    problems = checkAgentModels(agent, res.data, names);
-  }
-  if (!problems.length) return undefined;
-
-  const filter = [
-    agent.region && agent.region !== "any" ? `--region ${agent.region}` : "",
-    agent.language ? `--language ${agent.language}` : "",
-  ].filter(Boolean);
-  return {
-    kind: "model_unavailable",
-    items: problems.map((p) => p.message),
-    detail: `pick one from \`${["voiceai models list", ...filter].join(" ")}\`.`,
-  };
+  const models = pkg.agent.models as Record<string, unknown> | undefined;
+  const check = await checkAgentBody({ region: pick("region"), language: pick("language"), models });
+  if (check.unreadable) note(`could not check models against the catalog (${check.unreadable}). the platform will check them on write.`);
+  if (!check.problems.length) return undefined;
+  return { kind: "model_unavailable", items: check.problems, detail: check.hint };
 }
 
 /**

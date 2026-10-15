@@ -5,7 +5,7 @@
 // bucket (us-east, eu-central, …), then language. `models list` flattens it;
 // `agents push` checks a package's models and voices against it before writing.
 
-import { agentsRequest, type AgentsResult } from "./agents";
+import { agentsRequest, formatAgentsError, type AgentsResult } from "./agents";
 
 export type ServiceType = "stt" | "tts" | "llm";
 export const SERVICE_TYPES: readonly ServiceType[] = ["stt", "tts", "llm"];
@@ -194,4 +194,44 @@ export function checkAgentModels(
     checkVoice(`models.fallbacks.tts[${i}].voice`, String(entry.model), found, entry.voice);
   });
   return problems;
+}
+
+export interface BodyCheck {
+  /** One line per model, voice, region or language the catalog does not offer. */
+  problems: string[];
+  /** The `voiceai models list …` command that shows the valid choices. */
+  hint: string;
+  /** Set when the catalog could not be read. The platform still checks on write. */
+  unreadable?: string;
+}
+
+/**
+ * Check an agent body's region, language, models and voices against the live
+ * catalog, before anything is written. An LLM outside the catalog may be one of
+ * the org's own (BYOK) client models, so those are fetched only when it matters.
+ */
+export async function checkAgentBody(agent: {
+  region?: string;
+  language?: string;
+  models?: Record<string, unknown>;
+}): Promise<BodyCheck> {
+  const filter = [
+    agent.region && agent.region !== "any" ? `--region ${agent.region}` : "",
+    agent.language ? `--language ${agent.language}` : "",
+  ].filter(Boolean);
+  const hint = `pick one from \`${["voiceai models list", ...filter].join(" ")}\`.`;
+  if (!agent.models || typeof agent.models !== "object") return { problems: [], hint };
+
+  const res = await fetchModelCatalog({ language: agent.language });
+  if (!res.ok || !res.data) return { problems: [], hint, unreadable: formatAgentsError(res) };
+  let problems = checkAgentModels(agent, res.data);
+  if (problems.some((p) => p.path.includes(".llm"))) {
+    // ponytail: first 200 client models only; page through if an org ever has more.
+    const own = await agentsRequest<{ items?: { model_name?: string }[] }>("GET", "/v1/agents/client-models", {
+      query: { page_size: 200 },
+    });
+    const names = new Set((own.data?.items ?? []).map((m) => m.model_name).filter((n): n is string => Boolean(n)));
+    problems = checkAgentModels(agent, res.data, names);
+  }
+  return { problems: problems.map((p) => p.message), hint };
 }
