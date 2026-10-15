@@ -6,6 +6,7 @@
 
 import type { StreamingEvent } from "../../../streaming/ts/client";
 import { makeClients } from "./sdk";
+import { wrongRegionHint } from "./verify";
 
 /** TTS output: 16-bit little-endian mono PCM. Every bridge TTS target accepts linear16 at this rate. */
 export const TTS_SAMPLE_RATE = 24_000;
@@ -21,8 +22,8 @@ export interface SynthOptions {
 
 /** Synthesize `text` and return the whole utterance as raw PCM at TTS_SAMPLE_RATE. */
 export async function synthesize(model: string, voice: string, text: string, opts: SynthOptions = {}): Promise<Uint8Array> {
-  const { streaming } = await makeClients(opts.region);
-  const session = await streaming.connectTts(model);
+  const { streaming, apiKey, baseUrl } = await makeClients(opts.region);
+  const session = await explainConnect(() => streaming.connectTts(model), apiKey, baseUrl);
   session.send({ type: "init", voice, config: { encoding: "linear16", sample_rate: TTS_SAMPLE_RATE } });
   session.send({ type: "text", text });
   session.send({ type: "flush" });
@@ -104,8 +105,8 @@ export async function openTranscriber(
   onText: (text: string, final: boolean) => void,
   region?: string,
 ): Promise<Transcriber> {
-  const { streaming } = await makeClients(region);
-  const session = await streaming.connectStt(model);
+  const { streaming, apiKey, baseUrl } = await makeClients(region);
+  const session = await explainConnect(() => streaming.connectStt(model), apiKey, baseUrl);
   session.send({
     type: "init",
     config: { language: "en", sample_rate: STT_SAMPLE_RATE, encoding: "linear16", enable_partial_transcripts: true },
@@ -135,6 +136,20 @@ export function transcriptOf(msg: StreamingEvent): { text: string; final: boolea
   if (msg.type !== "partial_transcript" && msg.type !== "final_transcript") return undefined;
   if (!("transcript" in msg || "text" in msg)) return undefined;
   return { text: msg.transcript ?? msg.text ?? "", final: msg.type === "final_transcript" };
+}
+
+/**
+ * Open the socket. If it fails at a chosen region's gateway, check whether the
+ * key belongs to another region and say which. The WebSocket error carries no
+ * HTTP status, so this asks the gateways only after a failure.
+ */
+async function explainConnect<T>(open: () => Promise<T>, apiKey: string, baseUrl: string): Promise<T> {
+  try {
+    return await open();
+  } catch (e) {
+    const hint = await wrongRegionHint(apiKey, baseUrl);
+    throw hint ? new Error(hint) : e;
+  }
 }
 
 function describeError(msg: StreamingEvent): string {

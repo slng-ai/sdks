@@ -6,7 +6,7 @@
 // no base URL or region chosen (see apiBaseUrl), the probe asks every
 // region's gateway and keeps the one that answers 200.
 
-import { apiBaseUrl, gatewayUrl, REGIONS } from "./config";
+import { apiBaseUrl, gatewayUrl, regionOf, REGIONS } from "./config";
 
 export const GATEWAYS = REGIONS.map(gatewayUrl);
 
@@ -43,8 +43,11 @@ let found: { apiKey: string; baseUrl: string } | undefined;
  */
 export async function verifyApiKey(apiKey: string, baseUrl?: string): Promise<VerifyResult> {
   const base = baseUrl ?? apiBaseUrl() ?? (found?.apiKey === apiKey ? found.baseUrl : undefined);
-  if (base) return probe(apiKey, base);
+  return base ? probe(apiKey, base) : probeAll(apiKey);
+}
 
+/** Ask every gateway at once; the first 200 wins and is kept for the rest of the run. */
+async function probeAll(apiKey: string): Promise<VerifyResult> {
   const probes = GATEWAYS.map((g) => probe(apiKey, g));
   const ok = await Promise.any(probes.map((p) => p.then((r) => (r.ok ? r : Promise.reject(r))))).catch(
     () => undefined,
@@ -55,6 +58,21 @@ export async function verifyApiKey(apiKey: string, baseUrl?: string): Promise<Ve
   }
   const results = await Promise.all(probes);
   return results.find((r) => r.status !== undefined) ?? results[0]!;
+}
+
+/**
+ * After the chosen region's gateway refused the key: a message naming the
+ * region that does accept it, or undefined when none does, when it is the same
+ * region, or when `chosenUrl` is not a regional gateway (a custom base URL).
+ * Asks every gateway, so call it only on that failure.
+ */
+export async function wrongRegionHint(apiKey: string, chosenUrl: string | undefined): Promise<string | undefined> {
+  const chosen = regionOf(chosenUrl);
+  if (!chosen) return undefined;
+  const r = await probeAll(apiKey);
+  const right = r.ok ? regionOf(r.baseUrl) : undefined;
+  if (!right || right === chosen) return undefined;
+  return `this key belongs to region ${right}, not ${chosen}. run \`voiceai config set region ${right}\`, or set VOICEAI_REGION=${right}.`;
 }
 
 /**
