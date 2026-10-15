@@ -16,6 +16,7 @@ import {
   type PackageToolBody,
   type PackageToolRef,
 } from "../lib/package";
+import { load } from "../lib/config";
 import { verifyApiKey } from "../lib/verify";
 import {
   connectServer,
@@ -663,7 +664,7 @@ async function resolveOrganisation(
     agents.find((a) => a.organisation_id)?.organisation_id ??
     secrets[0]?.organisation_id ??
     "";
-  const key = process.env.VOICEAI_API_KEY;
+  const key = load().apiKey;
   if (key) {
     try {
       const probe = await verifyApiKey(key);

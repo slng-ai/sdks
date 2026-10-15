@@ -11,15 +11,19 @@ Run the CLI from source — no build step:
 bun run --cwd cli dev <args>          # e.g. bun run --cwd cli dev tool list
 ```
 
-Credentials resolve as `VOICEAI_API_KEY` → active profile → `~/.config/voiceai/config.json`.
-`.env` holds the same token under `SLNG_API_KEY`, so:
+Credentials resolve as `VOICEAI_API_KEY` → `SLNG_API_KEY` → active profile →
+`~/.config/voiceai/config.json`. `.env` holds the token under `SLNG_API_KEY`, which the CLI reads
+directly:
 
 ```bash
-set -a && source .env && set +a && export VOICEAI_API_KEY="$SLNG_API_KEY"
+set -a && source .env && set +a
 ```
 
 Override per invocation with `VOICEAI_API_KEY=… bun run --cwd cli dev …`, or per profile with
 `--profile <name>`. The env var wins over `--profile`.
+
+A key works only at its own world part's gateway (`https://<part>.api.slng.ai`). The others answer
+401. With no `VOICEAI_BASE_URL`, the CLI probes the gateways and uses the one that accepts the key.
 
 Base URLs: `VOICEAI_BASE_URL` for the main API, `VOICEAI_AGENTS_BASE_URL` for the agents host
 (`https://api.agents.slng.ai`, which also serves `/v1/agents/tools`). Point the latter at a local
