@@ -4,6 +4,7 @@ import {
   addProfile,
   currentProfile,
   envApiKey,
+  isRegion,
   listProfiles,
   load,
   profileExists,
@@ -12,6 +13,7 @@ import {
   save,
   useProfile,
   DEFAULT_PROFILE,
+  REGIONS,
 } from "../lib/config";
 import { printJson } from "../lib/output";
 
@@ -19,12 +21,14 @@ const CONFIG_EPILOGUE = `
 KEYS
   apiKey              Bearer token (slng_cu_…). Get one at https://app.slng.ai/api-keys.
                       Overridden by VOICEAI_API_KEY, then SLNG_API_KEY env.
-  baseUrl             Override the API base URL. Default: the gateway that accepts your key.
+  region              API region your key belongs to, e.g. eu-west. Skips finding it
+                      from the key on every run. \`voiceai login\` saves it for you.
+                      One of: ${REGIONS.join(", ")}.
+                      Overridden by VOICEAI_REGION env.
+  baseUrl             Full API base URL (staging, local stubs). Beats region.
                       Overridden by VOICEAI_BASE_URL env.
   agentsBaseUrl       Voice Agents API base URL (used by \`voiceai agents …\`).
                       Default: https://api.agents.slng.ai. Overridden by VOICEAI_AGENTS_BASE_URL.
-  region              Force a region for every request (auto if unset).
-  worldPart           Force a world-part for every request (auto if unset).
   defaultTtsModel     Skip the TTS model picker in the TUI.
   defaultTtsVoice     Skip the TTS voice picker (requires defaultTtsModel).
   defaultSttModel     Skip the STT model picker in the TUI.
@@ -74,6 +78,14 @@ export function configCommand(): Command {
     .description("Persist a config value (default: into the current profile)")
     .option("--profile <name>", "Write to a specific profile (default: current)")
     .action((key: string, value: string, opts: WithProfileOpts) => {
+      if (key === "worldPart") {
+        console.error('world part is now "region": voiceai config set region <code>');
+        process.exit(1);
+      }
+      if (key === "region" && value && !isRegion(value)) {
+        console.error(`unknown region "${value}". use one of: ${REGIONS.join(", ")}`);
+        process.exit(1);
+      }
       const merged = save({ [key]: value }, { profile: opts.profile });
       const echoed = key === "apiKey" ? maskKey(merged.apiKey) : (merged as Record<string, unknown>)[key];
       console.log(`${key} = ${echoed} (profile: ${opts.profile ?? currentProfile()})`);

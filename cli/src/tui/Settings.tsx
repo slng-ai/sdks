@@ -2,12 +2,10 @@ import React, { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
-import { currentProfile, load, save } from "../lib/config";
+import { currentProfile, load, REGIONS, save } from "../lib/config";
 import { Profiles } from "./Profiles";
 import { listInputs } from "../lib/audio";
 import {
-  allRegions,
-  allWorldParts,
   isSlngHosted,
   TTS_MODELS,
   STT_MODELS,
@@ -23,7 +21,6 @@ type Field =
   | "profile"
   | "apiKey"
   | "region"
-  | "worldPart"
   | "defaultTtsModel"
   | "defaultTtsVoice"
   | "defaultSttModel"
@@ -90,28 +87,14 @@ export function Settings({ onExit }: Props): React.ReactElement {
   }
 
   if (editing === "region") {
-    const regions = allRegions();
+    const regions = REGIONS;
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text bold>Region</Text>
-        <Text dimColor>{regions.length} region{regions.length === 1 ? "" : "s"} live across deployments</Text>
+        <Text dimColor>The API region your key belongs to. Auto finds it from the key.</Text>
         <SelectInput
           items={[{ label: "(auto)", value: "" }, ...regions.map((r) => ({ label: r, value: r }))]}
           onSelect={(item) => commit("region", item.value)}
-        />
-        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
-      </Box>
-    );
-  }
-
-  if (editing === "worldPart") {
-    const worldParts = allWorldParts();
-    return (
-      <Box flexDirection="column" marginTop={1} paddingX={1}>
-        <Text bold>World part</Text>
-        <SelectInput
-          items={[{ label: "(auto)", value: "" }, ...worldParts.map((w) => ({ label: w, value: w }))]}
-          onSelect={(item) => commit("worldPart", item.value)}
         />
         <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
       </Box>
@@ -232,7 +215,6 @@ export function Settings({ onExit }: Props): React.ReactElement {
             { label: `Profile:           ${currentProfile()} ▾`, value: "profile" as Field },
             { label: `API key:           ${mask(cfg.apiKey)}`, value: "apiKey" as Field },
             { label: `Region:            ${cfg.region ?? "(auto)"}`, value: "region" as Field },
-            { label: `World part:        ${cfg.worldPart ?? "(auto)"}`, value: "worldPart" as Field },
             { label: `Default TTS model: ${cfg.defaultTtsModel ?? "(none)"}`, value: "defaultTtsModel" as Field },
             { label: `Default TTS voice: ${cfg.defaultTtsVoice ?? "(none)"}`, value: "defaultTtsVoice" as Field },
             { label: `Default STT model: ${cfg.defaultSttModel ?? "(none)"}`, value: "defaultSttModel" as Field },

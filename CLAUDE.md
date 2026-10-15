@@ -23,7 +23,8 @@ Override per invocation with `VOICEAI_API_KEY=… bun run --cwd cli dev …`, or
 `--profile <name>`. The env var wins over `--profile`.
 
 A key works only at its own world part's gateway (`https://<part>.api.slng.ai`). The others answer
-401. With no `VOICEAI_BASE_URL`, the CLI probes the gateways and uses the one that accepts the key.
+401. Set `VOICEAI_REGION=eu-west` (or `--region` on `tts`/`stt`) to pick one. With neither, nor
+`VOICEAI_BASE_URL`, the CLI probes the 13 gateways and uses the one that accepts the key.
 
 Base URLs: `VOICEAI_BASE_URL` for the main API, `VOICEAI_AGENTS_BASE_URL` for the agents host
 (`https://api.agents.slng.ai`, which also serves `/v1/agents/tools`). Point the latter at a local

@@ -13,8 +13,32 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-export type Region = "us-east-1" | "eu-north-1" | "ap-southeast-2";
-export type WorldPart = "na" | "eu" | "ap";
+// The 13 API regions listed at docs.slng.ai "Region availability". Each has a
+// gateway at https://<region>.api.slng.ai, and a key works at exactly one.
+// LiveKit Cloud's agent regions have no gateway, so they are not here.
+// ponytail: fixed list, it drifts when regions are added or retired.
+// Replace with a backend route that returns a key's region once one exists.
+export const REGIONS = [
+  "eu-north", "eu-west", "us-east", "us-west", "au", "br", "gb", "id", "il", "in", "jp", "sg", "za",
+] as const;
+export type Region = (typeof REGIONS)[number];
+
+export function isRegion(v: string): v is Region {
+  return (REGIONS as readonly string[]).includes(v);
+}
+
+/** The gateway URL for a region code. Throws, naming the valid codes, for anything else. */
+export function gatewayUrl(region: string): string {
+  if (!isRegion(region)) throw new Error(`unknown region "${region}". use one of: ${REGIONS.join(", ")}`);
+  return `https://${region}.api.slng.ai`;
+}
+
+/** The region code of a gateway URL, or undefined for any other host. */
+export function regionOf(baseUrl: string | undefined): Region | undefined {
+  const host = baseUrl ? URL.parse(baseUrl)?.hostname : undefined;
+  const code = host?.endsWith(".api.slng.ai") ? host.slice(0, -".api.slng.ai".length) : undefined;
+  return code && isRegion(code) ? code : undefined;
+}
 
 export type SttMode = "mic" | "file";
 
@@ -24,8 +48,8 @@ export interface ProfileConfig {
   baseUrl?: string;
   // Base URL for the Voice Agents API (`voiceai agents …`). Distinct host from baseUrl.
   agentsBaseUrl?: string;
-  region?: Region;
-  worldPart?: WorldPart;
+  /** API region, e.g. eu-west. Older profiles may hold a retired code here (see apiBaseUrl). */
+  region?: string;
   defaultTtsModel?: string;
   defaultTtsVoice?: string;
   defaultSttModel?: string;
@@ -44,10 +68,14 @@ export interface ConfigFile {
 
 export const DEFAULT_PROFILE = "default";
 
-const CONFIG_DIR = join(homedir(), ".config", "voiceai");
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
-const LEGACY_CONFIG_DIR = join(homedir(), ".config", "slng");
-const LEGACY_CONFIG_PATH = join(LEGACY_CONFIG_DIR, "config.json");
+// Resolved on each use, not at import, so a test that sets HOME is honoured
+// whichever module imported this one first.
+// Bun's homedir() ignores a HOME changed at runtime, so read the env first.
+const home = () => process.env.HOME || homedir();
+const configDir = () => join(home(), ".config", "voiceai");
+const configPath = () => join(configDir(), "config.json");
+const legacyConfigDir = () => join(home(), ".config", "slng");
+const legacyConfigPath = () => join(legacyConfigDir(), "config.json");
 
 // Set by `flags.ts` when --profile is passed at the CLI. load() reads it
 // after VOICEAI_PROFILE env var. Module-level so each command call site stays
@@ -64,19 +92,19 @@ function migrateLegacy(): void {
   migrationChecked = true;
 
   // Step 1: copy from legacy ~/.config/slng/ if our dir is empty.
-  if (!existsSync(CONFIG_PATH) && existsSync(LEGACY_CONFIG_PATH)) {
-    mkdirSync(CONFIG_DIR, { recursive: true });
-    copyFileSync(LEGACY_CONFIG_PATH, CONFIG_PATH);
+  if (!existsSync(configPath()) && existsSync(legacyConfigPath())) {
+    mkdirSync(configDir(), { recursive: true });
+    copyFileSync(legacyConfigPath(), configPath());
     process.stderr.write(
-      `migrated config from ${LEGACY_CONFIG_PATH} → ${CONFIG_PATH}\n`,
+      `migrated config from ${legacyConfigPath()} → ${configPath()}\n`,
     );
   }
 
   // Step 2: reshape flat single-profile config into the profiles map.
-  if (!existsSync(CONFIG_PATH)) return;
+  if (!existsSync(configPath())) return;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    parsed = JSON.parse(readFileSync(configPath(), "utf8"));
   } catch {
     return; // corrupt file — leave it alone, load() treats it as empty
   }
@@ -90,7 +118,6 @@ function migrateLegacy(): void {
     "baseUrl",
     "agentsBaseUrl",
     "region",
-    "worldPart",
     "defaultTtsModel",
     "defaultTtsVoice",
     "defaultSttModel",
@@ -111,9 +138,9 @@ function migrateLegacy(): void {
 }
 
 function readConfigFile(): ConfigFile {
-  if (!existsSync(CONFIG_PATH)) return {};
+  if (!existsSync(configPath())) return {};
   try {
-    const parsed = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as unknown;
+    const parsed = JSON.parse(readFileSync(configPath(), "utf8")) as unknown;
     if (!parsed || typeof parsed !== "object") return {};
     return parsed as ConfigFile;
   } catch {
@@ -122,10 +149,10 @@ function readConfigFile(): ConfigFile {
 }
 
 function writeConfigFile(file: ConfigFile): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_PATH, JSON.stringify(file, null, 2));
+  mkdirSync(configDir(), { recursive: true });
+  writeFileSync(configPath(), JSON.stringify(file, null, 2));
   try {
-    chmodSync(CONFIG_PATH, 0o600);
+    chmodSync(configPath(), 0o600);
   } catch {
     // chmod failures shouldn't kill the CLI on exotic filesystems.
   }
@@ -176,10 +203,6 @@ function readProfile(name: string): ProfileConfig {
 }
 
 /**
- * Load the active config (selected profile flattened + env overrides applied).
- * If `profile` is provided it overrides every other source for this call only.
- */
-/**
  * The key from the environment. VOICEAI_API_KEY wins, because callers such as
  * unmute set it on purpose; SLNG_API_KEY is the name the SDK and docs use.
  */
@@ -187,6 +210,10 @@ export function envApiKey(): string | undefined {
   return process.env.VOICEAI_API_KEY ?? process.env.SLNG_API_KEY;
 }
 
+/**
+ * Load the active config (selected profile flattened + env overrides applied).
+ * If `profile` is provided it overrides every other source for this call only.
+ */
 export function load(profile?: string): Config {
   migrateLegacy();
   const file = readConfigFile();
@@ -196,8 +223,36 @@ export function load(profile?: string): Config {
     ...fromFile,
     apiKey: envApiKey() ?? fromFile.apiKey,
     baseUrl: process.env.VOICEAI_BASE_URL ?? fromFile.baseUrl,
+    region: process.env.VOICEAI_REGION || fromFile.region,
     agentsBaseUrl: process.env.VOICEAI_AGENTS_BASE_URL ?? fromFile.agentsBaseUrl,
   };
+}
+
+/** Profile region codes from before the 13 API regions. Nothing ever read them. */
+const RETIRED_REGIONS = new Set(["us-east-1", "eu-north-1", "ap-southeast-2"]);
+let warnedRetired = false;
+
+/**
+ * The main-API base URL the user chose, or undefined to find it from the key.
+ * Env beats profile; within each, a full base URL beats a region:
+ * VOICEAI_BASE_URL, then `override` (--region) or VOICEAI_REGION, then the
+ * profile's baseUrl, then the profile's region. An unknown region throws.
+ */
+export function apiBaseUrl(override?: string): string | undefined {
+  if (process.env.VOICEAI_BASE_URL) return process.env.VOICEAI_BASE_URL;
+  const chosen = override ?? process.env.VOICEAI_REGION;
+  if (chosen) return gatewayUrl(chosen);
+  const cfg = load();
+  if (cfg.baseUrl) return cfg.baseUrl;
+  if (!cfg.region) return undefined;
+  if (RETIRED_REGIONS.has(cfg.region)) {
+    if (!warnedRetired) {
+      process.stderr.write(`note: ignoring old region "${cfg.region}"; set one with \`voiceai config set region <code>\`.\n`);
+      warnedRetired = true;
+    }
+    return undefined;
+  }
+  return gatewayUrl(cfg.region);
 }
 
 export interface SaveOptions {
@@ -232,6 +287,7 @@ export function save(updates: Partial<ProfileConfig>, opts: SaveOptions = {}): C
     ...merged,
     apiKey: envApiKey() ?? merged.apiKey,
     baseUrl: process.env.VOICEAI_BASE_URL ?? merged.baseUrl,
+    region: process.env.VOICEAI_REGION || merged.region,
     agentsBaseUrl: process.env.VOICEAI_AGENTS_BASE_URL ?? merged.agentsBaseUrl,
   };
 }
@@ -289,7 +345,7 @@ export interface ResetResult {
  * Pass `all: true` to also clear the `$TMPDIR/voiceai-tts/` replay cache.
  */
 export function reset({ all = false }: { all?: boolean } = {}): ResetResult {
-  const targets = [CONFIG_DIR, LEGACY_CONFIG_DIR];
+  const targets = [configDir(), legacyConfigDir()];
   if (all) targets.push(join(tmpdir(), "voiceai-tts"));
 
   const removed: string[] = [];

@@ -188,8 +188,8 @@ voiceai tts "binary" > out.wav
 # Write raw PCM (16-bit mono, 24 kHz) as it arrives, for low-latency playback.
 voiceai tts "stream me" --stream | ffplay -f s16le -ar 24000 -ch_layout mono -
 
-# Pin a deployment region.
-voiceai tts "regional" --region eu-north-1
+# Use a specific API region's gateway (default: found from the key).
+voiceai tts "regional" --region eu-west
 ```
 
 Audio always comes over the bridge WebSocket. Without `--out`, it is also
@@ -655,15 +655,29 @@ Per-profile keys (env overrides apply to the resolved profile):
 | Key | Env override | Description |
 |---|---|---|
 | `apiKey` | `VOICEAI_API_KEY` | Bearer token (slng_cu_…). |
-| `baseUrl` | `VOICEAI_BASE_URL` | Override the API base URL. Default: the regional gateway that accepts your key, found on each run. |
+| `region` | `VOICEAI_REGION` | API region your key belongs to, e.g. `eu-west`. Skips finding it from the key on each run. `voiceai login` saves it. See "Choosing a region". |
+| `baseUrl` | `VOICEAI_BASE_URL` | Full API base URL, for staging or a local stub. Beats `region`. |
 | `agentsBaseUrl` | `VOICEAI_AGENTS_BASE_URL` | Override the Voice Agents API base URL (used by `voiceai agents …`). |
-| `region` | — | Pin every request to a region (auto if unset). |
-| `worldPart` | — | Pin every request to a world-part (auto if unset). |
 | `defaultTtsModel` | — | Skip the TTS model picker in the TUI. |
 | `defaultTtsVoice` | — | Skip the TTS voice picker (requires `defaultTtsModel`). |
 | `defaultSttModel` | — | Skip the STT model picker. |
 | `defaultSttMode` | — | `mic` or `file` — skip the source picker. |
 | `defaultSttInput` | — | Audio input device for mic mode (skip device picker). |
+
+### Choosing a region
+
+Each API region has its own gateway, `https://<region>.api.slng.ai`, and a key works at exactly one of them:
+`eu-north`, `eu-west`, `us-east`, `us-west`, `au`, `br`, `gb`, `id`, `il`, `in`, `jp`, `sg`, `za`.
+
+With nothing set, the CLI asks every gateway which one accepts your key, once per run. To skip that:
+
+```sh
+voiceai config set region eu-west        # saved in the profile (voiceai login does this for you)
+VOICEAI_REGION=eu-west voiceai whoami    # for one shell or one run
+voiceai tts "hi" --region eu-west        # for one command (tts and stt)
+```
+
+The order is `VOICEAI_BASE_URL`, then `--region` or `VOICEAI_REGION`, then the profile's `baseUrl`, then its `region`.
 
 Additional environment variables:
 
