@@ -1,12 +1,13 @@
 name: Build SDKs for pull request
 
+# Paused 2026-10-15: Stainless answers 401 "Your organization has migrated to
+# stlc and is no longer available on the Stainless platform" (contact
+# transition@stainless.com). Every PR that changes the spec failed on it.
+# To resume, put this trigger back under `on:` once the account is moved:
+#   pull_request:
+#     types: [opened, synchronize, reopened, closed]
 on:
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - closed
+  workflow_dispatch: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
