@@ -23,7 +23,7 @@
   },
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "bun build src/index.ts --compile --outfile bin/voiceai",
+    "build": "bun build src/index.ts --compile --no-compile-autoload-dotenv --outfile bin/voiceai",
     "postinstall": "node scripts/download.js",
     "test": "bun test"
   },
