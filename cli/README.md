@@ -257,7 +257,6 @@ voiceai agents calls dispatch <agent_id> --phone +15551234567
 voiceai agents calls dispatch <agent_id> --phone +15551234567 --file args.json
 voiceai agents calls list <agent_id> --page 1 --page-size 20
 voiceai agents calls get <agent_id> <call_id>
-voiceai agents calls tool-exec <agent_id> <call_id> --file result.json
 
 # Web sessions (returns LiveKit connection details)
 voiceai agents web-sessions create <agent_id>
