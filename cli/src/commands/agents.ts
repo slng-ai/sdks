@@ -89,7 +89,6 @@ COMMANDS
   calls dispatch <id> --phone <e164>     start an outbound call
   calls list <id>                        list an agent's calls
   calls get <id> <call_id>               show one call
-  calls tool-exec <id> <call_id> -f <f>  submit a tool-execution result
   web-sessions create <id>               create a browser session (LiveKit details)
   push <dir>                             push an unmute-compiled agent package
 
@@ -103,7 +102,7 @@ EXAMPLES
 
 NOTES
   • IDs can be positional or named flags: \`agents calls get a1 c2\` == \`--agent-id a1 --call-id c2\`.
-  • create/update/replace/tool-exec take a JSON body via --file <path> (or "-" for stdin).
+  • create/update/replace take a JSON body via --file <path> (or "-" for stdin).
   • Every command supports --json.
   • The interactive TUI (run \`voiceai\` with no args → Agents) browses agents and runs
     quick actions (dispatch a call, view calls, web session, duplicate, delete). Creating
@@ -326,26 +325,6 @@ function callsCommand(): Command {
         console.log(row(["ID", "DIRECTION", "STATUS", "PHONE", "DURATION_MS"]));
         console.log(row([data.id as string, data.call_direction as string, data.status as string, data.phone_number as string, data.call_duration_ms as number]));
       }
-    });
-
-  // calls tool-exec <agent_id> <call_id> --file
-  calls
-    .command("tool-exec [agent_id] [call_id]")
-    .description("Submit a tool execution result for a call")
-    .requiredOption("-f, --file <path>", 'JSON body file ("-" for stdin)')
-    .option("--agent-id <id>", "Agent id (alternative to the positional)")
-    .option("--call-id <id>", "Call id (alternative to the positional)")
-    .option("--json", "Output JSON")
-    .action(async (agentIdArg: string | undefined, callIdArg: string | undefined, opts) => {
-      const agentId = resolveId("agent id", "--agent-id", agentIdArg, opts.agentId);
-      const callId = resolveId("call id", "--call-id", callIdArg, opts.callId);
-      const body = readJsonInput(opts.file);
-      const data = await send<Record<string, unknown>>(
-        opts.json,
-        `submitting tool execution for call ${callId}`,
-        agentsRequest("POST", `/v1/agents/${agentId}/calls/${callId}/tool-executions`, { body }),
-      );
-      if (!opts.json) console.log(`submitted tool execution${data && data.id ? ` ${data.id}` : ""}`);
     });
 
   return calls;
