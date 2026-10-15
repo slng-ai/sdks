@@ -26,11 +26,6 @@ function readJsonInput(file: string): unknown {
 }
 
 /**
- * Run an agents request with a spinner, exit non-zero on failure, and return
- * the parsed body. When `--json`, prints the raw body; otherwise the caller
- * renders a human summary from the returned data.
- */
-/**
  * Refuse a full agent body whose region, language, models or voices the live
  * catalog does not offer, before it is sent. PATCH bodies are partial, so
  * update skips this and the platform checks the merged result.
@@ -51,6 +46,11 @@ async function refuseUnavailableModels(body: unknown): Promise<void> {
   process.exit(1);
 }
 
+/**
+ * Run an agents request with a spinner, exit non-zero on failure, and return
+ * the parsed body. When `--json`, prints the raw body; otherwise the caller
+ * renders a human summary from the returned data.
+ */
 async function send<T = unknown>(
   json: boolean | undefined,
   label: string,
