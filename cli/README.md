@@ -106,7 +106,7 @@ The TUI's **Settings → Profile** menu does the same things interactively
 
 ```sh
 voiceai tts "Hello from Voiceai"               # synth + play locally
-voiceai tts "Save this" --out hi.mp3           # save to a file
+voiceai tts "Save this" --out hi.wav           # save to a file
 voiceai stt audio.wav                          # transcribe a file
 voiceai stt --stream                           # live mic → transcripts
 ```
@@ -180,26 +180,26 @@ editing agents is flag-mode only, via `--file` (see [Agents](#agents) below).
 voiceai tts "hi" -m slng/deepgram/aura:2-en -v amalthea
 
 # Save to a path of your choice (audio still plays unless stdout is a pipe).
-voiceai tts "save me" --out ~/voice.mp3
+voiceai tts "save me" --out ~/voice.wav
 
-# Pipe raw audio bytes — useful in scripts.
-voiceai tts "binary" > out.mp3
+# Pipe a WAV file — useful in scripts.
+voiceai tts "binary" > out.wav
 
-# Stream chunks via WebSocket for low-latency playback.
-voiceai tts "stream me" --stream | ffplay -
+# Write raw PCM (16-bit mono, 24 kHz) as it arrives, for low-latency playback.
+voiceai tts "stream me" --stream | ffplay -f s16le -ar 24000 -ch_layout mono -
 
 # Pin a deployment region.
 voiceai tts "regional" --region eu-north-1
 ```
 
-Without `--out`, audio is also written to `$TMPDIR/voiceai-tts/` so you
-can replay or re-export later.
+Audio always comes over the bridge WebSocket. Without `--out`, it is also
+written to `$TMPDIR/voiceai-tts/` so you can replay or re-export later.
 
 ### Speech → text
 
 ```sh
-# One-shot transcription of an audio file.
-voiceai stt audio.wav -m slng/deepgram/nova:3-en
+# Transcribe an audio file. sox (or ffmpeg) decodes it to 16 kHz mono PCM first.
+voiceai stt audio.wav -m soniox/speech-ai:rt-v5
 
 # Live mic → transcripts.
 voiceai stt --stream

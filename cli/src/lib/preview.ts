@@ -12,7 +12,7 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Voice } from "./models";
-import { makeClients } from "./sdk";
+import { synthesize, TTS_SAMPLE_RATE, wav } from "./bridge";
 import { playBytes } from "./audio";
 
 const CACHE_DIR = join(homedir(), ".cache", "voiceai");
@@ -79,16 +79,9 @@ export async function previewVoice(
   if (!synthIfMissing) {
     throw new Error(`no sample for ${voiceId} and synthIfMissing=false`);
   }
-  const { http } = await makeClients();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const response = await (http as any).textToSpeech.create(model, {
-    text: PREVIEW_TEXT(voice.name ?? voiceId),
-    voice: voiceId,
-  });
-  const blob = await response.blob();
-  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const bytes = wav(await synthesize(model, voiceId, PREVIEW_TEXT(voice.name ?? voiceId)), TTS_SAMPLE_RATE);
   mkdirSync(CACHE_DIR, { recursive: true });
-  writeFileSync(cachePath(model, voiceId, "mp3"), bytes);
+  writeFileSync(cachePath(model, voiceId, "wav"), bytes);
   await playBytes(bytes);
   return { source: "synth", bytes: bytes.length };
 }
