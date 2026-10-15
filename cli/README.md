@@ -215,8 +215,8 @@ arecord -f S16_LE -r 16000 -c 1 | voiceai stt --stream --source stdin
 voiceai models list
 
 # Filter by type, region and language. --region takes an agent region
-# (eu-central) or a hosting world part (eu-north).
-voiceai models list --type tts --region eu-north
+# or a hosting world part, e.g. eu-west.
+voiceai models list --type tts --region eu-west
 voiceai models list --type llm --language de --json | jq '.data[] | .id'
 
 # `agents push` checks agent.json's models and voices against this same

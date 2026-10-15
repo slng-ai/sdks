@@ -8,7 +8,7 @@ const RESET = "\x1b[0m";
 
 export interface ListFilter {
   type?: ServiceType;
-  /** An agent region (eu-central) or a hosting world part (eu-north). */
+  /** An agent region or a hosting world part (e.g. eu-west). */
   region?: string;
   language?: string;
 }
@@ -43,7 +43,7 @@ function listCommand(): Command {
   return new Command("list")
     .description("List the STT, TTS and LLM models your organisation can use, by region (★ = Slng-hosted)")
     .addOption(new Option("--type <type>", "Only one model type").choices([...SERVICE_TYPES]))
-    .option("--region <code>", "Agent region (eu-central) or hosting world part (eu-north)")
+    .option("--region <code>", "Agent region or hosting world part (e.g. eu-west)")
     .option("--language <code>", "Language code (en, de, …)")
     .option("--json", "Output JSON: { data: [...] }")
     // The old spellings of --type, kept so existing scripts keep working.

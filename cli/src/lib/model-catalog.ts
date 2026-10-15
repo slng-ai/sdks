@@ -2,7 +2,7 @@
 //
 // The same SurfaceResolver.catalog() the dashboard's agent pickers read,
 // gated to what the calling organisation may select. Keyed by agent region
-// bucket (us-east, eu-central, …), then language. `models list` flattens it;
+// region, then language. `models list` flattens it;
 // `agents push` checks a package's models and voices against it before writing.
 
 import { agentsRequest, formatAgentsError, type AgentsResult } from "./agents";

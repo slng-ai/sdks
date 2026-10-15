@@ -10,7 +10,7 @@ export function voicesCommand(): Command {
     .requiredOption("-m, --model <id>", "TTS model variant id")
     .option("--json", "Output JSON")
     .option("--language <code>", "Filter by language code (e.g. en, es, fr)")
-    .option("--region <code>", "Agent region (eu-central) or hosting world part (eu-north)")
+    .option("--region <code>", "Agent region or hosting world part (e.g. eu-west)")
     .addHelpText("afterAll", `
 EXAMPLES
   $ voiceai voices --model slng/fish/tts:s2.1-pro
