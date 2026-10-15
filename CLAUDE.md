@@ -49,14 +49,6 @@ Two patterns in `cli/src/commands/tool.test.ts`, worth copying:
   `VOICEAI_AGENTS_BASE_URL` pointed at it. This is the only way to assert exit codes, the
   stdout/stderr split, and failure modes (403, 429) that cannot be induced against a healthy org.
 
-### Known failures that are not yours
-
-Check this before debugging — it predates any current work:
-
-- `bun run sync-models:check` reports `live-models.generated.ts is stale`. It drifts against the
-  live model registry over time. Refresh it in its own commit (`bun run sync-models`), never
-  bundled into an unrelated feature.
-
 ## Rules worth knowing before you edit
 
 - **`specs/` is vendored, read-only.** It is synced from gateway-specs by `bun run sync-specs`.
@@ -64,7 +56,7 @@ Check this before debugging — it predates any current work:
   reason.
 - **Generated files are outputs.** `*.generated.ts`, `streaming/*/messages.*`, and the Stainless
   SDKs under `sdks/` are re-emitted by `bun run regen`. Fix the spec or the generator instead.
-  Three of them are committed because CI needs them at compile time.
+  `streaming/ts/messages.ts` is committed because CI needs it at compile time.
 - **Some endpoints are absent from the SDK by design.** The public shared-resource routes
   (`/v1/agents/tools`, `/mcp-servers`, `/secrets`, `/client-models`) are mounted
   `include_in_schema=False`, so they never reach the OpenAPI document or the generated SDK. Call

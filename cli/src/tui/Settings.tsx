@@ -5,17 +5,9 @@ import TextInput from "ink-text-input";
 import { currentProfile, load, REGIONS, save } from "../lib/config";
 import { Profiles } from "./Profiles";
 import { listInputs } from "../lib/audio";
-import {
-  isSlngHosted,
-  TTS_MODELS,
-  STT_MODELS,
-  voicesFor,
-  voiceLabel,
-  type TtsModel,
-  type SttModel,
-} from "../lib/models";
-import { SlngFirstItem } from "./SlngFirstItem";
-import { KeyHints } from "./resourceKit";
+import { voicesFor, voiceLabel } from "../lib/catalog";
+import { ModelPicker } from "./ModelPicker";
+import { ErrorView, KeyHints, Loading, useLoad } from "./resourceKit";
 
 type Field =
   | "profile"
@@ -102,31 +94,17 @@ export function Settings({ onExit }: Props): React.ReactElement {
   }
 
   if (editing === "defaultTtsModel" || editing === "defaultSttModel") {
-    const models: ReadonlyArray<TtsModel | SttModel> =
-      editing === "defaultTtsModel" ? TTS_MODELS : STT_MODELS;
-    const items = [
-      { label: "  (none)", value: "" },
-      ...models.map((m) => {
-        const display = m.name ? `${m.name} (${m.id})` : m.id;
-        return {
-          label: isSlngHosted(m.id) ? `★ ${display}` : `  ${display}`,
-          value: m.id,
-        };
-      }),
-    ];
+    const tts = editing === "defaultTtsModel";
     return (
       <Box flexDirection="column" marginTop={1} paddingX={1}>
-        <Text bold>Default {editing === "defaultTtsModel" ? "TTS" : "STT"} model</Text>
-        <SelectInput
-          items={items}
-          limit={10}
-          itemComponent={SlngFirstItem}
-          onSelect={(item) => {
+        <ModelPicker
+          type={tts ? "tts" : "stt"}
+          title={`Default ${tts ? "TTS" : "STT"} model`}
+          allowNone
+          onSelect={(m) => {
             // If the model changes, clear the cached voice (it likely no longer applies).
-            if (editing === "defaultTtsModel" && item.value !== cfg.defaultTtsModel) {
-              save({ defaultTtsVoice: undefined });
-            }
-            commit(editing, item.value);
+            if (tts && m !== cfg.defaultTtsModel) save({ defaultTtsVoice: undefined });
+            commit(editing, m);
           }}
         />
         <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
@@ -179,31 +157,7 @@ export function Settings({ onExit }: Props): React.ReactElement {
         </Box>
       );
     }
-    const voices = voicesFor(cfg.defaultTtsModel);
-    if (voices.length === 0) {
-      return (
-        <Box flexDirection="column" marginTop={1} paddingX={1}>
-          <Text color="yellow">
-            No catalogued voices for <Text bold>{cfg.defaultTtsModel}</Text>.
-          </Text>
-          <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
-        </Box>
-      );
-    }
-    return (
-      <Box flexDirection="column" marginTop={1} paddingX={1}>
-        <Text bold>Default voice for {cfg.defaultTtsModel}</Text>
-        <SelectInput
-          items={[
-            { label: "(none)", value: "" },
-            ...voices.map((v) => ({ label: voiceLabel(v), value: v.voiceId })),
-          ]}
-          limit={10}
-          onSelect={(item) => commit("defaultTtsVoice", item.value)}
-        />
-        <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
-      </Box>
-    );
+    return <DefaultVoicePicker model={cfg.defaultTtsModel} onPick={(v) => commit("defaultTtsVoice", v)} />;
   }
 
   return (
@@ -228,6 +182,33 @@ export function Settings({ onExit }: Props): React.ReactElement {
         />
       </Box>
       <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
+    </Box>
+  );
+}
+
+function DefaultVoicePicker({ model, onPick }: { model: string; onPick: (voice: string) => void }): React.ReactElement {
+  const { data: voices, error } = useLoad(() => voicesFor(model), [model]);
+  if (error) return <ErrorView message={error} />;
+  if (!voices) return <Loading label={`Loading voices for ${model}…`} />;
+  if (voices.length === 0) {
+    return (
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
+        <Text color="yellow">
+          No voices listed for <Text bold>{model}</Text>.
+        </Text>
+        <KeyHints hints={[{ key: "esc", label: "back", nav: true }]} />
+      </Box>
+    );
+  }
+  return (
+    <Box flexDirection="column" marginTop={1} paddingX={1}>
+      <Text bold>Default voice for {model}</Text>
+      <SelectInput
+        items={[{ label: "(none)", value: "" }, ...voices.map((v) => ({ label: voiceLabel(v), value: v.voiceId }))]}
+        limit={10}
+        onSelect={(item) => onPick(item.value)}
+      />
+      <KeyHints hints={[{ key: "esc", label: "cancel", nav: true }]} />
     </Box>
   );
 }

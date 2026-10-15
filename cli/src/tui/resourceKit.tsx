@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import Link from "ink-link";
 import { BrandSpinner } from "./BrandSpinner";
@@ -9,6 +9,24 @@ import { BrandSpinner } from "./BrandSpinner";
 // generic ResourceBrowser<T>: the flows diverge enough (mcp sub-screens,
 // secrets' masked create, trunks' fan-out) that a parameterised browser would
 // be heavier than four focused files.
+
+/** Run `load` when `deps` change. `data` is undefined until it resolves. */
+export function useLoad<T>(load: () => Promise<T>, deps: React.DependencyList): { data?: T; error?: string } {
+  const [state, setState] = useState<{ data?: T; error?: string }>({});
+  useEffect(() => {
+    let live = true;
+    setState({});
+    load().then(
+      (data) => live && setState({ data }),
+      (e: unknown) => live && setState({ error: e instanceof Error ? e.message : String(e) }),
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return state;
+}
 
 export function Loading({ label }: { label: string }): React.ReactElement {
   return (

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { formatAgentsError } from "../lib/agents";
 import { fetchModelCatalog, flattenCatalog } from "../lib/model-catalog";
-import { languageLabel } from "../lib/models";
+import { languageLabel } from "../lib/catalog";
 import { printJson } from "../lib/output";
 
 export function voicesCommand(): Command {

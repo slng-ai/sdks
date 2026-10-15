@@ -1,22 +1,19 @@
 // Voice preview with a fallback chain so we re-use existing samples when we can:
 //
 //   1. CLI cache: ~/.cache/voiceai/preview-<model>-<voice>.{mp3,wav}
-//   2. voice-tools local sample: $VOICE_TOOLS_DIR/<sampleDir>/<voiceId>.wav
-//   3. sampleUrl from the manifest (HTTP fetch; e.g. KugelAudio)
-//   4. Synthesize via the SDK as a last resort, then cache to (1)
+//   2. The catalog's sample for the voice (sampleUrl, an HTTP fetch)
+//   3. Synthesize via the API as a last resort, then cache to (1)
 //
-// Step 4 is the only path that costs an API call. Steps 2/3 read existing
-// audio Slng has already generated for the voice-tools pipeline.
+// Step 3 is the only path that costs an API call.
 
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Voice } from "./models";
+import type { Voice } from "./catalog";
 import { synthesize, TTS_SAMPLE_RATE, wav } from "./bridge";
-import { playBytes } from "./audio";
+import { playBytes, sniffExt } from "./audio";
 
 const CACHE_DIR = join(homedir(), ".cache", "voiceai");
-const VOICE_TOOLS_DIR = process.env.VOICE_TOOLS_DIR ?? join(homedir(), "Dev", "SLNG", "voice-tools");
 
 function cachePath(model: string, voice: string, ext = "mp3"): string {
   const safe = `${model}-${voice}`.replace(/[^A-Za-z0-9._-]+/g, "_");
@@ -27,7 +24,7 @@ export const PREVIEW_TEXT = (name: string): string =>
   `Hi, I'm ${name}. This is what I sound like on Slng.`;
 
 export interface PreviewResult {
-  source: "cache" | "voice-tools" | "sample-url" | "synth";
+  source: "cache" | "sample-url" | "synth";
   bytes: number;
 }
 
@@ -49,33 +46,19 @@ export async function previewVoice(
     }
   }
 
-  // 2. Local voice-tools sample if present.
-  if (voice.sampleDir) {
-    const localPath = join(VOICE_TOOLS_DIR, voice.sampleDir, `${voiceId}.wav`);
-    if (existsSync(localPath)) {
-      const bytes = new Uint8Array(readFileSync(localPath));
-      // Promote to the cache so subsequent previews are instant even if
-      // voice-tools/ goes away.
-      mkdirSync(CACHE_DIR, { recursive: true });
-      writeFileSync(cachePath(model, voiceId, "wav"), bytes);
-      await playBytes(bytes);
-      return { source: "voice-tools", bytes: bytes.length };
-    }
-  }
-
-  // 3. Manifest sampleUrl (rare).
+  // 2. The catalog's sample.
   if (voice.sampleUrl) {
     const resp = await fetch(voice.sampleUrl);
     if (resp.ok) {
       const bytes = new Uint8Array(await resp.arrayBuffer());
       mkdirSync(CACHE_DIR, { recursive: true });
-      writeFileSync(cachePath(model, voiceId, "mp3"), bytes);
+      writeFileSync(cachePath(model, voiceId, sniffExt(bytes) === "wav" ? "wav" : "mp3"), bytes);
       await playBytes(bytes);
       return { source: "sample-url", bytes: bytes.length };
     }
   }
 
-  // 4. Synthesize via the API.
+  // 3. Synthesize via the API.
   if (!synthIfMissing) {
     throw new Error(`no sample for ${voiceId} and synthIfMissing=false`);
   }

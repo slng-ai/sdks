@@ -32,12 +32,17 @@ test("transcriptOf ignores utterance_end, which repeats Soniox's final tokens", 
 
 type Reply = (ws: ServerWebSocket<unknown>, msg: string | Buffer) => void;
 
+/** What the stub serves at GET /v1/catalog/models/<code>: one voice, so names resolve. */
+const CATALOG_MODEL = { code: "slng/fish/tts:s2.1-pro", voices: [{ voice_id: "8634617958764b539e0cdd5eb6c7723e", name: "Abel" }] };
+
 async function runAgainstBridge(args: string[], reply: Reply, stdin?: Uint8Array) {
   const seen: { paths: string[]; text: string[]; audioBytes: number } = { paths: [], text: [], audioBytes: 0 };
   const server = Bun.serve({
     port: 0,
     fetch(req, srv) {
-      seen.paths.push(new URL(req.url).pathname);
+      const path = new URL(req.url).pathname;
+      if (path.startsWith("/v1/catalog/models/")) return Response.json(CATALOG_MODEL);
+      seen.paths.push(path);
       return srv.upgrade(req) ? undefined : new Response("websocket only", { status: 405 });
     },
     websocket: {
@@ -88,6 +93,13 @@ test("tts --out writes a WAV of the binary frames the bridge sends", async () =>
   const file = readFileSync(out);
   expect(file.toString("ascii", 0, 4)).toBe("RIFF");
   expect([...file.subarray(44)]).toEqual([1, 0, 2, 0, 3, 0]);
+});
+
+test("tts -v resolves a voice name from the live catalog", async () => {
+  const r = await runAgainstBridge(["tts", "hi", "-m", "slng/fish/tts:s2.1-pro", "-v", "abel", "--stream"], ttsBridge);
+  expect(r.code).toBe(0);
+  expect(JSON.parse(r.seen.text[0]!).voice).toBe("8634617958764b539e0cdd5eb6c7723e");
+  expect(r.stderr).toContain('resolved "abel" → 8634617958764b539e0cdd5eb6c7723e (Abel)');
 });
 
 test("tts --stream writes raw PCM to stdout", async () => {
