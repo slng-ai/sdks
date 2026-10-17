@@ -28,9 +28,13 @@ class StreamingClient:
         *,
         server: Server = "production",
         base_url: Optional[str] = None,
+        project_id: Optional[str] = None,
     ) -> None:
+        """``project_id`` is the project UUID to bill and limit this traffic
+        under. It is sent as the ``X-SLNG-Project-Id`` header."""
         self._api_key = api_key
         self._base_url = base_url or _SERVERS[server]
+        self._project_id = project_id
 
     @asynccontextmanager
     async def connect_stt(self, model_variant: str) -> AsyncIterator["StreamingSession"]:
@@ -48,6 +52,8 @@ class StreamingClient:
     async def _connect(self, path: str) -> AsyncIterator["StreamingSession"]:
         url = f"{self._base_url}{path}"
         headers = {"Authorization": f"Bearer {self._api_key}"}
+        if self._project_id:
+            headers["X-SLNG-Project-Id"] = self._project_id
         async with websockets.connect(url, additional_headers=headers) as ws:
             yield StreamingSession(ws)
 

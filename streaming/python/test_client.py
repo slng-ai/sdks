@@ -33,5 +33,29 @@ class TtsFramesTest(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class ProjectHeaderTest(unittest.IsolatedAsyncioTestCase):
+    async def _handshake_headers(self, **kwargs):
+        seen = {}
+
+        async def stub(ws):
+            seen.update(ws.request.headers)
+
+        async with serve(stub, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            client = StreamingClient("test-key", base_url=f"ws://127.0.0.1:{port}", **kwargs)
+            async with client.connect_stt("deepgram/nova:3"):
+                pass
+        return {k.lower(): v for k, v in seen.items()}
+
+    async def test_project_id_is_sent_as_header(self) -> None:
+        headers = await self._handshake_headers(project_id="0b7e6c2a-1f3d-4a5b-9c8d-7e6f5a4b3c2d")
+        self.assertEqual(headers["x-slng-project-id"], "0b7e6c2a-1f3d-4a5b-9c8d-7e6f5a4b3c2d")
+        self.assertEqual(headers["authorization"], "Bearer test-key")
+
+    async def test_no_project_header_by_default(self) -> None:
+        headers = await self._handshake_headers()
+        self.assertNotIn("x-slng-project-id", headers)
+
+
 if __name__ == "__main__":
     unittest.main()
