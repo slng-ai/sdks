@@ -10,6 +10,9 @@ function formatQuery(q?: Record<string, string>): string {
 
 export type Server = "production" | "staging";
 
+/** Selects the project that runtime traffic is billed and limited under. */
+export const PROJECT_ID_HEADER = "X-SLNG-Project-Id";
+
 const SERVERS: Record<Server, string> = {
   production: "wss://api.slng.ai",
   staging: "wss://stageapi.slng.ai",
@@ -19,15 +22,19 @@ export interface StreamingClientOptions {
   apiKey: string;
   server?: Server;
   baseUrl?: string;
+  /** Project UUID to bill and limit this traffic under. Sent as X-SLNG-Project-Id. */
+  projectId?: string;
 }
 
 export class StreamingClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly projectId?: string;
 
   constructor(opts: StreamingClientOptions) {
     this.apiKey = opts.apiKey;
     this.baseUrl = opts.baseUrl ?? SERVERS[opts.server ?? "production"];
+    this.projectId = opts.projectId;
   }
 
   connectStt(
@@ -48,9 +55,9 @@ export class StreamingClient {
 
   private connect(path: string, signal?: AbortSignal): Promise<StreamingSession> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`${this.baseUrl}${path}`, {
-        headers: { Authorization: `Bearer ${this.apiKey}` },
-      });
+      const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}` };
+      if (this.projectId) headers[PROJECT_ID_HEADER] = this.projectId;
+      const ws = new WebSocket(`${this.baseUrl}${path}`, { headers });
       let settled = false;
       const onOpen = () => {
         cleanup();

@@ -211,6 +211,16 @@ export function envApiKey(): string | undefined {
 }
 
 /**
+ * The project that runtime calls (tts, stt, the TUI) are billed and limited
+ * under: the --project flag, then SLNG_PROJECT_ID. Sent as X-SLNG-Project-Id.
+ * An empty --project means none, so it never falls back to the env. Undefined
+ * sends no header. Agent commands take the project from the URL.
+ */
+export function resolveProjectId(flag?: string): string | undefined {
+  return (flag ?? process.env.SLNG_PROJECT_ID)?.trim() || undefined;
+}
+
+/**
  * Load the active config (selected profile flattened + env overrides applied).
  * If `profile` is provided it overrides every other source for this call only.
  */

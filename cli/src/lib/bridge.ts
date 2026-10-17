@@ -16,14 +16,16 @@ export const STT_SAMPLE_RATE = 16_000;
 export interface SynthOptions {
   /** API region whose gateway to use (e.g. eu-west); found from the key when unset. */
   region?: string;
+  /** Project UUID (--project); falls back to SLNG_PROJECT_ID. */
+  project?: string;
   /** Called with each audio frame as it arrives. */
   onChunk?: (pcm: Uint8Array) => void;
 }
 
 /** Synthesize `text` and return the whole utterance as raw PCM at TTS_SAMPLE_RATE. */
 export async function synthesize(model: string, voice: string, text: string, opts: SynthOptions = {}): Promise<Uint8Array> {
-  const { streaming, apiKey, baseUrl } = await makeClients(opts.region);
-  const session = await explainConnect(() => streaming.connectTts(model), apiKey, baseUrl);
+  const { streaming, apiKey, baseUrl, projectId } = await makeClients(opts.region, opts.project);
+  const session = await explainConnect(() => streaming.connectTts(model), apiKey, baseUrl, projectId);
   session.send({ type: "init", voice, config: { encoding: "linear16", sample_rate: TTS_SAMPLE_RATE } });
   session.send({ type: "text", text });
   session.send({ type: "flush" });
@@ -104,9 +106,10 @@ export async function openTranscriber(
   model: string,
   onText: (text: string, final: boolean) => void,
   region?: string,
+  project?: string,
 ): Promise<Transcriber> {
-  const { streaming, apiKey, baseUrl } = await makeClients(region);
-  const session = await explainConnect(() => streaming.connectStt(model), apiKey, baseUrl);
+  const { streaming, apiKey, baseUrl, projectId } = await makeClients(region, project);
+  const session = await explainConnect(() => streaming.connectStt(model), apiKey, baseUrl, projectId);
   session.send({
     type: "init",
     config: { language: "en", sample_rate: STT_SAMPLE_RATE, encoding: "linear16", enable_partial_transcripts: true },
@@ -139,16 +142,39 @@ export function transcriptOf(msg: StreamingEvent): { text: string; final: boolea
 }
 
 /**
- * Open the socket. If it fails at a chosen region's gateway, check whether the
- * key belongs to another region and say which. The WebSocket error carries no
- * HTTP status, so this asks the gateways only after a failure.
+ * The HTTP status of a refused WebSocket handshake, when the error carries it.
+ * The npm `ws` package says "Unexpected server response: 403". Bun's built-in
+ * ws says only "Expected 101 status code", so under Bun this is undefined.
  */
-async function explainConnect<T>(open: () => Promise<T>, apiKey: string, baseUrl: string): Promise<T> {
+export function handshakeStatus(e: unknown): number | undefined {
+  const m = /Unexpected server response: (\d{3})/.exec(e instanceof Error ? e.message : String(e));
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
+ * Open the socket. If it fails at a chosen region's gateway, check whether the
+ * key belongs to another region and say which. The WebSocket error rarely
+ * carries an HTTP status, so this asks the gateways only after a failure.
+ * Otherwise, when a project was sent and the gateway answered 403 (project not
+ * found or not available in this region), name the project.
+ */
+export async function explainConnect<T>(
+  open: () => Promise<T>,
+  apiKey: string,
+  baseUrl: string,
+  projectId?: string,
+): Promise<T> {
   try {
     return await open();
   } catch (e) {
     const hint = await wrongRegionHint(apiKey, baseUrl);
-    throw hint ? new Error(hint) : e;
+    if (hint) throw new Error(hint);
+    if (projectId && handshakeStatus(e) === 403) {
+      throw new Error(
+        `${(e as Error).message} (project ${projectId}, from --project or SLNG_PROJECT_ID, was not found or is not available in this region)`,
+      );
+    }
+    throw e;
   }
 }
 

@@ -42,6 +42,7 @@ export function ttsCommand(): Command {
     )
     .option("-o, --out <file>", "Write a WAV file instead of a temp file")
     .option("--region <code>", `API region to use (default: found from the key). One of: ${REGIONS.join(", ")}`)
+    .option("--project <id>", "Project UUID to bill this call to (default: SLNG_PROJECT_ID). Needed with an org-level API key")
     .option("--stream", "Write raw PCM to stdout as it arrives (good for long text or piping)")
     .addHelpText("afterAll", TTS_EPILOGUE)
     .action(async (text: string, opts) => {
@@ -67,6 +68,7 @@ export function ttsCommand(): Command {
       try {
         pcm = await synthesize(opts.model, voiceId, text, {
           region: opts.region,
+          project: opts.project,
           onChunk: raw ? (c) => process.stdout.write(c) : undefined,
         });
         spinner?.succeed(`got ${pcm.length} bytes (~${(pcm.length / 2 / TTS_SAMPLE_RATE).toFixed(1)}s)`);
