@@ -24,8 +24,8 @@ export interface SynthOptions {
 
 /** Synthesize `text` and return the whole utterance as raw PCM at TTS_SAMPLE_RATE. */
 export async function synthesize(model: string, voice: string, text: string, opts: SynthOptions = {}): Promise<Uint8Array> {
-  const { streaming, apiKey, baseUrl } = await makeClients(opts.region, opts.project);
-  const session = await explainConnect(() => streaming.connectTts(model), apiKey, baseUrl);
+  const { streaming, apiKey, baseUrl, projectId } = await makeClients(opts.region, opts.project);
+  const session = await explainConnect(() => streaming.connectTts(model), apiKey, baseUrl, projectId);
   session.send({ type: "init", voice, config: { encoding: "linear16", sample_rate: TTS_SAMPLE_RATE } });
   session.send({ type: "text", text });
   session.send({ type: "flush" });
@@ -108,8 +108,8 @@ export async function openTranscriber(
   region?: string,
   project?: string,
 ): Promise<Transcriber> {
-  const { streaming, apiKey, baseUrl } = await makeClients(region, project);
-  const session = await explainConnect(() => streaming.connectStt(model), apiKey, baseUrl);
+  const { streaming, apiKey, baseUrl, projectId } = await makeClients(region, project);
+  const session = await explainConnect(() => streaming.connectStt(model), apiKey, baseUrl, projectId);
   session.send({
     type: "init",
     config: { language: "en", sample_rate: STT_SAMPLE_RATE, encoding: "linear16", enable_partial_transcripts: true },
@@ -144,14 +144,21 @@ export function transcriptOf(msg: StreamingEvent): { text: string; final: boolea
 /**
  * Open the socket. If it fails at a chosen region's gateway, check whether the
  * key belongs to another region and say which. The WebSocket error carries no
- * HTTP status, so this asks the gateways only after a failure.
+ * HTTP status, so this asks the gateways only after a failure. Otherwise, when
+ * a project was sent, name it: a wrong id fails the handshake the same way.
  */
-async function explainConnect<T>(open: () => Promise<T>, apiKey: string, baseUrl: string): Promise<T> {
+async function explainConnect<T>(open: () => Promise<T>, apiKey: string, baseUrl: string, projectId?: string): Promise<T> {
   try {
     return await open();
   } catch (e) {
     const hint = await wrongRegionHint(apiKey, baseUrl);
-    throw hint ? new Error(hint) : e;
+    if (hint) throw new Error(hint);
+    if (projectId) {
+      throw new Error(
+        `${(e as Error).message} (sent project ${projectId} from --project or SLNG_PROJECT_ID; check it belongs to this key's organisation)`,
+      );
+    }
+    throw e;
   }
 }
 

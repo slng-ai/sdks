@@ -688,7 +688,7 @@ Additional environment variables:
 |---|---|
 | `VOICEAI_PROFILE` | Select a named profile (overridden by `--profile`). |
 | `VOICEAI_LOG` | `debug` for verbose SDK logging (also enabled by `--debug`). |
-| `SLNG_PROJECT_ID` | Project UUID for `tts` and `stt`, sent as `X-SLNG-Project-Id`. Overridden by `--project`. Agent commands don't use it. |
+| `SLNG_PROJECT_ID` | Project UUID for `tts`, `stt` and the TUI, sent as `X-SLNG-Project-Id`. Overridden by `--project`. Agent commands don't use it. |
 
 ## External audio dependencies
 

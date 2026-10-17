@@ -10,6 +10,9 @@ function formatQuery(q?: Record<string, string>): string {
 
 export type Server = "production" | "staging";
 
+/** Selects the project that runtime traffic is billed and limited under. */
+export const PROJECT_ID_HEADER = "X-SLNG-Project-Id";
+
 const SERVERS: Record<Server, string> = {
   production: "wss://api.slng.ai",
   staging: "wss://stageapi.slng.ai",
@@ -53,7 +56,7 @@ export class StreamingClient {
   private connect(path: string, signal?: AbortSignal): Promise<StreamingSession> {
     return new Promise((resolve, reject) => {
       const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}` };
-      if (this.projectId) headers["X-SLNG-Project-Id"] = this.projectId;
+      if (this.projectId) headers[PROJECT_ID_HEADER] = this.projectId;
       const ws = new WebSocket(`${this.baseUrl}${path}`, { headers });
       let settled = false;
       const onOpen = () => {

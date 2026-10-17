@@ -1,7 +1,7 @@
 // Single place that constructs both clients from one config blob.
 
 import Slng from "voiceai-sdk";
-import { StreamingClient } from "../../../streaming/ts/client";
+import { PROJECT_ID_HEADER, StreamingClient } from "../../../streaming/ts/client";
 import { requireApiKey, resolveProjectId } from "./config";
 import { resolveBaseUrl } from "./verify";
 
@@ -24,7 +24,7 @@ export async function makeClients(region?: string, project?: string): Promise<Cl
   const http = new Slng({
     apiKey,
     baseURL: baseUrl,
-    ...(projectId && { defaultHeaders: { "X-SLNG-Project-Id": projectId } }),
+    ...(projectId && { defaultHeaders: { [PROJECT_ID_HEADER]: projectId } }),
   });
   const streaming = new StreamingClient({ apiKey, baseUrl, projectId });
   return { http, streaming, apiKey, baseUrl, projectId };
