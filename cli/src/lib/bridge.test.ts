@@ -3,11 +3,32 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
-import { transcriptOf, wav } from "./bridge";
+import { explainConnect, handshakeStatus, transcriptOf, wav } from "./bridge";
 
 const CLI_DIR = `${import.meta.dir}/../..`;
 
 // --- units -----------------------------------------------------------------
+
+test("handshakeStatus reads the npm ws status and nothing from Bun's message", () => {
+  expect(handshakeStatus(new Error("Unexpected server response: 403"))).toBe(403);
+  expect(handshakeStatus(new Error("WebSocket connection to 'x' failed: Expected 101 status code"))).toBeUndefined();
+});
+
+test("explainConnect names the project only on a 403 handshake", async () => {
+  // Not a regional gateway, so wrongRegionHint asks nothing and returns undefined.
+  const fail = (msg: string) => () => Promise.reject(new Error(msg));
+  const base = "http://localhost:1";
+  await expect(explainConnect(fail("Unexpected server response: 403"), "k", base, "p-1")).rejects.toThrow(
+    "project p-1, from --project or SLNG_PROJECT_ID, was not found",
+  );
+  for (const [msg, project] of [
+    ["Unexpected server response: 401", "p-1"],
+    ["Unexpected server response: 403", undefined],
+    ["WebSocket connection to 'x' failed: Expected 101 status code", "p-1"],
+  ] as const) {
+    await expect(explainConnect(fail(msg), "k", base, project)).rejects.toThrow(new Error(msg));
+  }
+});
 
 test("wav wraps PCM in a 44-byte header that names the rate and length", () => {
   const out = Buffer.from(wav(new Uint8Array([1, 2, 3, 4]), 24000));
