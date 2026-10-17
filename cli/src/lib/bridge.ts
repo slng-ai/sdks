@@ -16,13 +16,15 @@ export const STT_SAMPLE_RATE = 16_000;
 export interface SynthOptions {
   /** API region whose gateway to use (e.g. eu-west); found from the key when unset. */
   region?: string;
+  /** Project UUID (--project); falls back to SLNG_PROJECT_ID. */
+  project?: string;
   /** Called with each audio frame as it arrives. */
   onChunk?: (pcm: Uint8Array) => void;
 }
 
 /** Synthesize `text` and return the whole utterance as raw PCM at TTS_SAMPLE_RATE. */
 export async function synthesize(model: string, voice: string, text: string, opts: SynthOptions = {}): Promise<Uint8Array> {
-  const { streaming, apiKey, baseUrl } = await makeClients(opts.region);
+  const { streaming, apiKey, baseUrl } = await makeClients(opts.region, opts.project);
   const session = await explainConnect(() => streaming.connectTts(model), apiKey, baseUrl);
   session.send({ type: "init", voice, config: { encoding: "linear16", sample_rate: TTS_SAMPLE_RATE } });
   session.send({ type: "text", text });
@@ -104,8 +106,9 @@ export async function openTranscriber(
   model: string,
   onText: (text: string, final: boolean) => void,
   region?: string,
+  project?: string,
 ): Promise<Transcriber> {
-  const { streaming, apiKey, baseUrl } = await makeClients(region);
+  const { streaming, apiKey, baseUrl } = await makeClients(region, project);
   const session = await explainConnect(() => streaming.connectStt(model), apiKey, baseUrl);
   session.send({
     type: "init",

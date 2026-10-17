@@ -23,3 +23,18 @@ test("VOICEAI_API_KEY wins over SLNG_API_KEY", () => {
   process.env.VOICEAI_API_KEY = "voiceai_key";
   expect(load().apiKey).toBe("voiceai_key");
 });
+
+test("resolveProjectId: --project wins over SLNG_PROJECT_ID, unset gives undefined", async () => {
+  const { resolveProjectId } = await import("./config");
+  const before = process.env.SLNG_PROJECT_ID;
+  try {
+    delete process.env.SLNG_PROJECT_ID;
+    expect(resolveProjectId()).toBeUndefined();
+    process.env.SLNG_PROJECT_ID = "env-project";
+    expect(resolveProjectId()).toBe("env-project");
+    expect(resolveProjectId("flag-project")).toBe("flag-project");
+  } finally {
+    if (before === undefined) delete process.env.SLNG_PROJECT_ID;
+    else process.env.SLNG_PROJECT_ID = before;
+  }
+});

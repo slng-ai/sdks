@@ -190,6 +190,9 @@ voiceai tts "stream me" --stream | ffplay -f s16le -ar 24000 -ch_layout mono -
 
 # Use a specific API region's gateway (default: found from the key).
 voiceai tts "regional" --region eu-west
+
+# Bill and limit the call under one project (needed with an org-level API key).
+voiceai tts "hi" --project 0b7e6c2a-1f3d-4a5b-9c8d-7e6f5a4b3c2d
 ```
 
 Audio always comes over the bridge WebSocket. Without `--out`, it is also
@@ -685,6 +688,7 @@ Additional environment variables:
 |---|---|
 | `VOICEAI_PROFILE` | Select a named profile (overridden by `--profile`). |
 | `VOICEAI_LOG` | `debug` for verbose SDK logging (also enabled by `--debug`). |
+| `SLNG_PROJECT_ID` | Project UUID for `tts` and `stt`, sent as `X-SLNG-Project-Id`. Overridden by `--project`. Agent commands don't use it. |
 
 ## External audio dependencies
 

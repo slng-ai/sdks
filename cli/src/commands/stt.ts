@@ -30,6 +30,7 @@ export function sttCommand(): Command {
     .option("--stream", "Stream live audio from the mic or stdin")
     .option("--source <kind>", "When streaming, where to get audio from: mic | stdin", "mic")
     .option("--region <code>", `API region to use (default: found from the key). One of: ${REGIONS.join(", ")}`)
+    .option("--project <id>", "Project UUID to bill this call to (default: SLNG_PROJECT_ID). Needed with an org-level API key")
     .addHelpText("afterAll", STT_EPILOGUE)
     .action(async (file: string | undefined, opts) => {
       if (!opts.stream && !file) {
@@ -42,7 +43,7 @@ export function sttCommand(): Command {
         } else if (process.stderr.isTTY) {
           process.stderr.write(`\r\x1b[K\x1b[2m${text}\x1b[0m`);
         }
-      }, opts.region);
+      }, opts.region, opts.project);
 
       if (!opts.stream) {
         stt.sendAudio(await decodeToPcm(file!));
